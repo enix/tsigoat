@@ -1,0 +1,39 @@
+services:
+  app:
+    build:
+      context: .
+      target: dev
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    user: ${USER_ID:-1000}:${GROUP_ID:-1000}
+    volumes:
+      - type: bind
+        source: .
+        target: /app
+        read_only: false
+        bind:
+          selinux: z
+    ports:
+      - 53000:5353/tcp
+      - 53000:5353/udp
+
+  # Usage of shell:
+  #  $ docker compose run shell
+  shell:
+    profiles:
+      - donotstart
+    build:
+      dockerfile: hack/shell.Dockerfile
+      context: .
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    user: ${USER_ID:-1000}:${GROUP_ID:-1000}
+    volumes:
+      - type: bind
+        source: .
+        target: /app
+        read_only: false
+        bind:
+          selinux: z

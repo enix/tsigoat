@@ -1,0 +1,12 @@
+*.out
+*.so
+*.dylib
+*.exe
+*.exe~
+*.dll
+*.test
+/vendor
+/tmp
+/sandbox
+.keyring
+.ropeproject
