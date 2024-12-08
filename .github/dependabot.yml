@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directory: "/"
+    labels:
+      - "dependencies"
+    schedule:
+      # interval: "weekly"
+      # day: "monday"
+      interval: "daily"
+      time: "09:00"
+      timezone: "Europe/Paris"
+  - package-ecosystem: "docker"
+    directory: "/"
+    labels:
+      - "container dependencies"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Europe/Paris"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    labels:
+      - "ci dependencies"
+    schedule:
+      interval: "daily"
+      time: "09:00"
+      timezone: "Europe/Paris"
