@@ -1,7 +1,7 @@
 package powerdns
 
 import (
-	"github.com/enix/tsigan/pkg/adapters/common"
+	"github.com/enix/tsigoat/pkg/adapters/common"
 	"go.uber.org/zap"
 )
 

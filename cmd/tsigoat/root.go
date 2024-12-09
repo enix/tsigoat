@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/enix/tsigan/pkg/cmd"
+	"github.com/enix/tsigoat/pkg/cmd"
 
 	"github.com/spf13/cobra"
 )

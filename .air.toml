@@ -7,7 +7,7 @@ args_bin = [
     "serve",
     "--log-format=developer",
     "--log-level=debug",
-    "--config=hack/fixtures/tsigan.yaml",
+    "--config=hack/fixtures/tsigoat.yaml",
 ]
 bin = "tmp/cmd"
 cmd = "hack/air-build-server.sh"

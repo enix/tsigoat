@@ -3,7 +3,7 @@ package update
 import (
 	"fmt"
 
-	"github.com/enix/tsigan/pkg/dns"
+	"github.com/enix/tsigoat/pkg/dns"
 )
 
 type Authorization struct {

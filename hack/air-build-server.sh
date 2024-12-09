@@ -18,5 +18,5 @@ LDFLAGS+=" -X ${MODULE}/internal/product.gitTreeState=$(test -n "`git status --p
 
 go build \
     -ldflags "${LDFLAGS[*]}" \
-    -o ./tmp/cmd \
-    ./cmd
+    -o ./tmp/tsigoat \
+    ./cmd/tsigoat

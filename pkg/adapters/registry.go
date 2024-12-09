@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/enix/tsigan/pkg/adapters/common"
-	"github.com/enix/tsigan/pkg/adapters/powerdns"
+	"github.com/enix/tsigoat/pkg/adapters/common"
+	"github.com/enix/tsigoat/pkg/adapters/powerdns"
 	"go.uber.org/zap"
 )
 

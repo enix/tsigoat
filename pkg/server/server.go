@@ -5,9 +5,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/enix/tsigan/pkg/adapters/common"
-	"github.com/enix/tsigan/pkg/dns"
-	"github.com/enix/tsigan/pkg/dns/tsig"
+	"github.com/enix/tsigoat/pkg/adapters/common"
+	"github.com/enix/tsigoat/pkg/dns"
+	"github.com/enix/tsigoat/pkg/dns/tsig"
 	miekgdns "github.com/miekg/dns"
 	"go.uber.org/zap"
 )

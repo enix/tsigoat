@@ -27,26 +27,26 @@ ARG GIT_COMMIT
 ARG GIT_STATE
 ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
-RUN go build -v -a -buildvcs=false -o /tsigan \
+RUN go build -v -a -buildvcs=false -o /tsigoat \
     -tags osusergo,netgo \
     -ldflags " \
-    -X \"github.com/enix/tsigan/internal/product.version=${VERSION}\" \
-    -X \"github.com/enix/tsigan/internal/product.gitCommit=${GIT_COMMIT}\" \
-    -X \"github.com/enix/tsigan/internal/product.gitTreeState=${GIT_STATE}\" \
-    -X \"github.com/enix/tsigan/internal/product.buildTime=$(date --iso-8601=seconds)\" \
+    -X \"github.com/enix/tsigoat/internal/product.version=${VERSION}\" \
+    -X \"github.com/enix/tsigoat/internal/product.gitCommit=${GIT_COMMIT}\" \
+    -X \"github.com/enix/tsigoat/internal/product.gitTreeState=${GIT_STATE}\" \
+    -X \"github.com/enix/tsigoat/internal/product.buildTime=$(date --iso-8601=seconds)\" \
     " \
     ./cmd/
 
 FROM scratch AS distroless
-COPY --from=build --chown=0:0 --chmod=0555 /tsigan /tsigan
+COPY --from=build --chown=0:0 --chmod=0555 /tsigoat /tsigoat
 USER 65534:65534
 EXPOSE 5353/udp
 EXPOSE 5353/tcp
-ENTRYPOINT [ "/tsigan" ]
+ENTRYPOINT [ "/tsigoat" ]
 
 FROM cgr.dev/chainguard/wolfi-base
-COPY --from=build --chown=0:0 --chmod=0555 /tsigan /tsigan
+COPY --from=build --chown=0:0 --chmod=0555 /tsigoat /tsigoat
 USER nobody:nobody
 EXPOSE 5353/udp
 EXPOSE 5353/tcp
-ENTRYPOINT [ "/tsigan" ]
+ENTRYPOINT [ "/tsigoat" ]

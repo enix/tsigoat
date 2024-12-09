@@ -3,7 +3,7 @@ package logging
 import (
 	"fmt"
 
-	"github.com/enix/tsigan/pkg/types"
+	"github.com/enix/tsigoat/pkg/types"
 
 	"go.uber.org/zap/zapcore"
 )

@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 
-	"github.com/enix/tsigan/internal/product"
-	"github.com/enix/tsigan/pkg/cmd"
-	"github.com/enix/tsigan/pkg/server"
+	"github.com/enix/tsigoat/internal/product"
+	"github.com/enix/tsigoat/pkg/cmd"
+	"github.com/enix/tsigoat/pkg/server"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

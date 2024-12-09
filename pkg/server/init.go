@@ -3,9 +3,9 @@ package server
 import (
 	"fmt"
 
-	"github.com/enix/tsigan/pkg/adapters"
-	"github.com/enix/tsigan/pkg/adapters/common"
-	"github.com/enix/tsigan/pkg/dns"
+	"github.com/enix/tsigoat/pkg/adapters"
+	"github.com/enix/tsigoat/pkg/adapters/common"
+	"github.com/enix/tsigoat/pkg/dns"
 )
 
 func (s *Server) init() (err error) {

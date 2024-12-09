@@ -3,8 +3,8 @@ package server
 import (
 	"slices"
 
-	"github.com/enix/tsigan/pkg/dns"
-	"github.com/enix/tsigan/pkg/dns/update"
+	"github.com/enix/tsigoat/pkg/dns"
+	"github.com/enix/tsigoat/pkg/dns/update"
 	miekgdns "github.com/miekg/dns"
 	"go.uber.org/zap/zapcore"
 )

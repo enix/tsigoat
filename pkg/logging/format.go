@@ -1,7 +1,7 @@
 package logging
 
 import (
-	"github.com/enix/tsigan/pkg/types"
+	"github.com/enix/tsigoat/pkg/types"
 )
 
 type Format string

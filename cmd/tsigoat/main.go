@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/enix/tsigan/pkg/cmd"
+	"github.com/enix/tsigoat/pkg/cmd"
 )
 
 func main() {

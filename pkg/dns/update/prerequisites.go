@@ -1,7 +1,7 @@
 package update
 
 import (
-	"github.com/enix/tsigan/pkg/adapters/common"
+	"github.com/enix/tsigoat/pkg/adapters/common"
 	miekgdns "github.com/miekg/dns"
 )
 

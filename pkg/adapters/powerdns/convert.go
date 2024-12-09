@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/enix/tsigan/pkg/adapters/common"
+	"github.com/enix/tsigoat/pkg/adapters/common"
 	"github.com/joeig/go-powerdns/v3"
 	miekgdns "github.com/miekg/dns"
 )

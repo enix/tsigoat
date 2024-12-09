@@ -7,8 +7,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/enix/tsigan/pkg/logging"
-	"github.com/enix/tsigan/pkg/server"
+	"github.com/enix/tsigoat/pkg/logging"
+	"github.com/enix/tsigoat/pkg/server"
 	"github.com/spf13/pflag"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

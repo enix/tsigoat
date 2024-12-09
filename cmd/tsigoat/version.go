@@ -6,8 +6,8 @@ import (
 	"io"
 	"text/template"
 
-	"github.com/enix/tsigan/internal/product"
-	"github.com/enix/tsigan/pkg/cmd"
+	"github.com/enix/tsigoat/internal/product"
+	"github.com/enix/tsigoat/pkg/cmd"
 
 	"github.com/spf13/cobra"
 )

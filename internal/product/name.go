@@ -1,6 +1,6 @@
 package product
 
 const (
-	Name = "Tsigan"
-	Slug = "tsigan"
+	Name = "Tsigoat"
+	Slug = "tsigoat"
 )

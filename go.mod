@@ -1,4 +1,4 @@
-module github.com/enix/tsigan
+module github.com/enix/tsigoat
 
 go 1.23
 
