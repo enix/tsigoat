@@ -9,7 +9,7 @@ args_bin = [
     "--log-level=debug",
     "--config=hack/fixtures/tsigoat.yaml",
 ]
-bin = "tmp/cmd"
+bin = "tmp/tsigoat"
 cmd = "hack/air-build-server.sh"
 delay = 1000
 exclude_dir = [
