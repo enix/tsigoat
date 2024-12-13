@@ -2,6 +2,7 @@ package powerdns
 
 import (
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -12,8 +13,16 @@ import (
 
 func NativeContentOf(rr miekgdns.RR) (content string, retErr error) {
 	switch value := rr.(type) {
+	case *miekgdns.A:
+		content = string(value.A)
+	case *miekgdns.AAAA:
+		content = string(value.AAAA)
+	case *miekgdns.CNAME:
+		content = value.Target
 	case *miekgdns.NS:
 		content = value.Ns
+	case *miekgdns.PTR:
+		content = value.Ptr
 	case *miekgdns.SOA:
 		// The stored format is:
 		//   primary hostmaster serial refresh retry expire minimum
@@ -87,15 +96,57 @@ func MakeDnsRR(name string, nType powerdns.RRType, ttl uint32, rr powerdns.Recor
 		return
 	}
 
-	dnsRr = miekgdns.TypeToRR[dnsType]()
+	dnsRr = miekgdns.TypeToRR[dnsType]() // FIXME --^ use ok
 
 	switch value := dnsRr.(type) {
+	case *miekgdns.A:
+		value.Hdr.Class = miekgdns.ClassINET
+		value.Hdr.Name = name
+		value.Hdr.Ttl = ttl
+		value.Hdr.Rrtype = dnsType
+		parsed := net.ParseIP(*rr.Content)
+		if parsed != nil {
+			// ensure it's true IPv4 notation
+			parsed = parsed.To4()
+		}
+		if parsed != nil {
+			value.A = parsed
+		} else {
+			retErr = fmt.Errorf("error parsing IPv4 address for A record: %s", *rr.Content)
+		}
+	case *miekgdns.AAAA:
+		value.Hdr.Class = miekgdns.ClassINET
+		value.Hdr.Name = name
+		value.Hdr.Ttl = ttl
+		value.Hdr.Rrtype = dnsType
+		parsed := net.ParseIP(*rr.Content)
+		if parsed != nil {
+			// ensure it's true IPv6 notation
+			parsed = parsed.To16()
+		}
+		if parsed != nil {
+			value.AAAA = parsed
+		} else {
+			retErr = fmt.Errorf("error parsing IPv6 address for AAAA record: %s", *rr.Content)
+		}
+	case *miekgdns.CNAME:
+		value.Hdr.Class = miekgdns.ClassINET
+		value.Hdr.Name = name
+		value.Hdr.Ttl = ttl
+		value.Hdr.Rrtype = dnsType
+		value.Target = *rr.Content
 	case *miekgdns.NS:
 		value.Hdr.Class = miekgdns.ClassINET
 		value.Hdr.Name = name
 		value.Hdr.Ttl = ttl
 		value.Hdr.Rrtype = dnsType
 		value.Ns = *rr.Content
+	case *miekgdns.PTR:
+		value.Hdr.Class = miekgdns.ClassINET
+		value.Hdr.Name = name
+		value.Hdr.Ttl = ttl
+		value.Hdr.Rrtype = dnsType
+		value.Ptr = *rr.Content
 	case *miekgdns.SOA:
 		value.Hdr.Class = miekgdns.ClassINET
 		value.Hdr.Name = name
