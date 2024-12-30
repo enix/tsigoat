@@ -2,9 +2,45 @@ name: Tests
 
 on:
   workflow_dispatch:
+  pull_request_target:
+
+permissions:
+  contents: read # for `only-new-issues`
+
+env:
+  GOLANGCI_LINT_VERSION: latest
 
 jobs:
-  test:
+  static:
+    name: Static Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@41dfa10bad2bb2ae585af6ee5bb4d7d973ad74ed # v5.1.0
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@971e284b6050e8a5849b72094c50ab08da042db8 # v6.1.1
+        with:
+          version: ${{ env.GOLANGCI_LINT_VERSION }}
+          only-new-issues: true
+          args: --timeout 5m
+          # args: --timeout 5m --verbose
+          # args: --timeout 5m --verbose --issues-exit-code=0
+          # skip-cache: true
+          # skip-build-cache: true
+          # skip-pkg-cache: true
+
+  unit:
+    name: Unit Testing
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -19,5 +55,25 @@ jobs:
       - name: Build binaries
         run: go build -v ./...
 
-      - name: Run tests
-        uses: robherley/go-test-action@v0
+      - name: Run unit tests
+        uses: robherley/go-test-action@b19f6aadabfb1ad85079065b21aa2af132466468 # v0.6.0
+
+  container:
+    name: Container
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Run hadolint
+        id: hadolint
+        uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
+
+      - name: Build image
+        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
+        with:
+          platforms: linux/amd64
+          sbom: true
+          push: false
