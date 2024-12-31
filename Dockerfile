@@ -44,7 +44,7 @@ EXPOSE 5353/udp
 EXPOSE 5353/tcp
 ENTRYPOINT [ "/tsigoat" ]
 
-FROM cgr.dev/chainguard/wolfi-base:latest@sha256:3b271f8bff9356a38aa23118ffdea3c0d659f39e207feedacf01bdea4b900871
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:d653e81239ff979cf810ca6f706d1bcf56d6994da75f37b4702327a3c2696900
 COPY --from=build --chown=0:0 --chmod=0555 /tsigoat /tsigoat
 USER nobody:nobody
 EXPOSE 5353/udp
