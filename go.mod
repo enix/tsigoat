@@ -6,7 +6,7 @@ require (
 	github.com/KimMachineGun/automemlimit v0.7.0
 	github.com/go-playground/validator/v10 v10.24.0
 	github.com/joeig/go-powerdns/v3 v3.14.1
-	github.com/miekg/dns v1.1.62
+	github.com/miekg/dns v1.1.63
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/samber/slog-zap/v2 v2.6.2
 	github.com/spf13/cobra v1.8.1
