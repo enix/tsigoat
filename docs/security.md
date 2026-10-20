@@ -95,7 +95,10 @@ To move a client off a legacy algorithm:
 - Let a name server behind an `rfc2136` backend grant the key of tsigoat only
   what its clients need, and keep the server out of reach of the clients. TSIG
   authenticates the relayed updates without encrypting them.
-- Sign the requests to a `webhook` backend, have the endpoint check the
-  signature and the timestamp, and serve it over HTTPS, or on the loopback.
+- Sign the requests to a `webhook` backend. Have the endpoint check the
+  signature and the timestamp, and refuse the request identifiers that it saw
+  already, which stops replays. Serve it over HTTPS with a certificate that
+  tsigoat verifies, or on the loopback: the signature authenticates the
+  requests, not the answers of the endpoint.
 - Verify the signature of the images before deploying them, see
   [SECURITY.md](../SECURITY.md#verifying-releases).

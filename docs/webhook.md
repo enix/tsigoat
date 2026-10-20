@@ -32,6 +32,7 @@ tsigoat posts each update as one JSON request:
 ```json
 {
   "version": 1,
+  "id": "6f0d9ab4c2e1f8a35b7c0d1e2f3a4b5c",
   "zone": "example.com.",
   "key": "cert-manager.",
   "operations": [
@@ -46,6 +47,7 @@ tsigoat posts each update as one JSON request:
 | Field | Content |
 | --- | --- |
 | `version` | `1`, the version of this format |
+| `id` | 128 random bits in hexadecimal, unique to each request: an endpoint recognizes a request that comes twice, a replay, and names the request in its logs |
 | `zone` | The zone of the update |
 | `key` | The key that signed the update; empty for an unsigned update |
 | `operations` | The operations, to apply in order |
@@ -64,13 +66,23 @@ record come in double quotes.
 
 ## Responses
 
-A 2xx response applies the update, and the client gets NOERROR. Any other
-response fails it, and the client gets SERVFAIL, as when the endpoint does not
-answer within the `timeout` of the backend, from the connection to the end of
-the response, or when the connection or TLS fails. The log entry of the update
-gives the status and the beginning of the body, and the
+The status of the response is the answer of the endpoint: tsigoat does not
+wait for the body of a success. A 2xx response applies the update, and the
+client gets NOERROR. Any other response fails it, and the client gets
+SERVFAIL, as when the endpoint does not answer within the `timeout` of the
+backend, from the connection to the end of the response, or when the
+connection or TLS fails. The log entry of the update gives the status and the
+beginning of the body, and the
 [TsigoatBackendErrors](operations.md#tsigoatbackenderrors) alert fires when
 the failures last.
+
+A request may fail after it reached the endpoint: the response does not come
+in time, the connection breaks, or a gateway answers 502 or 504 for an
+endpoint that broke off or took too long. The endpoint may have applied the
+update then, or may apply it still: the update log tells that the outcome is
+unknown, and the [TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates)
+alert fires. A client that sends its update again brings it to its end, when
+the endpoint keeps its operations idempotent.
 
 ## Contract
 
@@ -79,16 +91,20 @@ The endpoint:
 - applies the operations of a request in order, all or nothing when it can;
   otherwise, it keeps them idempotent, so that an update converges when the
   client sends it again;
+- applies the updates of a zone one at a time, in the order they arrive;
 - answers within the timeout of the backend, five seconds by default;
 - accepts a request without operations, without changing anything:
   `tsigoat check-config --backends` and the start of tsigoat send one per
   zone, to check that the endpoint answers and accepts their authentication;
-- authenticates the requests, see below.
+- authenticates the requests, and refuses their replays, see below.
 
 tsigoat, for its part:
 
-- sends the updates of a zone one at a time, so that a simple script never
-  applies two at once; tsigoat runs as a single instance;
+- sends the updates of a zone one at a time, while the endpoint answers
+  within the timeout. After a timeout, tsigoat sends the next update of the
+  zone, though the endpoint may still apply the previous one: only the
+  endpoint can keep the updates of a zone apart, as the example does, which
+  handles one request at a time. tsigoat runs as a single instance;
 - refuses the updates with prerequisites, with REFUSED: their evaluation needs
   the content of the zone, which tsigoat does not read;
 - leaves out the deletions that RFC 2136 ignores whatever the state of the
@@ -118,8 +134,7 @@ With `signature`, every request carries two headers:
 | `X-Tsigoat-Signature` | `sha256=` and the hexadecimal HMAC-SHA256, with the secret, of the timestamp, a period and the body |
 
 The endpoint computes the same HMAC, compares it in constant time, and refuses
-the timestamps more than five minutes away from its clock, which stops
-replays. In Python:
+the timestamps more than five minutes away from its clock. In Python:
 
 ```python
 mac = hmac.new(secret, timestamp.encode() + b"." + body, hashlib.sha256)
@@ -127,23 +142,37 @@ valid = hmac.compare_digest(signature, "sha256=" + mac.hexdigest())
 valid = valid and abs(time.time() - int(timestamp)) <= 300
 ```
 
-The secret never travels, so that the signature also protects the requests
-when TLS cannot: over plain HTTP, or with `insecureSkipVerify`, which accepts
-any certificate. Credentials travel in each request, and draw a warning in
-these cases.
+The timestamp bounds the age of a replay, but does not stop one: within the
+five minutes, a request that someone captured and sends again, after a later
+update that undid it, passes the signature and the timestamp. The endpoint
+refuses replays by their `id`, which the signature covers: it remembers the
+identifiers of the requests that it accepted for as long as their timestamp
+lets them in, and refuses a request whose identifier it knows, as the example
+does, with 409.
+
+The secret never travels: the signature keeps someone in the middle from
+forging or changing a request, even over plain HTTP, or with
+`insecureSkipVerify`, which accepts any certificate. It does not authenticate
+the response, though: such an intermediary can still drop a request and
+answer 2xx, so that tsigoat reports an update that never applied. Across a
+network, serve the endpoint over HTTPS with a certificate that tsigoat
+verifies, or keep it on the loopback, next to tsigoat. Credentials travel in
+each request, and draw a warning over plain HTTP or with `insecureSkipVerify`.
 
 tsigoat refuses the redirects of the endpoint, unless `followRedirects` lets
-it follow the 307 and 308 redirects, which keep the request whole; the other
-redirects would turn it into a GET without a body.
+it follow the 307 and 308 redirects to the same scheme and host, which keep
+the request whole. The other redirects would turn the request into a GET
+without a body, or send it, with its headers and credentials, to another
+server, or in plain HTTP.
 
 ## The example
 
 [examples/webhook/webhook.py](../examples/webhook/webhook.py) needs Python 3.9
 or later, and its standard library alone. It reads its settings from the
-environment, checks the signature, the basic credentials or the token, and
-calls one function per operation. Complete these functions for your
-provider, or set `TSIGOAT_WEBHOOK_COMMAND` to a command, which receives every
-operation as arguments:
+environment, checks the signature, the basic credentials or the token,
+refuses the replays, and calls one function per operation. Complete these
+functions for your provider, or set `TSIGOAT_WEBHOOK_COMMAND` to a command,
+which receives every operation as arguments:
 
 | Operation | Arguments |
 | --- | --- |
@@ -158,6 +187,10 @@ TSIGOAT_WEBHOOK_COMMAND=/usr/local/bin/my-dns-update \
   python3 webhook.py
 ```
 
-The example serves plain HTTP on `127.0.0.1:8053`: keep it on the loopback,
-next to tsigoat, or behind a proxy that serves HTTPS. A test runs it behind
-tsigoat with each authentication, and nsupdate as the client.
+The example is a starting point, not a service to expose. It serves plain
+HTTP on `127.0.0.1:8053`, one request at a time, which keeps the updates of a
+zone in order; a client that stalls holds it for ten seconds, the time that
+it waits for each read of a request. Keep it on the loopback, next to tsigoat,
+or behind a proxy that serves HTTPS and bounds the connections. A test runs it
+behind tsigoat with each authentication, and nsupdate as the client, and
+checks that it refuses a replay.

@@ -23,7 +23,8 @@ const (
 // per authentication: signature, basic and bearer. nsupdate adds the value of
 // an ACME challenge through tsigoat, then deletes it; tsigoat posts the
 // updates to the example, which hands them to a command that records them. An
-// update to an endpoint with another secret fails.
+// update to an endpoint with another secret fails, and the example refuses a
+// replayed request and a request without length.
 func (m *Tsigoat) TestWebhookExample(ctx context.Context) (string, error) {
 	replacer := strings.NewReplacer(
 		"@KEY@", webhookKeySecret,
@@ -146,5 +147,34 @@ echo "== another secret"
 if update wrong > /tmp/wrong.log 2>&1; then fail "an update succeeded with the wrong secret"; fi
 grep -q SERVFAIL /tmp/wrong.log || fail "the update with the wrong secret did not get SERVFAIL"
 grep -q "bad signature" /tmp/signature.log || fail "the endpoint did not refuse the wrong signature"
+
+echo "== replay, and a request without length"
+python3 -I - <<'PYTHON' || fail "the endpoint did not refuse a replay or a request without length"
+import hashlib, hmac, json, socket, time, urllib.error, urllib.request
+
+body = json.dumps({"version": 1, "id": "0123456789abcdef0123456789abcdef",
+                   "zone": "signature.test.", "key": "", "operations": []}).encode()
+
+def post():
+    timestamp = str(int(time.time()))
+    mac = hmac.new(b"@SECRET@", timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+    request = urllib.request.Request("http://127.0.0.1:8053/", body, {
+        "Content-Type": "application/json",
+        "X-Tsigoat-Timestamp": timestamp,
+        "X-Tsigoat-Signature": "sha256=" + mac,
+    })
+    try:
+        return urllib.request.urlopen(request, timeout=5).status
+    except urllib.error.HTTPError as error:
+        return error.code
+
+statuses = (post(), post())
+assert statuses == (204, 409), statuses
+with socket.create_connection(("127.0.0.1", 8053), timeout=5) as conn:
+    conn.sendall(b"POST / HTTP/1.0\r\nHost: endpoint\r\n\r\n")
+    status = int(conn.recv(64).split(b" ")[1])
+assert status == 411, status
+PYTHON
+grep -q "refused: replay" /tmp/signature.log || fail "the endpoint did not log the replay"
 echo "== OK"
 `

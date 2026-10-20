@@ -21,11 +21,15 @@ Settings, from the environment:
 
 Set at least one of the secret, the user name and the token, as in the
 configuration of tsigoat; every one that is set must match. Prefer the
-signature, which also protects the content of the requests.
+signature, which also protects the content of the requests. The endpoint
+refuses a request that comes twice, a replay, by its identifier: it remembers
+the identifiers of the requests that it accepted for as long as their
+timestamp lets them in.
 
-The endpoint serves plain HTTP: keep it on the loopback, or behind a proxy
-that serves HTTPS. It handles one request at a time, as tsigoat sends the
-updates of a zone one at a time.
+This is a starting point, not a service to expose: it serves plain HTTP, one
+request at a time, which keeps the updates of a zone in order even when
+tsigoat gave up waiting for the previous one. Keep it on the loopback, next to
+tsigoat, or behind a proxy that serves HTTPS and bounds the connections.
 
 An update succeeds when every operation does. When one fails, the endpoint
 answers 500 and tsigoat SERVFAIL, but the operations before it stay applied:
@@ -60,6 +64,12 @@ COMMAND = shlex.split(os.environ.get("TSIGOAT_WEBHOOK_COMMAND", ""))
 MAX_CLOCK_SKEW = 300
 MAX_BODY_SIZE = 1 << 20
 COMMAND_TIMEOUT = 30
+# Bounds the wait for each read of a request, so that a client that stalls
+# holds the endpoint for that long at most.
+SOCKET_TIMEOUT = 10
+# Bounds the identifiers that the endpoint remembers: beyond, it refuses the
+# requests until the oldest identifiers expire.
+MAX_RECENT_IDS = 10000
 
 log = logging.getLogger("webhook")
 
@@ -132,7 +142,7 @@ def txt_strings(rdata):
 def apply(update):
     """Applies the operations of an update, in order."""
     zone = update["zone"]
-    log.info("update of %s by key %r: %d operations", zone, update["key"], len(update["operations"]))
+    log.info("update %s of %s by key %r: %d operations", update["id"], zone, update["key"], len(update["operations"]))
     for op in update["operations"]:
         name, rtype = op["name"], op.get("type")
         if op["op"] == "add":
@@ -145,28 +155,89 @@ def apply(update):
             delete_rrset(zone, name, rtype)
 
 
+class RecentIDs:
+    """The identifiers of the requests accepted lately, each one until its
+    timestamp lets the request in no more: a request whose identifier comes
+    again meanwhile is a replay."""
+
+    def __init__(self, limit):
+        self.limit = limit
+        self.expiries = {}
+
+    def admit(self, request_id, expiry):
+        """Records an identifier until expiry, in seconds since the epoch.
+        Returns the status that refuses the request: 409 for a replay, 503
+        when the endpoint remembers too many identifiers; None to go on."""
+        now = time.time()
+        self.expiries = {i: t for i, t in self.expiries.items() if t > now}
+        if request_id in self.expiries:
+            return 409
+        if len(self.expiries) >= self.limit:
+            return 503
+        self.expiries[request_id] = expiry
+        return None
+
+
+RECENT_IDS = RecentIDs(MAX_RECENT_IDS)
+
+
 class Handler(BaseHTTPRequestHandler):
     """Authenticates the updates of tsigoat, and applies them."""
 
+    # The socket of a request waits that long for each read at most.
+    timeout = SOCKET_TIMEOUT
+
     def do_POST(self):
-        length = int(self.headers.get("Content-Length", "0"))
+        declared = self.headers.get("Content-Length")
+        if declared is None:
+            self.reply(411)
+            return
+        if not (declared.isascii() and declared.isdigit()):
+            self.reply(400)
+            return
+        length = int(declared)
         if length > MAX_BODY_SIZE:
             self.reply(413)
             return
         body = self.rfile.read(length)
+        if len(body) < length:
+            # The client went away.
+            return
         if not self.authenticated(body):
             self.reply(401)
             return
         try:
             update = json.loads(body)
-            if update.get("version") != 1:
-                raise ValueError(f"unknown version {update.get('version')!r}")
+        except ValueError:
+            self.reply(400)
+            return
+        if not isinstance(update, dict) or update.get("version") != 1 or not valid_id(update.get("id")):
+            log.warning("malformed update from %s", self.address_string())
+            self.reply(400)
+            return
+        refused = RECENT_IDS.admit(update["id"], self.expiry())
+        if refused:
+            reason = "replay" if refused == 409 else "too many recent requests"
+            log.warning("update %s from %s refused: %s", update["id"], self.address_string(), reason)
+            self.reply(refused)
+            return
+        try:
             apply(update)
         except Exception:  # every failure fails the update
-            log.exception("the update failed")
+            log.exception("the update %s failed", update["id"])
             self.reply(500)
             return
         self.reply(204)
+
+    def expiry(self):
+        """Returns when a replay of the request would fail the check of its
+        timestamp: the end of the window of the timestamp of a signed request,
+        of the current time otherwise."""
+        now = time.time()
+        timestamp = self.headers.get("X-Tsigoat-Timestamp", "")
+        if SECRET and timestamp.isascii() and timestamp.isdigit():
+            return max(int(timestamp), now) + MAX_CLOCK_SKEW
+        return now + MAX_CLOCK_SKEW
 
     def authenticated(self, body):
         """Checks every authentication that the settings ask for."""
@@ -184,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
     def signed(self, body):
         """Checks the signature: HMAC-SHA256 of the timestamp, ".", the body."""
         timestamp = self.headers.get("X-Tsigoat-Timestamp", "")
-        if not timestamp.isdigit() or abs(time.time() - int(timestamp)) > MAX_CLOCK_SKEW:
+        if not (timestamp.isascii() and timestamp.isdigit()) or abs(time.time() - int(timestamp)) > MAX_CLOCK_SKEW:
             return False
         mac = hmac.new(SECRET.encode(), timestamp.encode() + b"." + body, hashlib.sha256)
         return equal(self.headers.get("X-Tsigoat-Signature", ""), "sha256=" + mac.hexdigest())
@@ -208,6 +279,12 @@ def equal(a, b):
     return hmac.compare_digest(a.encode(), b.encode())
 
 
+def valid_id(value):
+    """Tells whether a value is the identifier of a request: 32 hexadecimal
+    digits."""
+    return isinstance(value, str) and len(value) == 32 and all(c in "0123456789abcdef" for c in value)
+
+
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if not (SECRET or USERNAME or TOKEN):
@@ -222,6 +299,12 @@ def main():
 
     server = Server((host, int(port)), Handler)
     log.info("listening on %s", LISTEN)
+    if host not in ("127.0.0.1", "::1", "localhost"):
+        log.warning(
+            "%s is beyond the loopback: this example serves plain HTTP, one request at a time; "
+            "put it behind a proxy that serves HTTPS and bounds the connections",
+            LISTEN,
+        )
     server.serve_forever()
 
 

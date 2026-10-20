@@ -127,10 +127,12 @@ type Relay interface {
 A relay evaluates the updates itself: the `rfc2136` backend sends them to a
 name server, the `webhook` backend to an HTTP endpoint, which apply them. A
 `*backend.RejectionError` turns an update down, such as the prerequisites
-that a webhook cannot evaluate; other errors are those of the server or of
+that a webhook cannot evaluate. A `*backend.IndeterminateError` tells that
+the server or the endpoint may have applied an update whose exchange failed
+once it was sent, as on a timeout. Other errors are those of the server or of
 the configuration, which the client gets as SERVFAIL. The server takes no lock
 for the zones of a relay; the webhook backend sends the updates of a zone one
-at a time itself.
+at a time itself, while the endpoint answers within its timeout.
 
 ## Queries
 
@@ -153,7 +155,7 @@ those of other zones REFUSED.
 | Live tests | The conformance suite and the challenges of a certificate against the providers themselves, with the test zones and credentials of a developer | `test/live`, `task test:live` |
 | Scenarios end to end | The same scenarios against a tsigoat binary and PowerDNS 4.9 and 5.0; faults injected with toxiproxy | `test/e2e`, `task test:e2e` |
 | Scenarios relayed | The same scenarios through a tsigoat that relays the updates to another tsigoat on the in-memory backend, and through a webhook that applies them with the engine, but those with prerequisites | `internal/app` |
-| Webhook example | nsupdate through tsigoat to `examples/webhook/webhook.py`, with each authentication | `task test:webhook` |
+| Webhook example | nsupdate through tsigoat to `examples/webhook/webhook.py`, with each authentication; the refusal of a replay | `task test:webhook` |
 | Differential | The same scenarios against BIND 9, the reference implementation, with the intended divergences listed with their reason; and through tsigoat relaying to BIND, where every scenario passes | `test/differential`, `task test:differential` |
 | Real clients | nsupdate; lego and certbot getting certificates from Pebble | `task test:clients`, `task test:acme` |
 | Helm chart | The chart rendered with every example and fixture: the configuration valid in the pod, ports, probes, mounts and selectors in agreement, invalid values refused, the alerts unit-tested with promtool, the objects valid for kubeconform | `test/chart`, `task test:helm` |

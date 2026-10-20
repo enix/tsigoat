@@ -8,13 +8,16 @@
 // deletions, with the records in presentation format. tsigoat leaves out the
 // deletions that RFC 2136 ignores whatever the state of the zone, turns down
 // the updates that the endpoint could not evaluate without reading the zone,
-// and sends the updates of a zone one at a time.
+// and sends the updates of a zone one at a time, while the endpoint answers
+// within the timeout. A request that fails once it left whole, as on a
+// timeout, leaves the outcome of its update unknown.
 package webhook
 
 import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -22,10 +25,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -65,6 +70,10 @@ const (
 // Request is the body of a request: an update of a zone.
 type Request struct {
 	Version int `json:"version"`
+	// ID identifies the request: 128 random bits in hexadecimal, unique to
+	// each request, so that an endpoint can recognize a request that comes
+	// twice, a replay.
+	ID string `json:"id"`
 	// Zone is the canonical name of the zone.
 	Zone string `json:"zone"`
 	// Key is the canonical name of the key that signed the update, "" when
@@ -194,7 +203,11 @@ func (r *Relay) Update(ctx context.Context, zone, key string, prerequisites, upd
 	if len(operations) == 0 {
 		return dns.RcodeSuccess, nil
 	}
-	if err := r.post(ctx, &Request{Version: Version, Zone: zone, Key: key, Operations: operations}); err != nil {
+	err = r.post(ctx, &Request{Version: Version, ID: newID(), Zone: zone, Key: key, Operations: operations})
+	if uncertain, ok := errors.AsType[*uncertainError](err); ok {
+		return 0, backend.Indeterminate(uncertain.err)
+	}
+	if err != nil {
 		return 0, err
 	}
 	return dns.RcodeSuccess, nil
@@ -219,7 +232,37 @@ func (*Relay) SOA(_ context.Context, zone string) (dns.RR, error) {
 // Check implements backend.Relay: it posts an update without operations,
 // which the endpoint must accept without changing anything.
 func (r *Relay) Check(ctx context.Context, zone string) error {
-	return r.post(ctx, &Request{Version: Version, Zone: zone, Operations: []Operation{}})
+	err := r.post(ctx, &Request{Version: Version, ID: newID(), Zone: zone, Operations: []Operation{}})
+	if uncertain, ok := errors.AsType[*uncertainError](err); ok {
+		// A check changes nothing, whatever its outcome.
+		return uncertain.err
+	}
+	return err
+}
+
+// newID returns a new identifier of a request: 128 random bits, in
+// hexadecimal.
+func newID() string {
+	var id [16]byte
+	// crypto/rand never fails.
+	_, _ = rand.Read(id[:])
+	return hex.EncodeToString(id[:])
+}
+
+// uncertainError is a failure of a request that may have reached the
+// endpoint, which may have applied it: a timeout or a broken connection once
+// the request left whole, or a gateway that answers for an endpoint that
+// broke off or took too long.
+type uncertainError struct {
+	err error
+}
+
+func (e *uncertainError) Error() string {
+	return e.err.Error()
+}
+
+func (e *uncertainError) Unwrap() error {
+	return e.err
 }
 
 // Operations returns the operations of the update section of an update of
@@ -261,7 +304,9 @@ func Operations(zone string, updates []dns.RR) ([]Operation, error) {
 }
 
 // post sends a request, once the previous request of its zone is over, and
-// fails unless the response is a success.
+// fails unless the status of the response is a success, which is the answer
+// of the endpoint, whatever the body. A failure that leaves the outcome
+// unknown is an *uncertainError.
 func (r *Relay) post(ctx context.Context, request *Request) error {
 	body, err := json.Marshal(request)
 	if err != nil {
@@ -273,6 +318,16 @@ func (r *Relay) post(ctx context.Context, request *Request) error {
 	}
 	defer unlock()
 
+	// sent tells whether the request left whole: the endpoint may apply it
+	// whatever happens next.
+	var sent atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			if info.Err == nil {
+				sent.Store(true)
+			}
+		},
+	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("building the request: %w", err)
@@ -293,15 +348,23 @@ func (r *Relay) post(ctx context.Context, request *Request) error {
 	// The errors of the client name the URL without its password.
 	resp, err := r.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("posting the update: %w", err)
+		err = fmt.Errorf("posting the update: %w", err)
+		if sent.Load() {
+			return &uncertainError{err: err}
+		}
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 == 2 {
 		return nil
 	}
-	return responseError(r.redactedURL, resp, excerpt)
+	// The start of the body tells why, as far as it comes in time.
+	excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+	err = responseError(r.redactedURL, resp, excerpt)
+	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
+		return &uncertainError{err: err}
+	}
+	return err
 }
 
 // Sign returns the value of the signature header of a request.
@@ -318,7 +381,7 @@ func responseError(endpoint string, resp *http.Response, excerpt []byte) error {
 	message := fmt.Sprintf("%s answered %s", endpoint, resp.Status)
 	if location := resp.Header.Get("Location"); resp.StatusCode/100 == 3 && location != "" {
 		message += ", redirecting to " + location +
-			": set the URL to the final address, or followRedirects for a 307 or 308 redirect"
+			": set the URL to the final address, or followRedirects for a 307 or 308 redirect to the same scheme and host"
 	}
 	if text := strings.Join(strings.Fields(string(excerpt)), " "); text != "" {
 		message += ": " + text

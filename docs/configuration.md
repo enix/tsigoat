@@ -145,7 +145,7 @@ applies them; see [Webhooks](webhook.md):
 | `webhook.timeout` | Timeout of every request, from the connection to the end of the response, up to one minute; `5s` by default |
 | `webhook.caFile` | PEM bundle trusted for the certificate of the endpoint, on top of the system roots |
 | `webhook.insecureSkipVerify` | Accept any certificate of the endpoint; draws a warning |
-| `webhook.followRedirects` | Follow the 307 and 308 redirects of the endpoint, which keep the request whole; tsigoat follows none by default |
+| `webhook.followRedirects` | Follow the 307 and 308 redirects of the endpoint to the same scheme and host, which keep the request whole; tsigoat follows none by default |
 
 `basicAuth` and `bearer` exclude each other, since both take the
 `Authorization` header; `signature` goes with either. A webhook without any of

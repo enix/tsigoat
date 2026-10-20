@@ -1,5 +1,6 @@
 // Package httpclient builds the HTTP clients of the backends: TLS 1.2 at
-// least, the system roots and a CA bundle, and redirects only on request.
+// least, the system roots and a CA bundle, and redirects only on request, to
+// the same scheme and host.
 package httpclient
 
 import (
@@ -22,9 +23,10 @@ type Options struct {
 	CAFile string
 	// InsecureSkipVerify accepts any certificate.
 	InsecureSkipVerify bool
-	// FollowRedirects follows the 307 and 308 redirects, which keep the method
-	// and the body of the request. Otherwise, and for the other redirects,
-	// which turn the request into a GET, the redirect is the response.
+	// FollowRedirects follows the 307 and 308 redirects to the same scheme and
+	// host, which keep the method and the body of the request. Otherwise, and
+	// for the other redirects, which turn the request into a GET or send it,
+	// with its headers, elsewhere, the redirect is the response.
 	FollowRedirects bool
 	// Timeout bounds every request, from the connection to the end of the
 	// response; no bound when zero.
@@ -56,6 +58,10 @@ func New(o *Options) (*http.Client, error) {
 			code := req.Response.StatusCode
 			switch {
 			case !o.FollowRedirects || (code != http.StatusTemporaryRedirect && code != http.StatusPermanentRedirect):
+				return http.ErrUseLastResponse
+			case req.URL.Scheme != via[0].URL.Scheme || req.URL.Host != via[0].URL.Host:
+				// Another origin would get the headers of the request, such
+				// as its credentials; plain HTTP, its content too.
 				return http.ErrUseLastResponse
 			case len(via) > maxRedirects:
 				return fmt.Errorf("stopped after %d redirects", maxRedirects)

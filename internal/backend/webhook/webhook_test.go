@@ -1,6 +1,7 @@
 package webhook_test
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -104,6 +105,13 @@ func decoded(t *testing.T, build func(m *dns.Msg)) []dns.RR {
 	return in.Ns
 }
 
+// validID reports whether id is the identifier of a request: 128 bits in
+// hexadecimal.
+func validID(id string) bool {
+	decoded, err := hex.DecodeString(id)
+	return err == nil && len(decoded) == 16 && id == strings.ToLower(id)
+}
+
 func records(t *testing.T, texts ...string) []dns.RR {
 	t.Helper()
 	rrs := make([]dns.RR, 0, len(texts))
@@ -148,6 +156,10 @@ func TestUpdatePostsTheOperations(t *testing.T) {
 	if err := json.Unmarshal(got.body, &request); err != nil {
 		t.Fatal(err)
 	}
+	if id, _ := request["id"].(string); !validID(id) {
+		t.Errorf("id %q, want 32 hexadecimal digits", id)
+	}
+	delete(request, "id")
 	want := `{"key":"acme.","operations":[` +
 		`{"name":"_acme-challenge.www.example.test.","op":"add","rdata":"\"value\"","ttl":60,"type":"TXT"},` +
 		`{"name":"www.example.test.","op":"add","rdata":"192.0.2.1","ttl":0,"type":"A"},` +
@@ -233,16 +245,28 @@ func TestFailures(t *testing.T) {
 		handler http.HandlerFunc
 		timeout time.Duration
 		err     string
+		// indeterminate tells that the endpoint may have applied the
+		// update.
+		indeterminate bool
 	}{
-		{"client error", status(http.StatusUnauthorized), 0, "answered 401 Unauthorized: body of the endpoint"},
-		{"server error", status(http.StatusInternalServerError), 0, "answered 500 Internal Server Error"},
+		{"client error", status(http.StatusUnauthorized), 0, "answered 401 Unauthorized: body of the endpoint", false},
+		{"server error", status(http.StatusInternalServerError), 0, "answered 500 Internal Server Error", false},
+		{"bad gateway", status(http.StatusBadGateway), 0, "answered 502 Bad Gateway", true},
+		{"gateway timeout", status(http.StatusGatewayTimeout), 0, "answered 504 Gateway Timeout", true},
 		{"timeout", func(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-r.Context().Done():
 			case <-time.After(2 * time.Second):
 			}
 			w.WriteHeader(http.StatusOK)
-		}, 100 * time.Millisecond, "Timeout exceeded"},
+		}, 100 * time.Millisecond, "Timeout exceeded", true},
+		{"connection closed without a response", func(w http.ResponseWriter, _ *http.Request) {
+			if hijacker, ok := w.(http.Hijacker); ok {
+				if conn, _, err := hijacker.Hijack(); err == nil {
+					_ = conn.Close()
+				}
+			}
+		}, 0, "posting the update", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -253,7 +277,52 @@ func TestFailures(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tt.err) {
 				t.Errorf("Update() error = %v, want one about %q", err, tt.err)
 			}
+			if backend.IsIndeterminate(err) != tt.indeterminate {
+				t.Errorf("Update() error = %v, indeterminate %t, want %t", err, backend.IsIndeterminate(err), tt.indeterminate)
+			}
+			// A check changes nothing: its outcome is never unknown.
+			if err := relay.Check(t.Context(), zone); err == nil || backend.IsIndeterminate(err) {
+				t.Errorf("Check() error = %v, want a plain failure", err)
+			}
 		})
+	}
+}
+
+// TestUnreachable checks that a request that never left gives a plain
+// failure: the endpoint cannot have applied it.
+func TestUnreachable(t *testing.T) {
+	t.Parallel()
+	e := newEndpoint(t, false, status(http.StatusNoContent))
+	url := e.server.URL
+	e.server.Close()
+	_, err := newRelay(t, &webhook.Options{URL: url}).Update(t.Context(), zone, "", nil, records(t, `a.example.test. 60 IN TXT "x"`))
+	if err == nil || backend.IsIndeterminate(err) {
+		t.Errorf("Update() error = %v, want a plain failure", err)
+	}
+}
+
+// TestStatusIsTheAnswer checks that the status of a success is the answer of
+// the endpoint: tsigoat does not wait for a body that stalls.
+func TestStatusIsTheAnswer(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	e := newEndpoint(t, false, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "the start of a body")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-release
+	})
+	// Cleanups run last first: the handler returns before the server stops.
+	t.Cleanup(func() { close(release) })
+	relay := newRelay(t, &webhook.Options{URL: e.server.URL, Timeout: 5 * time.Second})
+	start := time.Now()
+	if _, err := relay.Update(t.Context(), zone, "", nil, records(t, `a.example.test. 60 IN TXT "x"`)); err != nil {
+		t.Fatalf("Update() = %v, want a success", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("Update() returned after %s, waiting for the body", elapsed)
 	}
 }
 
@@ -285,41 +354,56 @@ func TestRejections(t *testing.T) {
 	}
 }
 
+// TestRedirects checks that the relay follows, on request, the 307 and 308
+// redirects to the same scheme and host alone: another origin would get the
+// headers of the request.
 func TestRedirects(t *testing.T) {
 	t.Parallel()
-	target := newEndpoint(t, false, status(http.StatusNoContent))
-	redirect := func(code int) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, target.server.URL, code)
+	other := newEndpoint(t, false, status(http.StatusNoContent))
+	var final atomic.Int32
+	e := newEndpoint(t, false, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/final":
+			if r.Header.Get(webhook.SignatureHeader) == "" {
+				http.Error(w, "the redirected request lost its signature", http.StatusUnauthorized)
+				return
+			}
+			final.Add(1)
+			w.WriteHeader(http.StatusNoContent)
+		case "/other":
+			http.Redirect(w, r, other.server.URL+"/final", http.StatusTemporaryRedirect)
+		default:
+			code, _ := strconv.Atoi(strings.TrimPrefix(r.URL.Path, "/"))
+			http.Redirect(w, r, "/final", code)
 		}
-	}
+	})
 
 	tests := []struct {
-		code   int
+		path   string
 		follow bool
 		err    string
 	}{
-		{http.StatusTemporaryRedirect, false, "redirecting to " + target.server.URL},
-		{http.StatusFound, true, "answered 302 Found, redirecting to " + target.server.URL},
-		{http.StatusPermanentRedirect, true, ""},
+		{"/307", false, "redirecting to /final: set the URL to the final address, or followRedirects"},
+		{"/302", true, "answered 302 Found, redirecting to /final"},
+		{"/307", true, ""},
+		{"/308", true, ""},
+		{"/other", true, "answered 307 Temporary Redirect, redirecting to " + other.server.URL},
 	}
 	for _, tt := range tests {
-		e := newEndpoint(t, false, redirect(tt.code))
-		relay := newRelay(t, &webhook.Options{URL: e.server.URL, FollowRedirects: tt.follow, SignatureSecret: "s"})
+		relay := newRelay(t, &webhook.Options{URL: e.server.URL + tt.path, FollowRedirects: tt.follow, SignatureSecret: "s"})
 		err := relay.Check(t.Context(), zone)
 		switch {
 		case tt.err == "" && err != nil:
-			t.Errorf("%d, follow %v: Check() = %v", tt.code, tt.follow, err)
+			t.Errorf("%s, follow %v: Check() = %v", tt.path, tt.follow, err)
 		case tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)):
-			t.Errorf("%d, follow %v: Check() error = %v, want one about %q", tt.code, tt.follow, err, tt.err)
+			t.Errorf("%s, follow %v: Check() error = %v, want one about %q", tt.path, tt.follow, err, tt.err)
 		}
 	}
-	requests := target.received()
-	if len(requests) != 1 {
-		t.Fatalf("the target received %d requests, want 1", len(requests))
+	if got := final.Load(); got != 2 {
+		t.Errorf("%d requests reached the final address, want 2", got)
 	}
-	if r := requests[0]; len(r.body) == 0 || r.header.Get(webhook.SignatureHeader) == "" {
-		t.Error("the redirected request lost its body or its signature")
+	if requests := other.received(); len(requests) != 0 {
+		t.Errorf("another origin received %d requests", len(requests))
 	}
 }
 
@@ -346,7 +430,8 @@ func TestTLS(t *testing.T) {
 }
 
 // TestOneUpdateOfAZoneAtATime checks that the updates of a zone wait for each
-// other, so that an endpoint never applies two at once.
+// other, so that an endpoint that answers within the timeout never applies
+// two at once.
 func TestOneUpdateOfAZoneAtATime(t *testing.T) {
 	t.Parallel()
 	var running, most atomic.Int32
@@ -382,12 +467,29 @@ func TestCheckAndSOA(t *testing.T) {
 	t.Parallel()
 	e := newEndpoint(t, false, status(http.StatusNoContent))
 	relay := newRelay(t, &webhook.Options{URL: e.server.URL})
-	if err := relay.Check(t.Context(), zone); err != nil {
-		t.Fatal(err)
+	for range 2 {
+		if err := relay.Check(t.Context(), zone); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if requests := e.received(); len(requests) != 1 ||
-		string(requests[0].body) != `{"version":1,"zone":"example.test.","key":"","operations":[]}` {
-		t.Errorf("check requests %q", requests)
+	requests := e.received()
+	if len(requests) != 2 {
+		t.Fatalf("%d check requests, want 2", len(requests))
+	}
+	ids := make([]string, 0, len(requests))
+	for _, r := range requests {
+		var request webhook.Request
+		if err := json.Unmarshal(r.body, &request); err != nil {
+			t.Fatal(err)
+		}
+		if !validID(request.ID) || request.Version != 1 || request.Zone != zone || request.Key != "" ||
+			request.Operations == nil || len(request.Operations) != 0 {
+			t.Errorf("check request %s", r.body)
+		}
+		ids = append(ids, request.ID)
+	}
+	if ids[0] == ids[1] {
+		t.Errorf("two requests share the identifier %s", ids[0])
 	}
 
 	soa, err := relay.SOA(t.Context(), zone)
