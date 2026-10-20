@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/enix/tsigoat/pkg/cmd"
-
 	"github.com/spf13/cobra"
+
+	"github.com/enix/tsigoat/pkg/cmd"
 )
 
 const globalDesc = `
@@ -18,7 +18,7 @@ func newCmdRoot(name string, settings *cmd.Settings) *cobra.Command {
 		Use:   name,
 		Short: "Lorem ipsum dolor sit amet",
 		Long:  globalDesc,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
 			return settings.Init()
 		},
 	}

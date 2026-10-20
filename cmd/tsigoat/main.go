@@ -1,3 +1,5 @@
+// Command tsigoat serves RFC 2136 dynamic DNS updates authenticated with TSIG
+// and applies them through the API of a DNS provider.
 package main
 
 import (

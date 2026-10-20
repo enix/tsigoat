@@ -1,0 +1,160 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    # Same baseline as x509-certificate-exporter
+    - bodyclose
+    - contextcheck
+    - errorlint
+    - gocheckcompilerdirectives
+    - gocritic
+    - gosec
+    - misspell
+    - nilerr
+    - noctx
+    - predeclared
+    - unconvert
+    # Architecture and global state
+    - depguard
+    - gochecknoglobals
+    - gochecknoinits
+    # Robustness against untrusted network input
+    - exhaustive
+    - forcetypeassert
+    - nilnil
+    - nilnesserr
+    - errname
+    - wrapcheck
+    - durationcheck
+    - makezero
+    - containedctx
+    - fatcontext
+    # Bounded complexity
+    - gocognit
+    - cyclop
+    - nestif
+    - funlen
+    - maintidx
+    # Logging
+    - sloglint
+    # Hygiene
+    - nolintlint
+    - revive
+    - goconst
+    - dupl
+    - unparam
+    - wastedassign
+    - usestdlibvars
+    - intrange
+    - copyloopvar
+    - modernize
+    - perfsprint
+    - prealloc
+    # Tests
+    - paralleltest
+    - tparallel
+    - thelper
+    - usetesting
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+        - style
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    exhaustive:
+      default-signifies-exhaustive: false
+    gocognit:
+      min-complexity: 20
+    cyclop:
+      max-complexity: 15
+    nestif:
+      min-complexity: 4
+    funlen:
+      lines: 80
+      statements: 50
+    wrapcheck:
+      ignore-package-globs:
+        - github.com/enix/tsigoat/*
+    sloglint:
+      no-mixed-args: true
+      no-global: all
+      context: scope
+      static-msg: true
+      key-naming-case: snake
+    depguard:
+      rules:
+        engine-is-pure:
+          files:
+            - "**/internal/update/**"
+            - "**/internal/zone/**"
+          deny:
+            - pkg: net/http
+              desc: the RFC 2136 engine performs no I/O
+            - pkg: github.com/enix/tsigoat/internal/backend/powerdns
+              desc: the engine only knows the Backend interface
+        miekg-confinement:
+          files:
+            - $all
+            - "!$test"
+            - "!**/internal/dnsserver/**"
+            - "!**/internal/update/**"
+            - "!**/internal/zone/**"
+            - "!**/internal/auth/**"
+            - "!**/internal/backend/**"
+          deny:
+            - pkg: github.com/miekg/dns
+              desc: miekg/dns usage is confined to the DNS-facing packages
+        no-legacy-logging:
+          deny:
+            - pkg: log$
+              desc: use log/slog
+
+  exclusions:
+    generated: strict
+    # Legacy code, excluded until it is rewritten. This list may only shrink.
+    paths:
+      - ^pkg/
+      - ^hack/
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - dupl
+          - goconst
+          - gocognit
+          - cyclop
+          - maintidx
+          - wrapcheck
+          - forcetypeassert
+          - gochecknoglobals
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofumpt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - localmodule

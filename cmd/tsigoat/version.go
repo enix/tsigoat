@@ -6,10 +6,10 @@ import (
 	"io"
 	"text/template"
 
+	"github.com/spf13/cobra"
+
 	"github.com/enix/tsigoat/internal/product"
 	"github.com/enix/tsigoat/pkg/cmd"
-
-	"github.com/spf13/cobra"
 )
 
 const (
@@ -25,6 +25,7 @@ Git commit: {{.GitCommit}}
 Git state:  {{.GitTreeState}}
 Runtime:    {{.Runtime}}
 Platform:   {{.Os}}/{{.Arch}}`
+	shortCommitLength = 7
 )
 
 type versionOptions struct {
@@ -38,7 +39,7 @@ func newCmdVersion(settings *cmd.Settings) *cobra.Command {
 		Short: "lorem ipsum dolor sit amet",
 		Long:  versionDesc,
 		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return options.run(settings.Stdout)
 		},
 	}
@@ -50,22 +51,35 @@ func newCmdVersion(settings *cmd.Settings) *cobra.Command {
 }
 
 func (o *versionOptions) run(out io.Writer) error {
-	fmt.Fprintln(out, formatVersion(o.short))
+	text, err := formatVersion(o.short)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, text)
+	if err != nil {
+		return fmt.Errorf("writing version: %w", err)
+	}
 	return nil
 }
 
-func formatVersion(short bool) string {
-	v := product.BuildInfo()
+func formatVersion(short bool) (string, error) {
+	info := product.BuildInfo()
 
 	if short {
-		if len(v.GitCommit) >= 7 {
-			return fmt.Sprintf("%s+g%s", v.Version, v.GitCommit[:7])
+		if info.GitCommit != product.Unknown && len(info.GitCommit) >= shortCommitLength {
+			return fmt.Sprintf("%s+g%s", info.Version, info.GitCommit[:shortCommitLength]), nil
 		}
-		return v.Version
+		return info.Version, nil
 	}
 
+	tpl, err := template.New("version").Parse(versionTemplate)
+	if err != nil {
+		return "", fmt.Errorf("parsing version template: %w", err)
+	}
 	var buf bytes.Buffer
-	tpl, _ := template.New("").Parse(versionTemplate)
-	tpl.Execute(&buf, v)
-	return buf.String()
+	err = tpl.Execute(&buf, info)
+	if err != nil {
+		return "", fmt.Errorf("rendering version: %w", err)
+	}
+	return buf.String(), nil
 }

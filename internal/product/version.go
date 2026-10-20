@@ -4,6 +4,12 @@ import (
 	"runtime"
 )
 
+// Unknown is reported for build metadata that was not injected at link time.
+const Unknown = "unknown"
+
+// Build metadata, set at link time with -ldflags -X.
+//
+//nolint:gochecknoglobals // the linker can only set package-level variables
 var (
 	version      = ""
 	buildTime    = ""
@@ -11,7 +17,8 @@ var (
 	gitTreeState = ""
 )
 
-type buildInfo struct {
+// Info describes the running binary.
+type Info struct {
 	Version      string
 	BuildTime    string
 	GitCommit    string
@@ -21,43 +28,24 @@ type buildInfo struct {
 	Arch         string
 }
 
-func BuildInfo() buildInfo {
-	info := buildInfo{
-		Runtime: runtime.Version(),
-		Os:      runtime.GOOS,
-		Arch:    runtime.GOARCH,
+// BuildInfo returns the metadata of the running binary.
+func BuildInfo() Info {
+	return Info{
+		Version:      valueOrUnknown(version),
+		BuildTime:    valueOrUnknown(buildTime),
+		GitCommit:    valueOrUnknown(gitCommit),
+		GitTreeState: valueOrUnknown(gitTreeState),
+		Runtime:      runtime.Version(),
+		Os:           runtime.GOOS,
+		Arch:         runtime.GOARCH,
 	}
-
-	if len(version) > 0 {
-		info.Version = version
-	} else {
-		info.Version = "unknown"
-	}
-
-	if len(buildTime) > 0 {
-		info.BuildTime = buildTime
-	} else {
-		info.BuildTime = "unknown"
-	}
-
-	if len(gitCommit) > 0 {
-		info.GitCommit = gitCommit
-	} else {
-		info.GitCommit = "unknown"
-	}
-
-	if len(gitTreeState) > 0 {
-		info.GitTreeState = gitTreeState
-	} else {
-		info.GitTreeState = "unknown"
-	}
-
-	return info
 }
 
-func VariadicBuildInfo() []interface{} {
+// VariadicBuildInfo returns the build metadata as alternating keys and values,
+// ready to be passed to a structured logger.
+func VariadicBuildInfo() []any {
 	info := BuildInfo()
-	return []interface{}{
+	return []any{
 		"version", info.Version,
 		"built", info.BuildTime,
 		"commit", info.GitCommit,
@@ -66,4 +54,11 @@ func VariadicBuildInfo() []interface{} {
 		"os", info.Os,
 		"arch", info.Arch,
 	}
+}
+
+func valueOrUnknown(value string) string {
+	if value == "" {
+		return Unknown
+	}
+	return value
 }

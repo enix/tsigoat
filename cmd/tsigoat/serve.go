@@ -3,12 +3,12 @@ package main
 import (
 	"fmt"
 
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+
 	"github.com/enix/tsigoat/internal/product"
 	"github.com/enix/tsigoat/pkg/cmd"
 	"github.com/enix/tsigoat/pkg/server"
-
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 const serveDesc = `
@@ -32,10 +32,10 @@ func newCmdServe(settings *cmd.Settings) *cobra.Command {
 		Short:   "lorem ipsum dolor sit amet",
 		Long:    serveDesc,
 		Args:    cobra.NoArgs,
-		PreRunE: func(cmd *cobra.Command, args []string) error {
+		PreRunE: func(_ *cobra.Command, _ []string) error {
 			return serverSettings.Init()
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return options.run(serverSettings)
 		},
 	}
@@ -54,7 +54,9 @@ func (o *serveOptions) run(settings *cmd.ServerSettings) error {
 
 	logger.Infow(fmt.Sprintf("initializing %s server", product.Name), product.VariadicBuildInfo()...)
 
-	settings.InitRuntime()
+	if err := settings.InitRuntime(); err != nil {
+		return err
+	}
 
 	o.viper.SetConfigType(settings.ConfigurationFile.Type.String())
 
@@ -86,8 +88,8 @@ func (o *serveOptions) run(settings *cmd.ServerSettings) error {
 
 	logger.Infow("successfully decoded configuration file", "path", o.viper.ConfigFileUsed())
 
-	server.Logger = logger // FIXME
-	server.NewServer(&config).Run()
+	// The legacy server package logs through a package-level logger.
+	server.Logger = logger
 
-	return nil
+	return server.NewServer(&config).Run()
 }
