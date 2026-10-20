@@ -1,10 +1,12 @@
 description: >-
-  An unsigned SOA query for a zone that requires authentication is refused, as
-  for a zone that tsigoat does not serve.
-refs: [P8]
+  An unsigned SOA query gets the SOA too: lego and certbot send such queries to
+  find the zone of a name.
+refs: ["RFC 1035 4.1.1"]
 requests:
   - key: none
     opcode: query
+    query: _acme-challenge.www SOA
 expect:
-  rcode: REFUSED
+  authoritative: true
   answer: []
+  authority: ["@ SOA"]

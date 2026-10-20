@@ -30,7 +30,7 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
 - **Policy per zone**: keys that may update the whole zone, and rules that
   restrict other keys to some names and record types, such as the
   `_acme-challenge` TXT records.
-- **SOA queries** for the zones a client may update, which certbot and
+- **SOA queries** for the zones that tsigoat serves, which lego, certbot and
   nsupdate send to find the zone of a name.
 - **Operations**: one structured log entry per update, Prometheus metrics,
   health checks, a strict configuration file with `check-config`, static
@@ -179,12 +179,9 @@ dns_rfc2136_port = 53
 dns_rfc2136_name = certbot.
 dns_rfc2136_secret = ...
 dns_rfc2136_algorithm = HMAC-SHA256
-dns_rfc2136_sign_query = true
 ```
 
-certbot finds the zone of a name with SOA queries, which tsigoat only answers
-when they are signed: set `dns_rfc2136_sign_query`. The server must be an IP
-address.
+The server must be an IP address.
 
 ### nsupdate
 
@@ -238,8 +235,10 @@ changes applied.
   keys that name them, logs a warning at startup, and counts their use. Move
   their clients to `hmac-sha256`, then the keys.
 - Give each client its own key, restricted by policy rules to what it updates.
-- An unsigned request gets REFUSED both for the zones that tsigoat does not
-  serve and for those that require a key, so that it cannot enumerate them.
+- An unsigned update gets REFUSED both for the zones that tsigoat does not
+  serve and for those that require a key. tsigoat answers SOA queries for the
+  zones it serves, signed or not, since lego and certbot send them unsigned:
+  whoever reaches tsigoat can tell which zones it serves.
 - `allowUnauthenticated` lets anyone who reaches tsigoat change the zone:
   keep such zones on private networks.
 - tsigoat serializes the updates of a zone within its process: run a single

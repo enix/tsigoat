@@ -43,11 +43,11 @@ internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
   rules grant a key some names (`*` is one label, `**` one or more) and types;
   the SOA needs a rule that names it. Prerequisites are only allowed on names
   the key may update.
-- Unsigned requests get REFUSED for unknown and forbidden zones alike, so that
-  they cannot enumerate the zones; signed ones get NOTAUTH for unknown zones.
-- Besides updates, the server answers the SOA queries of the zones a client
-  may update (certbot and nsupdate find the zone of a name that way), and
-  NOTIMP to anything else.
+- Unsigned updates get REFUSED for unknown and forbidden zones alike; signed
+  ones get NOTAUTH for unknown zones.
+- Besides updates, the server answers the SOA queries of the zones it serves,
+  signed or not, since lego and certbot find the zone of a name that way with
+  unsigned queries; it answers NOTIMP to other queries.
 
 ## Build and test workflow
 

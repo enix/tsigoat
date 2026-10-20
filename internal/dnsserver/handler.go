@@ -341,10 +341,10 @@ func authorize(policy *auth.Policy, identity string, req *update.Request) string
 	return ""
 }
 
-// query answers the SOA queries that clients such as certbot and nsupdate
-// send to find the zone of a name: the SOA comes in the answer section for
-// the apex, in the authority section below it. Other queries are not
-// implemented.
+// query answers the SOA queries that clients send to find the zone of a
+// name: the SOA comes in the answer section for the apex, in the authority
+// section below it. lego and certbot send them unsigned, so that tsigoat
+// answers them whatever the signature. Other queries are not implemented.
 func (s *Server) query(ctx context.Context, ex *exchange) *dns.Msg {
 	if len(ex.req.Question) != 1 {
 		return ex.reply(dns.RcodeFormatError)
@@ -353,13 +353,11 @@ func (s *Server) query(ctx context.Context, ex *exchange) *dns.Msg {
 	name := dns.CanonicalName(q.Name)
 	zoneName := update.ZoneOf(name, s.served)
 	z := s.zones[zoneName]
-	if z != nil {
-		ex.zone = zoneName
-	}
-	if z == nil || q.Qclass != dns.ClassINET || !z.Policy.Admits(ex.identity) {
+	if z == nil || q.Qclass != dns.ClassINET {
 		ex.logger.DebugContext(ctx, "query refused", "name", name, "type", dns.Type(q.Qtype).String())
 		return ex.reply(dns.RcodeRefused)
 	}
+	ex.zone = zoneName
 	if q.Qtype != dns.TypeSOA {
 		ex.logger.DebugContext(ctx, "query not implemented", "name", name, "type", dns.Type(q.Qtype).String())
 		return ex.reply(dns.RcodeNotImplemented)

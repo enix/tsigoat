@@ -156,14 +156,14 @@ func TestAdminServer(t *testing.T) {
 	}
 
 	m := new(dns.Msg)
-	m.SetQuestion("example.test.", dns.TypeSOA)
+	m.SetQuestion("www.example.test.", dns.TypeA)
 	client := &dns.Client{Timeout: 2 * time.Second}
 	resp, _, err := client.ExchangeContext(t.Context(), m, a.Server.Addrs()[0])
-	if err != nil || resp.Rcode != dns.RcodeRefused {
-		t.Fatalf("unsigned SOA query: %v, %v", resp, err)
+	if err != nil || resp.Rcode != dns.RcodeNotImplemented {
+		t.Fatalf("A query: %v, %v", resp, err)
 	}
 
-	want := `tsigoat_dns_responses_total{algorithm="",key="",opcode="QUERY",rcode="REFUSED",zone="example.test."} 1`
+	want := `tsigoat_dns_responses_total{algorithm="",key="",opcode="QUERY",rcode="NOTIMP",zone="example.test."} 1`
 	if status, body := httpGet(t, "http://"+a.AdminAddr()+"/metrics"); status != http.StatusOK || !strings.Contains(body, want) {
 		t.Errorf("/metrics = %d, without %s:\n%s", status, want, body)
 	}
