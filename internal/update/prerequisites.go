@@ -9,8 +9,9 @@ import (
 )
 
 // CheckPrerequisites evaluates the prerequisites of a request against the
-// view, and returns NOERROR when they all hold or the rcode of the first one
-// that fails. The structure was checked by Parse.
+// view. It returns nil when they all hold, an *Error about the first one
+// that fails, or the error of the backend. The structure was checked by
+// Parse.
 //
 // RFC 2136 3.2:
 //
@@ -36,7 +37,7 @@ import (
 //	for rrset in temp
 //	     if (zone_rrset<rrset.name, rrset.type> != rrset)
 //	          return (NXRRSET)
-func CheckPrerequisites(ctx context.Context, view *zone.View, req *Request) (int, error) {
+func CheckPrerequisites(ctx context.Context, view *zone.View, req *Request) error {
 	type rrsetKey struct {
 		name   string
 		rrtype uint16
@@ -51,10 +52,10 @@ func CheckPrerequisites(ctx context.Context, view *zone.View, req *Request) (int
 		case dns.ClassANY, dns.ClassNONE:
 			present, err := exists(ctx, view, name, h.Rrtype)
 			if err != nil {
-				return dns.RcodeServerFailure, err
+				return err
 			}
-			if rcode := existenceRcode(h.Class, h.Rrtype, present); rcode != dns.RcodeSuccess {
-				return rcode, nil
+			if err := existence(rr, present); err != nil {
+				return err
 			}
 		default:
 			k := rrsetKey{name: name, rrtype: h.Rrtype}
@@ -68,13 +69,13 @@ func CheckPrerequisites(ctx context.Context, view *zone.View, req *Request) (int
 	for _, k := range order {
 		current, err := view.RRset(ctx, k.name, k.rrtype)
 		if err != nil {
-			return dns.RcodeServerFailure, err
+			return err
 		}
 		if !zone.SameRecords(current, withName(valueDependent[k], k.name)) {
-			return dns.RcodeNXRrset, nil
+			return reject(dns.RcodeNXRrset, "prerequisite failed: RRset %s %s differs", k.name, dns.Type(k.rrtype))
 		}
 	}
-	return dns.RcodeSuccess, nil
+	return nil
 }
 
 // exists reports whether the name owns a record, for type ANY, or whether the
@@ -87,19 +88,21 @@ func exists(ctx context.Context, view *zone.View, name string, rrtype uint16) (b
 	return len(set) > 0, err
 }
 
-// existenceRcode returns the rcode of a value-independent prerequisite.
-func existenceRcode(class, rrtype uint16, present bool) int {
+// existence evaluates a value-independent prerequisite.
+func existence(rr dns.RR, present bool) error {
+	h := rr.Header()
+	name, rrtype := dns.CanonicalName(h.Name), dns.Type(h.Rrtype)
 	switch {
-	case class == dns.ClassANY && !present && rrtype == dns.TypeANY:
-		return dns.RcodeNameError
-	case class == dns.ClassANY && !present:
-		return dns.RcodeNXRrset
-	case class == dns.ClassNONE && present && rrtype == dns.TypeANY:
-		return dns.RcodeYXDomain
-	case class == dns.ClassNONE && present:
-		return dns.RcodeYXRrset
+	case h.Class == dns.ClassANY && !present && h.Rrtype == dns.TypeANY:
+		return reject(dns.RcodeNameError, "prerequisite failed: name %s is not in use", name)
+	case h.Class == dns.ClassANY && !present:
+		return reject(dns.RcodeNXRrset, "prerequisite failed: RRset %s %s does not exist", name, rrtype)
+	case h.Class == dns.ClassNONE && present && h.Rrtype == dns.TypeANY:
+		return reject(dns.RcodeYXDomain, "prerequisite failed: name %s is in use", name)
+	case h.Class == dns.ClassNONE && present:
+		return reject(dns.RcodeYXRrset, "prerequisite failed: RRset %s %s exists", name, rrtype)
 	default:
-		return dns.RcodeSuccess
+		return nil
 	}
 }
 

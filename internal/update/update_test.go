@@ -1,6 +1,7 @@
 package update_test
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -44,21 +45,17 @@ func process(t *testing.T, b *memory.Backend, request *scenario.Request, served 
 	}
 	m := roundtrip(t, messages[0])
 
-	zoneName, class, rcode := update.ParseZone(m)
-	if rcode != dns.RcodeSuccess {
-		return rcode
+	zoneName, class, err := update.ParseZone(m)
+	if err != nil {
+		return rcodeOf(t, err)
 	}
-	req, rcode := update.Parse(m, zoneName, class, append(served, testZone))
-	if rcode != dns.RcodeSuccess {
-		return rcode
+	req, err := update.Parse(m, zoneName, class, append(served, testZone))
+	if err != nil {
+		return rcodeOf(t, err)
 	}
 	view := zone.NewView(b, zoneName)
-	rcode, err = update.CheckPrerequisites(t.Context(), view, req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rcode != dns.RcodeSuccess {
-		return rcode
+	if err := update.CheckPrerequisites(t.Context(), view, req); err != nil {
+		return rcodeOf(t, err)
 	}
 	if err := update.Apply(t.Context(), view, req); err != nil {
 		t.Fatal(err)
@@ -67,6 +64,19 @@ func process(t *testing.T, b *memory.Backend, request *scenario.Request, served 
 		t.Fatal(err)
 	}
 	return dns.RcodeSuccess
+}
+
+// rcodeOf returns the rcode of a rejection, and fails on other errors.
+func rcodeOf(t *testing.T, err error) int {
+	t.Helper()
+	var rejected *update.Error
+	if !errors.As(err, &rejected) {
+		t.Fatal(err)
+	}
+	if rejected.Reason == "" {
+		t.Errorf("rejection without a reason: %v", err)
+	}
+	return rejected.Rcode
 }
 
 // roundtrip packs and unpacks a message, so that the records carry their
@@ -373,26 +383,56 @@ func TestParseZone(t *testing.T) {
 
 	m := new(dns.Msg)
 	m.SetUpdate("Example.TEST")
-	zoneName, class, rcode := update.ParseZone(m)
-	if zoneName != testZone || class != dns.ClassINET || rcode != dns.RcodeSuccess {
-		t.Errorf("ParseZone() = %q, %d, %s", zoneName, class, dns.RcodeToString[rcode])
+	zoneName, class, err := update.ParseZone(m)
+	if zoneName != testZone || class != dns.ClassINET || err != nil {
+		t.Errorf("ParseZone() = %q, %d, %v", zoneName, class, err)
 	}
 
 	for _, class := range []uint16{dns.ClassANY, dns.ClassNONE} {
 		m.Question[0].Qclass = class
-		if _, _, rcode := update.ParseZone(m); rcode != dns.RcodeFormatError {
-			t.Errorf("zone class %s: rcode %s, want FORMERR", dns.ClassToString[class], dns.RcodeToString[rcode])
+		if _, _, err := update.ParseZone(m); rcodeOf(t, err) != dns.RcodeFormatError {
+			t.Errorf("zone class %s: %v, want FORMERR", dns.ClassToString[class], err)
 		}
 	}
 	m.Question[0].Qclass = dns.ClassINET
 
+	m.Question[0].Qtype = dns.TypeA
+	if _, _, err := update.ParseZone(m); rcodeOf(t, err) != dns.RcodeFormatError {
+		t.Errorf("zone type A: %v, want FORMERR", err)
+	}
+	m.Question[0].Qtype = dns.TypeSOA
+
 	m.Question = append(m.Question, m.Question[0])
-	if _, _, rcode := update.ParseZone(m); rcode != dns.RcodeFormatError {
-		t.Errorf("two zone entries: rcode %s, want FORMERR", dns.RcodeToString[rcode])
+	if _, _, err := update.ParseZone(m); rcodeOf(t, err) != dns.RcodeFormatError {
+		t.Errorf("two zone entries: %v, want FORMERR", err)
 	}
 	m.Question = nil
-	if _, _, rcode := update.ParseZone(m); rcode != dns.RcodeFormatError {
-		t.Errorf("no zone entry: rcode %s, want FORMERR", dns.RcodeToString[rcode])
+	if _, _, err := update.ParseZone(m); rcodeOf(t, err) != dns.RcodeFormatError {
+		t.Errorf("no zone entry: %v, want FORMERR", err)
+	}
+}
+
+func TestZoneOf(t *testing.T) {
+	t.Parallel()
+
+	served := []string{"example.test.", "sub.example.test.", "other.test."}
+	for name, want := range map[string]string{
+		"example.test.":           "example.test.",
+		"WWW.Example.Test":        "example.test.",
+		"www.sub.example.test.":   "sub.example.test.",
+		"sub.example.test.":       "sub.example.test.",
+		"subway.example.test.":    "example.test.",
+		"test.":                   "",
+		"www.elsewhere.test.":     "",
+		"www.other.test.":         "other.test.",
+		"other.test.example.test": "example.test.",
+	} {
+		if got := update.ZoneOf(name, served); got != want {
+			t.Errorf("ZoneOf(%q) = %q, want %q", name, got, want)
+		}
+	}
+	if got := update.ZoneOf("www.example.test.", []string{"."}); got != "." {
+		t.Errorf("ZoneOf() under the root zone = %q", got)
 	}
 }
 
@@ -433,17 +473,17 @@ func FuzzEngine(f *testing.F) {
 		if err := m.Unpack(data); err != nil {
 			return
 		}
-		zoneName, class, rcode := update.ParseZone(m)
-		if rcode != dns.RcodeSuccess || zoneName != testZone {
+		zoneName, class, err := update.ParseZone(m)
+		if err != nil || zoneName != testZone {
 			return
 		}
-		req, rcode := update.Parse(m, zoneName, class, []string{testZone})
-		if rcode != dns.RcodeSuccess {
+		req, err := update.Parse(m, zoneName, class, []string{testZone})
+		if err != nil {
 			return
 		}
 		b := newBackend(t)
 		view := zone.NewView(b, zoneName)
-		if rcode, err := update.CheckPrerequisites(t.Context(), view, req); err != nil || rcode != dns.RcodeSuccess {
+		if err := update.CheckPrerequisites(t.Context(), view, req); err != nil {
 			return
 		}
 		if err := update.Apply(t.Context(), view, req); err != nil {

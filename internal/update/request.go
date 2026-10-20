@@ -4,6 +4,7 @@
 package update
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/miekg/dns"
@@ -25,8 +26,24 @@ type Request struct {
 	Updates       []dns.RR
 }
 
+// Error is a request that the engine rejects, with the rcode of the
+// response.
+type Error struct {
+	Rcode int
+	// Reason explains the rejection, for the logs.
+	Reason string
+}
+
+func (e *Error) Error() string {
+	return fmt.Sprintf("%s: %s", dns.RcodeToString[e.Rcode], e.Reason)
+}
+
+func reject(rcode int, format string, args ...any) *Error {
+	return &Error{Rcode: rcode, Reason: fmt.Sprintf(format, args...)}
+}
+
 // ParseZone checks the zone section and returns its canonical name and its
-// class, or FORMERR.
+// class. It fails with FORMERR.
 //
 // RFC 2136 3.1.1:
 //
@@ -35,37 +52,40 @@ type Request struct {
 //
 // The zone class must also be a data class: ANY and NONE have a meaning of
 // their own in the other sections.
-func ParseZone(m *dns.Msg) (zone string, class uint16, rcode int) {
-	if len(m.Question) != 1 || m.Question[0].Qtype != dns.TypeSOA {
-		return "", 0, dns.RcodeFormatError
+func ParseZone(m *dns.Msg) (zone string, class uint16, err error) {
+	if len(m.Question) != 1 {
+		return "", 0, reject(dns.RcodeFormatError, "the zone section holds %d entries instead of one", len(m.Question))
 	}
 	q := m.Question[0]
-	if q.Qclass == dns.ClassANY || q.Qclass == dns.ClassNONE {
-		return "", 0, dns.RcodeFormatError
+	if q.Qtype != dns.TypeSOA {
+		return "", 0, reject(dns.RcodeFormatError, "the zone section entry has type %s instead of SOA", dns.Type(q.Qtype))
 	}
-	return dns.CanonicalName(q.Name), q.Qclass, dns.RcodeSuccess
+	if q.Qclass == dns.ClassANY || q.Qclass == dns.ClassNONE {
+		return "", 0, reject(dns.RcodeFormatError, "the zone section entry has class %s", dns.Class(q.Qclass))
+	}
+	return dns.CanonicalName(q.Name), q.Qclass, nil
 }
 
 // Parse checks the prerequisite section (RFC 2136 3.2, structure only) and
 // the update section (3.4.1, prescan) of a message whose zone section names
 // zone. served lists the canonical names of every zone tsigoat serves, to
-// find the zone a record belongs to. It returns the request, or the rcode of
-// the first problem.
-func Parse(m *dns.Msg, zone string, class uint16, served []string) (req *Request, rcode int) {
-	if len(m.Answer)+len(m.Ns) > MaxRecords {
-		return nil, dns.RcodeRefused
+// find the zone a record belongs to. It returns the request, or an *Error
+// about the first problem.
+func Parse(m *dns.Msg, zone string, class uint16, served []string) (*Request, error) {
+	if count := len(m.Answer) + len(m.Ns); count > MaxRecords {
+		return nil, reject(dns.RcodeRefused, "%d records, more than the %d allowed", count, MaxRecords)
 	}
 	for _, rr := range m.Answer {
-		if rcode := checkPrerequisite(rr, zone, class, served); rcode != dns.RcodeSuccess {
-			return nil, rcode
+		if err := checkPrerequisite(rr, zone, class, served); err != nil {
+			return nil, err
 		}
 	}
 	for _, rr := range m.Ns {
-		if rcode := checkUpdate(rr, zone, class, served); rcode != dns.RcodeSuccess {
-			return nil, rcode
+		if err := checkUpdate(rr, zone, class, served); err != nil {
+			return nil, err
 		}
 	}
-	return &Request{Zone: zone, Class: class, Prerequisites: m.Answer, Updates: m.Ns}, dns.RcodeSuccess
+	return &Request{Zone: zone, Class: class, Prerequisites: m.Answer, Updates: m.Ns}, nil
 }
 
 // checkPrerequisite performs the structural checks of RFC 2136 3.2.1; the
@@ -88,28 +108,28 @@ func Parse(m *dns.Msg, zone string, class uint16, served []string) (req *Request
 //	          temp<rr.name, rr.type> += rr
 //	     else
 //	          return (FORMERR)
-func checkPrerequisite(rr dns.RR, zone string, class uint16, served []string) int {
+func checkPrerequisite(rr dns.RR, zone string, class uint16, served []string) error {
 	h := rr.Header()
 	if h.Ttl != 0 {
-		return dns.RcodeFormatError
+		return reject(dns.RcodeFormatError, "prerequisite %s has a TTL", Describe(rr))
 	}
-	if zoneOf(h.Name, served) != zone {
-		return dns.RcodeNotZone
+	if ZoneOf(h.Name, served) != zone {
+		return reject(dns.RcodeNotZone, "prerequisite %s is outside zone %s", Describe(rr), zone)
 	}
 	switch h.Class {
 	case dns.ClassANY, dns.ClassNONE:
 		if h.Rdlength != 0 {
-			return dns.RcodeFormatError
+			return reject(dns.RcodeFormatError, "prerequisite %s has RDATA", Describe(rr))
 		}
 	case class:
 		// A value-dependent prerequisite names actual records.
 		if h.Rrtype == dns.TypeANY || isMetaType(h.Rrtype) {
-			return dns.RcodeFormatError
+			return reject(dns.RcodeFormatError, "prerequisite %s names a meta type", Describe(rr))
 		}
 	default:
-		return dns.RcodeFormatError
+		return reject(dns.RcodeFormatError, "prerequisite %s has an invalid class", Describe(rr))
 	}
-	return dns.RcodeSuccess
+	return nil
 }
 
 // checkUpdate performs the prescan of RFC 2136 3.4.1.
@@ -132,28 +152,34 @@ func checkPrerequisite(rr dns.RR, zone string, class uint16, served []string) in
 //
 // The other meta types (OPT, TSIG, TKEY, IXFR) cannot be stored either, and
 // are rejected the same way.
-func checkUpdate(rr dns.RR, zone string, class uint16, served []string) int {
+func checkUpdate(rr dns.RR, zone string, class uint16, served []string) error {
 	h := rr.Header()
-	if zoneOf(h.Name, served) != zone {
-		return dns.RcodeNotZone
+	if ZoneOf(h.Name, served) != zone {
+		return reject(dns.RcodeNotZone, "update %s is outside zone %s", Describe(rr), zone)
 	}
 	switch h.Class {
 	case class:
 		if h.Rrtype == dns.TypeANY || isMetaType(h.Rrtype) {
-			return dns.RcodeFormatError
+			return reject(dns.RcodeFormatError, "update %s adds a meta type", Describe(rr))
 		}
 	case dns.ClassANY:
 		if h.Ttl != 0 || h.Rdlength != 0 || isMetaType(h.Rrtype) {
-			return dns.RcodeFormatError
+			return reject(dns.RcodeFormatError, "update %s deletes RRsets with a TTL, RDATA or a meta type", Describe(rr))
 		}
 	case dns.ClassNONE:
 		if h.Ttl != 0 || h.Rrtype == dns.TypeANY || isMetaType(h.Rrtype) {
-			return dns.RcodeFormatError
+			return reject(dns.RcodeFormatError, "update %s deletes a record with a TTL or a meta type", Describe(rr))
 		}
 	default:
-		return dns.RcodeFormatError
+		return reject(dns.RcodeFormatError, "update %s has an invalid class", Describe(rr))
 	}
-	return dns.RcodeSuccess
+	return nil
+}
+
+// Describe names a record in messages: owner name, class and type.
+func Describe(rr dns.RR) string {
+	h := rr.Header()
+	return fmt.Sprintf("%s %s %s", h.Name, dns.Class(h.Class), dns.Type(h.Rrtype))
 }
 
 // isMetaType reports the types that only exist in messages, ANY aside.
@@ -167,8 +193,9 @@ func isMetaType(rrtype uint16) bool {
 	}
 }
 
-// zoneOf returns the most specific served zone that contains name, or "".
-func zoneOf(name string, served []string) string {
+// ZoneOf returns the most specific of the served zones that contains name,
+// or "" when none does.
+func ZoneOf(name string, served []string) string {
 	name = dns.CanonicalName(name)
 	best := ""
 	for _, zone := range served {
