@@ -1,0 +1,8 @@
+description: A signed update to a zone that tsigoat does not serve gets NOTAUTH.
+refs: ["RFC 2136 3.1.2"]
+requests:
+  - zone: absent.e2e.test.
+    updates:
+      - add signed.absent.e2e.test. 60 IN TXT "should not exist"
+expect:
+  rcode: NOTAUTH

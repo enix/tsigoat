@@ -1,0 +1,15 @@
+description: The "name is in use" prerequisite holds, so the update applies.
+refs: ["RFC 2136 2.4.4", "RFC 2136 3.2.1", P2]
+knownDefect: P2
+zone:
+  records:
+    - www 300 IN A 192.0.2.1
+requests:
+  - prerequisites:
+      - yxdomain www
+    updates:
+      - add www 300 IN TXT "in use"
+expect:
+  records:
+    - www 300 IN A 192.0.2.1
+    - www 300 IN TXT "in use"

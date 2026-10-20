@@ -1,0 +1,10 @@
+description: A request signed an hour ago is rejected with BADTIME.
+refs: ["RFC 8945 5.2.3", P7]
+knownDefect: P7
+requests:
+  - timeShift: -3600
+    updates:
+      - add signed 60 IN TXT "should not exist"
+expect:
+  rcode: NOTAUTH
+  tsigError: BADTIME

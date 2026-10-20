@@ -1,0 +1,12 @@
+description: Deleting a record removes only that record from its RRset.
+refs: ["RFC 2136 2.5.4", "RFC 2136 3.4.2.4"]
+zone:
+  records:
+    - www 60 IN TXT "one"
+    - www 60 IN TXT "two"
+requests:
+  - updates:
+      - delete www TXT "one"
+expect:
+  records:
+    - www 60 IN TXT "two"

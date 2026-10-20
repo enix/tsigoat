@@ -1,0 +1,8 @@
+description: An update with two zone section entries is a format error.
+refs: ["RFC 2136 3.1.1"]
+requests:
+  - zoneCount: 2
+    updates:
+      - add www 60 IN TXT "should not exist"
+expect:
+  rcode: FORMERR

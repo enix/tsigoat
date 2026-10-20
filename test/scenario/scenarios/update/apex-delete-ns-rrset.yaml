@@ -1,0 +1,5 @@
+description: Deleting the NS RRset of the apex is ignored.
+refs: ["RFC 2136 3.4.2.3"]
+requests:
+  - updates:
+      - delete @ NS

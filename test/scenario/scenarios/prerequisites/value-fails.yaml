@@ -1,0 +1,13 @@
+description: The value-dependent "RRset exists" prerequisite fails on another value, so nothing changes.
+refs: ["RFC 2136 2.4.2", "RFC 2136 3.2.3", P1]
+knownDefect: P1
+zone:
+  records:
+    - www 300 IN A 192.0.2.1
+requests:
+  - prerequisites:
+      - yxrrset www A 192.0.2.99
+    updates:
+      - add www 300 IN TXT "should not exist"
+expect:
+  rcode: NXRRSET

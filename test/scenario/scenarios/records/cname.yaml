@@ -1,0 +1,8 @@
+description: A CNAME record reaches the backend intact.
+refs: ["RFC 2136 3.4.2.2"]
+requests:
+  - updates:
+      - add alias 300 IN CNAME target.example.
+expect:
+  records:
+    - alias 300 IN CNAME target.example.

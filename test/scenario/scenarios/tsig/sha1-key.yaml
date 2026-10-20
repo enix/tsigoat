@@ -1,0 +1,9 @@
+description: An update signed with an HMAC-SHA1 key applies.
+refs: ["RFC 8945 6"]
+requests:
+  - key: e2e-sha1
+    updates:
+      - add signed 60 IN TXT "e2e-sha1"
+expect:
+  records:
+    - signed 60 IN TXT "e2e-sha1"

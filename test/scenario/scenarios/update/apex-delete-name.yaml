@@ -1,0 +1,10 @@
+description: Deleting the apex name removes its RRsets but the SOA and NS ones.
+refs: ["RFC 2136 3.4.2.3"]
+zone:
+  records:
+    - "@ 60 IN TXT \"apex\""
+requests:
+  - updates:
+      - delete @
+expect:
+  records: []

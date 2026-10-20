@@ -1,0 +1,9 @@
+description: An ACME client publishes a DNS-01 token, then removes it, as cert-manager does.
+refs: ["RFC 8555 8.4"]
+requests:
+  - updates:
+      - add _acme-challenge 60 IN TXT "token"
+  - updates:
+      - delete _acme-challenge TXT "token"
+expect:
+  records: []

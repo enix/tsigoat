@@ -1,0 +1,9 @@
+description: A CAA record reaches the backend intact.
+refs: [A3]
+knownDefect: A3
+requests:
+  - updates:
+      - add @ 300 IN CAA 0 issue "letsencrypt.org"
+expect:
+  records:
+    - '@ 300 IN CAA 0 issue "letsencrypt.org"'

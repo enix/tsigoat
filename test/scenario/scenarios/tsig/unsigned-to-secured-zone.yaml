@@ -1,0 +1,8 @@
+description: An unsigned update to a zone that requires authentication is refused.
+refs: ["RFC 2136 3.3", "RFC 3007"]
+requests:
+  - key: none
+    updates:
+      - add unsigned 60 IN TXT "should not exist"
+expect:
+  rcode: REFUSED

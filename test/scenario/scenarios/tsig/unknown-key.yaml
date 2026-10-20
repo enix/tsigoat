@@ -1,0 +1,10 @@
+description: A request signed with an unknown key is rejected with BADKEY.
+refs: ["RFC 8945 5.2.1", P7]
+knownDefect: P7
+requests:
+  - key: unknown
+    updates:
+      - add signed 60 IN TXT "should not exist"
+expect:
+  rcode: NOTAUTH
+  tsigError: BADKEY

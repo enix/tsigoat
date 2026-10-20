@@ -1,0 +1,9 @@
+description: A prerequisite outside the zone is rejected with NOTZONE.
+refs: ["RFC 2136 3.2.1"]
+requests:
+  - prerequisites:
+      - yxrrset www.elsewhere.test. A
+    updates:
+      - add www 300 IN TXT "should not exist"
+expect:
+  rcode: NOTZONE

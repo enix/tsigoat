@@ -1,0 +1,10 @@
+description: A class NONE update of type ANY is a format error.
+refs: ["RFC 2136 3.4.1.2"]
+zone:
+  records:
+    - www 300 IN TXT "kept"
+requests:
+  - updates:
+      - rawheader www 0 NONE ANY
+expect:
+  rcode: FORMERR

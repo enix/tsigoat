@@ -1,0 +1,8 @@
+description: Adding a record creates its RRset.
+refs: ["RFC 2136 3.4.2.2"]
+requests:
+  - updates:
+      - add txt 60 IN TXT "hello"
+expect:
+  records:
+    - txt 60 IN TXT "hello"

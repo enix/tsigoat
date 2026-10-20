@@ -1,0 +1,10 @@
+description: An unsigned update to a zone that tsigoat does not serve is refused, without revealing which zones exist.
+refs: [P8]
+knownDefect: P8
+requests:
+  - key: none
+    zone: absent.e2e.test.
+    updates:
+      - add unsigned.absent.e2e.test. 60 IN TXT "should not exist"
+expect:
+  rcode: REFUSED

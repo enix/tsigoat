@@ -1,0 +1,20 @@
+description: Concurrent DNS-01 tokens on the same name are all kept, as for a wildcard and apex certificate.
+refs: ["RFC 8555 8.4", P4]
+knownDefect: P4
+parallel: true
+requests:
+  - repeat: 10
+    updates:
+      - add _acme-challenge 60 IN TXT "token-{i}"
+expect:
+  records:
+    - _acme-challenge 60 IN TXT "token-0"
+    - _acme-challenge 60 IN TXT "token-1"
+    - _acme-challenge 60 IN TXT "token-2"
+    - _acme-challenge 60 IN TXT "token-3"
+    - _acme-challenge 60 IN TXT "token-4"
+    - _acme-challenge 60 IN TXT "token-5"
+    - _acme-challenge 60 IN TXT "token-6"
+    - _acme-challenge 60 IN TXT "token-7"
+    - _acme-challenge 60 IN TXT "token-8"
+    - _acme-challenge 60 IN TXT "token-9"

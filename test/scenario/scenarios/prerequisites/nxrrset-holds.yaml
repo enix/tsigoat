@@ -1,0 +1,15 @@
+description: The "RRset does not exist" prerequisite holds, so the update applies.
+refs: ["RFC 2136 2.4.3", "RFC 2136 3.2.1", P2]
+knownDefect: P2
+zone:
+  records:
+    - www 300 IN A 192.0.2.1
+requests:
+  - prerequisites:
+      - nxrrset www TXT
+    updates:
+      - add www 300 IN TXT "first"
+expect:
+  records:
+    - www 300 IN A 192.0.2.1
+    - www 300 IN TXT "first"

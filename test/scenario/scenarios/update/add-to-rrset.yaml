@@ -1,0 +1,12 @@
+description: Adding a record to an existing RRset keeps the other records.
+refs: ["RFC 2136 3.4.2.2"]
+zone:
+  records:
+    - www 60 IN TXT "one"
+requests:
+  - updates:
+      - add www 60 IN TXT "two"
+expect:
+  records:
+    - www 60 IN TXT "one"
+    - www 60 IN TXT "two"

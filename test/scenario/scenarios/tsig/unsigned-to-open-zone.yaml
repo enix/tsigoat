@@ -1,0 +1,11 @@
+description: A zone that does not require authentication accepts unsigned updates.
+refs: ["RFC 2136 3.3"]
+zone:
+  unauthenticated: true
+requests:
+  - key: none
+    updates:
+      - add open 60 IN TXT "anyone"
+expect:
+  records:
+    - open 60 IN TXT "anyone"

@@ -1,0 +1,9 @@
+description: An update without zone section is a format error, and gets an answer.
+refs: ["RFC 2136 3.1.1", P6]
+knownDefect: P6
+requests:
+  - zoneCount: 0
+    updates:
+      - add www 60 IN TXT "should not exist"
+expect:
+  rcode: FORMERR

@@ -1,0 +1,8 @@
+description: Other data is ignored when a CNAME exists at the name.
+refs: ["RFC 2136 3.4.2.2"]
+zone:
+  records:
+    - alias 300 IN CNAME target.example.
+requests:
+  - updates:
+      - add alias 300 IN TXT "ignored"

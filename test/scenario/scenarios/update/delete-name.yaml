@@ -1,0 +1,13 @@
+description: Deleting a name removes all its RRsets.
+refs: ["RFC 2136 2.5.3", "RFC 2136 3.4.2.3"]
+zone:
+  records:
+    - www 300 IN A 192.0.2.1
+    - www 60 IN TXT "one"
+    - other 60 IN TXT "kept"
+requests:
+  - updates:
+      - delete www
+expect:
+  records:
+    - other 60 IN TXT "kept"

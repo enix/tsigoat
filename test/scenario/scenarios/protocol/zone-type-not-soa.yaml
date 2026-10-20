@@ -1,0 +1,8 @@
+description: An update whose zone section is not of type SOA is a format error.
+refs: ["RFC 2136 3.1.1"]
+requests:
+  - zoneType: A
+    updates:
+      - add www 60 IN TXT "should not exist"
+expect:
+  rcode: FORMERR

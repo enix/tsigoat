@@ -1,0 +1,7 @@
+description: An update of type AXFR is a format error.
+refs: ["RFC 2136 3.4.1.2"]
+requests:
+  - updates:
+      - rawheader www 0 ANY AXFR
+expect:
+  rcode: FORMERR

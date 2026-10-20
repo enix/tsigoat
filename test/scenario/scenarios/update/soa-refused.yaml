@@ -1,0 +1,8 @@
+description: Explicit SOA updates are refused by default, since the backend owns the serial.
+refs: ["RFC 2136 3.3", D7]
+knownDefect: D7
+requests:
+  - updates:
+      - add @ 3600 IN SOA ns1 hostmaster 2000000000 7200 900 1209600 300
+expect:
+  rcode: REFUSED

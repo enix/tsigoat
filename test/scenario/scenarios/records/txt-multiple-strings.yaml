@@ -1,0 +1,8 @@
+description: A TXT record made of several strings keeps them apart.
+refs: ["RFC 1035 3.3.14"]
+requests:
+  - updates:
+      - add txt 60 IN TXT "part one" "part two"
+expect:
+  records:
+    - txt 60 IN TXT "part one" "part two"

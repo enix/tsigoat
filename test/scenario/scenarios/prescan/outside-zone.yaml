@@ -1,0 +1,7 @@
+description: An update outside the zone is rejected with NOTZONE.
+refs: ["RFC 2136 3.4.1.1"]
+requests:
+  - updates:
+      - add outside.elsewhere.test. 300 IN TXT "should not exist"
+expect:
+  rcode: NOTZONE

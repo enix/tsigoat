@@ -1,0 +1,10 @@
+description: A request with a wrong signature is rejected with BADSIG.
+refs: ["RFC 8945 5.2.2", P7]
+knownDefect: P7
+requests:
+  - badSignature: true
+    updates:
+      - add signed 60 IN TXT "should not exist"
+expect:
+  rcode: NOTAUTH
+  tsigError: BADSIG

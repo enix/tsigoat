@@ -1,0 +1,15 @@
+description: The "name is not in use" prerequisite holds, so the update applies.
+refs: ["RFC 2136 2.4.5", "RFC 2136 3.2.1", P2]
+knownDefect: P2
+zone:
+  records:
+    - www 300 IN A 192.0.2.1
+requests:
+  - prerequisites:
+      - nxdomain new
+    updates:
+      - add new 300 IN TXT "fresh"
+expect:
+  records:
+    - www 300 IN A 192.0.2.1
+    - new 300 IN TXT "fresh"

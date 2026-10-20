@@ -1,0 +1,12 @@
+description: A prerequisite with a non-zero TTL is a format error.
+refs: ["RFC 2136 3.2.1"]
+zone:
+  records:
+    - www 300 IN A 192.0.2.1
+requests:
+  - prerequisites:
+      - raw www 300 IN A 192.0.2.1
+    updates:
+      - add www 300 IN TXT "should not exist"
+expect:
+  rcode: FORMERR

@@ -1,0 +1,7 @@
+description: Adding a record of meta type ANY is a format error.
+refs: ["RFC 2136 3.4.1.2"]
+requests:
+  - updates:
+      - rawheader www 300 IN ANY
+expect:
+  rcode: FORMERR

@@ -1,0 +1,15 @@
+description: The value-independent "RRset exists" prerequisite holds, so the update applies.
+refs: ["RFC 2136 2.4.1", "RFC 2136 3.2.1", P2]
+knownDefect: P2
+zone:
+  records:
+    - www 300 IN A 192.0.2.1
+requests:
+  - prerequisites:
+      - yxrrset www A
+    updates:
+      - add www 300 IN TXT "has an address"
+expect:
+  records:
+    - www 300 IN A 192.0.2.1
+    - www 300 IN TXT "has an address"

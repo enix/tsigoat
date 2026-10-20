@@ -2,6 +2,9 @@ version: "2"
 
 run:
   timeout: 5m
+  # Lint the end-to-end tests too.
+  build-tags:
+    - e2e
 
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
@@ -117,6 +120,7 @@ linters:
             - "!**/internal/zone/**"
             - "!**/internal/auth/**"
             - "!**/internal/backend/**"
+            - "!**/test/**"
           deny:
             - pkg: github.com/miekg/dns
               desc: miekg/dns usage is confined to the DNS-facing packages

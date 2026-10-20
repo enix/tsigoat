@@ -1,0 +1,5 @@
+description: Deleting the last NS record of the apex is ignored.
+refs: ["RFC 2136 3.4.2.4"]
+requests:
+  - updates:
+      - delete @ NS ns1
