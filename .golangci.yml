@@ -158,3 +158,8 @@ formatters:
         - standard
         - default
         - localmodule
+  exclusions:
+    # Same legacy exclusion as for the linters.
+    paths:
+      - ^pkg/
+      - ^hack/

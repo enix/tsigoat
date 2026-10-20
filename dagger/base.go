@@ -18,7 +18,7 @@ const (
 	gitleaksImage     = "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 	pdns49Image       = "powerdns/pdns-auth-49:4.9.17@sha256:b554df74bbde1afa7caedad4af9c91378be6d46d05807d089b3c7c443002e684"
 	pdns50Image       = "powerdns/pdns-auth-50:5.0.7@sha256:4d6cc4fc42a28f2df7fb55f6f36d8323f96e0da66135ccdad057ca7349b223b4"
-	golangciLint      = "v2.11.3" // installed via `go install`
+	golangciLint      = "v2.15.0" // installed via `go install`
 	gotestsumModule   = "v1.13.0" // ditto
 	govulncheckPath   = "latest"  // tracking latest, no Renovate pin
 )
