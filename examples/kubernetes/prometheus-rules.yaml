@@ -1,0 +1,42 @@
+# Alerts on the metrics of tsigoat, for the Prometheus operator. Apply it apart
+# from the kustomization, next to a scrape configuration of the admin port.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tsigoat
+  namespace: tsigoat
+spec:
+  groups:
+    - name: tsigoat
+      rules:
+        - alert: TsigoatBackendErrors
+          expr: sum by (backend, operation) (rate(tsigoat_backend_calls_total{result="error"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "tsigoat fails to {{ $labels.operation }} through backend {{ $labels.backend }}"
+            description: "Updates fail with SERVFAIL while the backend errors; check the reachability and the API key of the backend."
+        - alert: TsigoatUpdatesFailing
+          expr: sum by (zone) (rate(tsigoat_dns_responses_total{opcode="UPDATE",rcode="SERVFAIL"}[5m])) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Updates of zone {{ $labels.zone }} fail with SERVFAIL"
+            description: "The logs of tsigoat (msg=update, rcode=SERVFAIL) tell the error of every failed update."
+        - alert: TsigoatSignatureFailures
+          expr: sum by (error) (rate(tsigoat_tsig_failures_total[15m])) > 0.1
+          for: 15m
+          labels:
+            severity: info
+          annotations:
+            summary: "Requests to tsigoat fail TSIG verification with {{ $labels.error }}"
+            description: "A client has the wrong key, algorithm or clock (BADKEY, BADSIG, BADTIME), or someone probes tsigoat."
+        - alert: TsigoatLegacyAlgorithm
+          expr: sum by (key, algorithm) (increase(tsigoat_dns_responses_total{algorithm=~"hmac-md5|hmac-sha1"}[1d])) > 0
+          labels:
+            severity: info
+          annotations:
+            summary: "Key {{ $labels.key }} still signs with {{ $labels.algorithm }}"
+            description: "Move the clients of this key to hmac-sha256, then the key."

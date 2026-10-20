@@ -223,6 +223,9 @@ serves DNS, 503 once it shuts down) and `/metrics`:
 The `zone` and `key` labels only take configured names, empty otherwise, so
 that clients cannot grow the series. `algorithm` tracks the remaining use of
 HMAC-MD5 and HMAC-SHA1.
+[examples/kubernetes/prometheus-rules.yaml](examples/kubernetes/prometheus-rules.yaml)
+alerts on backend errors, failing updates, TSIG failures and legacy
+algorithms.
 
 Every update ends with one log entry, `msg=update`, with the key, the zone,
 the rcode, the reason of a rejection or the error of a failure, and the
