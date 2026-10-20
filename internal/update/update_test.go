@@ -286,6 +286,17 @@ func TestEngine(t *testing.T) {
 			want:    []string{`www 60 IN TXT "two"`},
 		},
 		{
+			name:    "delete a record written with escapes",
+			zone:    []string{`www 60 IN TXT "a\032b"`, `www 60 IN TXT "\195\169t\195\169"`},
+			request: scenario.Request{Updates: []string{`delete www TXT "a b"`, `delete www TXT "été"`}},
+		},
+		{
+			name:    "value-dependent prerequisite on a record written with escapes",
+			zone:    []string{`www 60 IN TXT "a\032b"`},
+			request: scenario.Request{Prerequisites: []string{`yxrrset www TXT "a b"`}, Updates: []string{`add www 60 IN TXT "c"`}},
+			want:    []string{`www 60 IN TXT "a b"`, `www 60 IN TXT "c"`},
+		},
+		{
 			name:    "delete the last apex NS is ignored",
 			request: scenario.Request{Updates: []string{"delete @ NS ns1"}},
 		},
