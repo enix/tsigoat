@@ -10,15 +10,11 @@ package powerdns
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -27,6 +23,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/enix/tsigoat/internal/backend"
+	"github.com/enix/tsigoat/internal/backend/httpclient"
 )
 
 const (
@@ -97,50 +94,20 @@ func New(options *Options) (*Backend, error) {
 		timeout = DefaultTimeout
 	}
 
-	transport, ok := http.DefaultTransport.(*http.Transport)
-	if !ok {
-		return nil, errors.New("unexpected type of http.DefaultTransport")
+	// A redirect turns a PATCH into a GET, which would succeed without
+	// applying anything, and hands the API key to another server: the client
+	// follows none, and redirects are errors.
+	client, err := httpclient.New(&httpclient.Options{CAFile: options.CAFile})
+	if err != nil {
+		return nil, fmt.Errorf("configuring the client of the PowerDNS API: %w", err)
 	}
-	transport = transport.Clone()
-	if options.CAFile != "" {
-		roots, err := loadRoots(options.CAFile)
-		if err != nil {
-			return nil, err
-		}
-		transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
-	}
-
 	return &Backend{
 		server:   base.String() + "/api/v1/servers/" + url.PathEscape(serverID),
 		apiKey:   options.APIKey,
 		timeout:  timeout,
 		disabled: map[string]map[string][]record{},
-		client: &http.Client{
-			Transport: transport,
-			// A redirect turns a PATCH into a GET, which would succeed without
-			// applying anything, and hands the API key to another server:
-			// redirects are errors.
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
-		},
+		client:   client,
 	}, nil
-}
-
-// loadRoots returns the system roots plus the certificates of a PEM file.
-func loadRoots(path string) (*x509.CertPool, error) {
-	data, err := os.ReadFile(path) //nolint:gosec // the operator chooses the CA file
-	if err != nil {
-		return nil, fmt.Errorf("reading the PowerDNS CA file: %w", err)
-	}
-	roots, err := x509.SystemCertPool()
-	if err != nil {
-		roots = x509.NewCertPool()
-	}
-	if !roots.AppendCertsFromPEM(data) {
-		return nil, fmt.Errorf("no certificate found in the PowerDNS CA file %s", path)
-	}
-	return roots, nil
 }
 
 // rrset is an RRset as the API represents it.
