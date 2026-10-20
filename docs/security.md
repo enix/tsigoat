@@ -70,7 +70,9 @@ To move a client off a legacy algorithm:
   costs a few backend calls, each unsigned one none, but for the zones that
   accept unsigned updates.
 - **Single instance**: tsigoat serializes the updates of a zone within its
-  process, see [PowerDNS](powerdns.md#concurrency).
+  process, see [PowerDNS](powerdns.md#concurrency). Nothing fences two
+  instances apart: in Kubernetes, the `Recreate` strategy of the chart holds
+  during rollouts alone, see [Operations](operations.md#kubernetes).
 
 ## Hardening a deployment
 

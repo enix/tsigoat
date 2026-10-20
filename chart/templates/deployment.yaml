@@ -7,8 +7,10 @@ metadata:
   labels:
     {{- include "tsigoat.labels" . | nindent 4 }}
 spec:
-  # tsigoat serializes the updates of a zone within its process: one replica,
-  # and never two at once.
+  # tsigoat serializes the updates of a zone within its process: one replica.
+  # Recreate stops the old pod before starting the new one during a rollout
+  # alone: a pod deleted or evicted gets its replacement at once, while it
+  # finishes its updates in progress.
   replicas: 1
   strategy:
     type: Recreate

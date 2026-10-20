@@ -113,7 +113,10 @@ authentication: it has its own Service, always of type `ClusterIP`.
 
 tsigoat runs as a single replica, with the `Recreate` strategy: it serializes
 the updates of a zone within its process, and two instances could lose each
-other's updates.
+other's updates. `Recreate` keeps two pods from running at once during a
+rollout alone: when a pod is deleted or evicted, its replacement starts while
+it finishes its updates in progress, for 26 seconds at most. Avoid deleting
+the pod while updates run, such as during the renewals of cert-manager.
 
 ## Monitoring
 
