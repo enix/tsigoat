@@ -1,0 +1,192 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    ":dependencyDashboard",
+  ],
+
+  // Dependency bumps are titled `deps: ...`, which GoReleaser lists in the
+  // "Dependencies" section of the changelog. Vulnerability fixes use
+  // `security: ...`.
+  semanticCommits: "enabled",
+  semanticCommitType: "deps",
+  semanticCommitScope: null,
+
+  // No top-level schedule: the cron of .github/workflows/renovate.yaml is the
+  // single source of timing truth.
+  timezone: "Europe/Paris",
+  prConcurrentLimit: 20,
+  prHourlyLimit: 20,
+
+  vulnerabilityAlerts: {
+    enabled: true,
+    labels: ["security"],
+    schedule: "at any time",
+    semanticCommitType: "security",
+  },
+  osvVulnerabilityAlerts: false,
+
+  lockFileMaintenance: {
+    enabled: true,
+  },
+
+  // Commits pushed by the Dagger module workflow on Renovate branches must
+  // not stop Renovate from rebasing them.
+  gitIgnoredAuthors: [
+    "41898282+github-actions[bot]@users.noreply.github.com",
+  ],
+
+  customManagers: [
+    {
+      // Container images pinned as Go constants: `<name>Image = "repo:tag@sha256:..."`.
+      customType: "regex",
+      managerFilePatterns: ["/^dagger/base\\.go$/"],
+      matchStrings: [
+        "(?<depName>[a-zA-Z0-9./_-]+)Image\\s*=\\s*\"(?<packageName>[a-zA-Z0-9./_-]+):(?<currentValue>[\\w.-]+)(?:@(?<currentDigest>sha256:[a-f0-9]+))?\"",
+      ],
+      autoReplaceStringTemplate: "{{depName}}Image = \"{{packageName}}:{{newValue}}{{#if newDigest}}@{{newDigest}}{{/if}}\"",
+      datasourceTemplate: "docker",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^dagger/base\\.go$/"],
+      matchStrings: [
+        "golangciLint\\s*=\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "github.com/golangci/golangci-lint/v2",
+      datasourceTemplate: "go",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^dagger/base\\.go$/"],
+      matchStrings: [
+        "gotestsumModule\\s*=\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "gotest.tools/gotestsum",
+      datasourceTemplate: "go",
+    },
+    {
+      // dagger.json is the single source of truth for the Dagger version.
+      customType: "regex",
+      managerFilePatterns: ["/^dagger\\.json$/"],
+      matchStrings: [
+        "\"engineVersion\":\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "dagger.io/dagger",
+      datasourceTemplate: "go",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^Taskfile\\.ya?ml$/"],
+      matchStrings: [
+        "RENOVATE_IMAGE:\\s*['\"]?renovate/renovate:(?<currentValue>\\d[\\w.-]*)",
+      ],
+      depNameTemplate: "renovate/renovate",
+      datasourceTemplate: "docker",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/release\\.ya?ml$/"],
+      matchStrings: [
+        "goreleaser-action[^\\n]+\\n\\s+with:\\n\\s+version:\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "goreleaser/goreleaser",
+      datasourceTemplate: "github-releases",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^flake\\.nix$/"],
+      matchStrings: [
+        "# goreleaser version\\s*\\n\\s*version\\s*=\\s*\"(?<currentValue>\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "goreleaser/goreleaser",
+      datasourceTemplate: "github-releases",
+      extractVersionTemplate: "^v(?<version>.*)$",
+    },
+  ],
+
+  packageRules: [
+    {
+      matchDatasources: ["docker"],
+      matchFileNames: ["build/Dockerfile.*", "dagger/base.go"],
+      pinDigests: true,
+    },
+    {
+      matchManagers: ["github-actions"],
+      pinDigests: true,
+    },
+    {
+      // go.mod's go directive and the bootstrap golang image move together.
+      matchPackageNames: ["golang", "go"],
+      groupName: "golang toolchain",
+      commitMessageTopic: "Go toolchain",
+      labels: ["dependencies", "golang"],
+    },
+    {
+      matchPackageNames: ["golang", "go"],
+      matchUpdateTypes: ["major"],
+      dependencyDashboardApproval: true,
+    },
+    {
+      matchPackageNames: ["busybox", "alpine"],
+      groupName: "container base images",
+      labels: ["dependencies", "docker"],
+    },
+    {
+      // Both write sites of the Renovate version: dagger/base.go and Taskfile.yml.
+      matchPackageNames: ["renovate/renovate"],
+      groupName: "renovate",
+      labels: ["dependencies"],
+    },
+    {
+      matchPackageNames: ["powerdns/**"],
+      groupName: "powerdns test images",
+      labels: ["dependencies", "test"],
+    },
+    {
+      matchManagers: ["gomod"],
+      matchUpdateTypes: ["patch"],
+      matchPackageNames: ["!go"],
+      groupName: "go modules (patch)",
+      labels: ["dependencies", "go"],
+    },
+    {
+      matchManagers: ["gomod"],
+      matchUpdateTypes: ["minor"],
+      matchPackageNames: ["!go"],
+      groupName: "go modules (minor)",
+      labels: ["dependencies", "go"],
+    },
+    {
+      // dagger/go.mod belongs to `dagger develop`: the SDK-owned dependencies
+      // move with the Dagger version, never on their own.
+      matchManagers: ["gomod"],
+      matchFileNames: ["dagger/go.mod"],
+      matchPackageNames: [
+        "go",
+        "github.com/99designs/gqlgen",
+        "github.com/Khan/genqlient",
+        "github.com/dagger/otel-go",
+        "github.com/dagger/querybuilder",
+        "github.com/vektah/gqlparser/v2",
+        "go.opentelemetry.io/**",
+      ],
+      enabled: false,
+    },
+    {
+      matchPackageNames: ["dagger.io/dagger"],
+      groupName: "dagger SDK + engine",
+      labels: ["dependencies", "dagger"],
+    },
+    {
+      matchManagers: ["github-actions"],
+      groupName: "github-actions",
+      labels: ["dependencies", "ci"],
+    },
+    {
+      matchManagers: ["nix"],
+      groupName: "nix flake inputs",
+      labels: ["dependencies", "nix"],
+    },
+  ],
+}

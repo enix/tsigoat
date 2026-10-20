@@ -1,0 +1,81 @@
+name: Renovate
+
+# Self-hosted Renovate, run as a GitHub App so that its pull requests trigger
+# the regular workflows. The cron is the single source of timing truth:
+# renovate.json5 deliberately has no top-level schedule.
+#
+# Required secrets: RENOVATE_APP_CLIENT_ID and RENOVATE_APP_PRIVATE_KEY.
+# Optional: DOCKERHUB_READONLY_USERNAME and DOCKERHUB_READONLY_TOKEN, to
+# avoid the anonymous Docker Hub rate limit.
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: Renovate log level for this run
+        type: choice
+        default: info
+        options: [debug, info, warn, error]
+      dryRun:
+        description: Dry run mode (skip opening pull requests)
+        type: choice
+        default: disabled
+        options: [disabled, extract, lookup, full]
+  push:
+    branches: [main]
+    paths:
+      - "renovate.json5"
+      - ".github/workflows/renovate.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Generate App token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
+        with:
+          client-id: ${{ secrets.RENOVATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          # What Renovate needs as a GitHub App, nothing more.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+          permission-workflows: write
+          permission-checks: write
+          permission-statuses: write
+      - name: Run Renovate
+        uses: renovatebot/github-action@a63d9a7bc606f7336fd20b47f2f32259a35e6213 # v46.3.9
+        env:
+          LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_AUTODISCOVER: "false"
+          RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_HOST_RULES: |
+            [
+              {
+                "matchHost": "index.docker.io",
+                "username": "${{ secrets.DOCKERHUB_READONLY_USERNAME }}",
+                "password": "${{ secrets.DOCKERHUB_READONLY_TOKEN }}"
+              },
+              {
+                "matchHost": "api.github.com",
+                "token": "${{ github.token }}"
+              }
+            ]
+          RENOVATE_DRY_RUN: ${{ (inputs.dryRun != '' && inputs.dryRun != 'disabled') && inputs.dryRun || '' }}
+        with:
+          token: ${{ steps.app-token.outputs.token }}
