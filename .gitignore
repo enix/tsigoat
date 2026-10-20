@@ -16,3 +16,6 @@ __pycache__/
 
 # Local working notes, never committed
 /docs/local/
+
+# Worktrees of the Claude Code agents: whole checkouts of the repository
+/.claude/worktrees/

@@ -20,7 +20,7 @@ type Tsigoat struct {
 // state and VCS data are excluded so that they do not bust the cache.
 func New(
 	// +defaultPath="/"
-	// +ignore=["dist/", ".git/", "tmp/", "docs/local/", "dagger/", ".keyring/", "kubeconfig.yaml"]
+	// +ignore=["dist/", ".git/", "tmp/", "docs/local/", "dagger/", ".keyring/", "kubeconfig.yaml", ".claude/worktrees/"]
 	source *dagger.Directory,
 ) *Tsigoat {
 	return &Tsigoat{Source: source}

@@ -18,7 +18,7 @@ func (m *Tsigoat) Gitleaks(
 	// that would only add scan noise, but — unlike the module-wide
 	// source filter — KEEPS dagger/ so hand-written code stays in scope.
 	// +defaultPath="/"
-	// +ignore=[".git/", "dist/", "tmp/", "docs/local/", ".keyring/", "kubeconfig.yaml"]
+	// +ignore=[".git/", "dist/", "tmp/", "docs/local/", ".keyring/", "kubeconfig.yaml", ".claude/worktrees/"]
 	source *dagger.Directory,
 ) (string, error) {
 	return dag.Container().
