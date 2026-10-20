@@ -58,6 +58,7 @@ jobs:
             markdown:
               - '**/*.md'
               - '!CLAUDE.md'
+              - '!AGENTS.md'
               - '.markdownlint-cli2.jsonc'
               - 'dagger/**'
             actions:
