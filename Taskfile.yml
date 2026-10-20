@@ -1,0 +1,257 @@
+version: "3"
+
+# Thin façade over the build tools:
+#   - the Dagger module (dagger.json at the repository root, sources in
+#     dagger/) for sandboxed QA/CI pipelines: lint, tests, security scans.
+#     Every gate runs the same way locally and in CI;
+#   - GoReleaser for binaries and container images;
+#   - direct CLI calls for what needs no sandbox: go mod tidy, Renovate
+#     dry-runs, the local development loop.
+#
+# The Dagger CLI is provisioned by scripts/dagger-cli.sh at the exact version
+# written in dagger.json, so it does not need to be installed beforehand.
+
+env:
+  # Silence Dagger's Cloud upload and analytics paths globally.
+  DAGGER_NO_NAG: "1"
+  DAGGER_CLOUD_TOKEN: ""
+  DO_NOT_TRACK: "1"
+
+vars:
+  DAGGER:
+    sh: echo "$(./scripts/dagger-cli.sh)/dagger"
+  # Shared by `renovate:plan` and `renovate:patch`, kept in lockstep with
+  # `renovateImage` in dagger/base.go by a Renovate regex manager.
+  RENOVATE_IMAGE: renovate/renovate:44.167.7
+  DEV_DIR: "{{.TASKFILE_DIR}}/tmp/dev"
+  DEV_LISTEN: "127.0.0.1:10053"
+  DEV_PDNS_API_KEY: ZGV2LWFwaS1rZXk=
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  check:
+    desc: Run every gate that CI runs — drift checks, lint, tests, security
+    cmds:
+      - task: check:drift
+      - task: lint
+      - task: test
+      - task: security
+
+  check:quick:
+    desc: Short feedback loop before pushing — formatting, Go lint, unit tests
+    cmds:
+      - task: check:fmt
+      - task: lint:go
+      - task: test:unit
+
+  # ─── Drift checks ────────────────────────────────────────────────────────
+  check:drift:
+    desc: Formatting and module tidiness
+    cmds:
+      - task: check:fmt
+      - task: check:tidy
+
+  check:fmt:
+    desc: Fail when Go files are not formatted (gofumpt, gci)
+    cmds:
+      - "{{.DAGGER}} call check-fmt"
+
+  check:tidy:
+    desc: Fail when go.mod or go.sum is not tidy
+    cmds:
+      - "{{.DAGGER}} call check-tidy"
+
+  # ─── Build ───────────────────────────────────────────────────────────────
+  build:binary:host:
+    desc: Host-arch binary via a GoReleaser snapshot, symlinked at dist/tsigoat
+    cmds:
+      - goreleaser build --single-target --snapshot --clean
+      - cd dist && ln -sf tsigoat_*/tsigoat tsigoat
+
+  build:image:host:
+    desc: Host-arch images via a GoReleaser snapshot — fast, no QEMU
+    env:
+      GORELEASER_LOCAL_PLATFORM: "1"
+    cmds:
+      - goreleaser release --snapshot --skip=publish,sign --clean
+
+  build:image:all:
+    desc: Every cross-arch image via a GoReleaser snapshot, without pushing
+    cmds:
+      - goreleaser release --snapshot --skip=publish,sign --clean
+
+  # ─── Dependencies ────────────────────────────────────────────────────────
+  go:tidy:
+    desc: go mod tidy on the main module and ./dagger
+    cmds:
+      - go mod tidy
+      - go -C dagger mod tidy
+
+  go:upgrade:
+    desc: Upgrade the main module's Go dependencies, then tidy
+    # The dagger/ module is left alone: its SDK version must match the
+    # engineVersion of dagger.json, which Renovate bumps as a group.
+    cmds:
+      - go get -u ./...
+      - go mod tidy
+
+  dagger:develop:
+    desc: Regenerate the Dagger module bindings after a dagger.json change
+    cmds:
+      - "{{.DAGGER}} develop"
+      - go -C dagger mod tidy
+
+  nix:update:
+    desc: Update flake.lock to the latest inputs
+    cmds:
+      - nix --extra-experimental-features 'nix-command flakes' flake update
+
+  renovate:plan:
+    desc: Dry-run Renovate against the working tree and list the planned bumps
+    cmds:
+      - |
+        set -o pipefail
+        export GITHUB_COM_TOKEN="$(gh auth token 2>/dev/null || echo '')"
+        docker run --rm \
+          -v "$(pwd):/usr/src/app" \
+          -w /usr/src/app \
+          --user "$(id -u):$(id -g)" \
+          -e RENOVATE_PLATFORM=local \
+          -e LOG_LEVEL=debug \
+          -e LOG_FORMAT=json \
+          -e GITHUB_COM_TOKEN \
+          {{.RENOVATE_IMAGE}} 2>&1 \
+          | jq -rR 'fromjson?
+                   | select(.msg == "packageFiles with updates")
+                   | .config | to_entries[] | .value[]
+                   | .packageFile as $f
+                   | .deps[]? as $d | $d.updates[]?
+                   | "\($f)\t\($d.depName)\t\($d.currentValue // "?") → \(.newValue // $d.currentValue)"' \
+          | column -t -s "$(printf '\t')"
+
+  # ─── Tests ───────────────────────────────────────────────────────────────
+  test:
+    desc: Run all tests (unit + end-to-end)
+    cmds:
+      - task: test:unit
+      - task: test:e2e
+
+  test:unit:
+    desc: Unit tests with the race detector, a shuffled order and coverage
+    cmds:
+      - "{{.DAGGER}} call test"
+
+  test:e2e:
+    desc: "End-to-end tests against PowerDNS, inside Dagger (PDNS_VERSION=4.9|5.0)"
+    cmds:
+      - "{{.DAGGER}} call test-end-to-end --pdns-version={{.PDNS_VERSION | default \"5.0\"}}"
+
+  # ─── Quality ─────────────────────────────────────────────────────────────
+  lint:
+    desc: Run all linters
+    cmds:
+      - task: lint:go
+      - task: lint:markdown
+      - task: lint:actions
+      - task: lint:dockerfile
+      - task: lint:renovate
+
+  lint:go:
+    desc: golangci-lint with the repository configuration
+    cmds:
+      - "{{.DAGGER}} call lint-go"
+
+  lint:markdown:
+    desc: markdownlint-cli2 on hand-written Markdown
+    cmds:
+      - "{{.DAGGER}} call lint-markdown"
+
+  lint:actions:
+    desc: actionlint and zizmor on the GitHub workflows
+    cmds:
+      - "{{.DAGGER}} call lint-actions"
+
+  lint:dockerfile:
+    desc: hadolint on the image definitions
+    cmds:
+      - "{{.DAGGER}} call lint-dockerfile"
+
+  lint:renovate:
+    desc: renovate-config-validator on renovate.json5
+    cmds:
+      - "{{.DAGGER}} call lint-renovate"
+
+  # ─── Security ────────────────────────────────────────────────────────────
+  security:
+    desc: Run all security checks
+    cmds:
+      - task: security:gitleaks
+      - task: security:govulncheck
+      - task: security:vuln-deps
+
+  security:gitleaks:
+    desc: Gitleaks — scan the working tree for committed secrets
+    cmds:
+      - "{{.DAGGER}} call gitleaks"
+
+  security:govulncheck:
+    desc: govulncheck — reachability-based CVE scan of the Go code
+    cmds:
+      - "{{.DAGGER}} call govulncheck"
+
+  security:vuln-deps:
+    desc: Trivy filesystem scan of the dependencies (HIGH/CRITICAL)
+    cmds:
+      - "{{.DAGGER}} call trivy --scan-type=fs"
+
+  # ─── Analysis ────────────────────────────────────────────────────────────
+  analysis:graph:
+    desc: Render and open the package dependency graph (goda → graphviz)
+    cmds:
+      - mkdir -p dist
+      - goda graph ./... | dot -Tsvg > dist/graph.svg
+      - xdg-open dist/graph.svg 2>/dev/null || open dist/graph.svg 2>/dev/null || echo "Graph saved to dist/graph.svg"
+
+  # ─── Development loop ────────────────────────────────────────────────────
+  dev:
+    desc: "Run PowerDNS with the example.test. zone, exposed on localhost (API :8081, DNS :5300)"
+    cmds:
+      - "{{.DAGGER}} call dev-backend --api-key={{.DEV_PDNS_API_KEY}} up --ports 8081:8081,5300:5300"
+
+  dev:run:
+    desc: Run tsigoat natively against the `task dev` backend
+    vars:
+      KEY_FILE: "{{.DEV_DIR}}/tsig.key"
+      CONFIG_FILE: "{{.DEV_DIR}}/tsigoat.yaml"
+    cmds:
+      - mkdir -p "{{.DEV_DIR}}"
+      - |
+        if [ ! -s "{{.KEY_FILE}}" ]; then
+          head -c 32 /dev/urandom | base64 > "{{.KEY_FILE}}"
+          chmod 600 "{{.KEY_FILE}}"
+        fi
+      - |
+        cat > "{{.CONFIG_FILE}}" <<CONFIG
+        tsig:
+          keys:
+            - name: dev.
+              key: $(cat "{{.KEY_FILE}}")
+              default: true
+        handlers:
+          - name: pdns
+            adapter: powerdns
+            default: true
+            powerdns:
+              url: http://127.0.0.1:8081
+              vhost: localhost
+              key: {{.DEV_PDNS_API_KEY}}
+        zones:
+          - zone: example.test.
+        CONFIG
+      - echo "TSIG key dev. (hmac-sha256) — nsupdate -y hmac-sha256:dev.:$(cat '{{.KEY_FILE}}')"
+      - go run ./cmd/tsigoat serve --config "{{.CONFIG_FILE}}" --listen "{{.DEV_LISTEN}}" --log-format developer --log-level debug
