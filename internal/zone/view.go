@@ -101,10 +101,13 @@ func (v *View) SetRRset(ctx context.Context, name string, rrtype uint16, records
 	return nil
 }
 
-// Changes returns the changes from the backend content to the view, sorted
-// by name and type.
+// Changes returns the changes from the backend content to the view: the
+// deletions first, then the replacements, each sorted by name and type. The
+// deletions come first for the backends that check every change against the
+// state that the previous ones leave, as PowerDNS does within a PATCH: an
+// update may then replace a CNAME with other data, or the reverse.
 func (v *View) Changes() []backend.Change {
-	var changes []backend.Change
+	var deletions, replacements []backend.Change
 	for _, name := range slices.Sorted(maps.Keys(v.current)) {
 		before, after := v.original[name], v.current[name]
 		types := slices.Sorted(maps.Keys(before))
@@ -118,12 +121,12 @@ func (v *View) Changes() []backend.Change {
 			records, kept := after[rrtype]
 			switch {
 			case !kept:
-				changes = append(changes, backend.Change{
+				deletions = append(deletions, backend.Change{
 					Op:    backend.Delete,
 					RRset: backend.RRset{Name: name, Type: rrtype},
 				})
 			case !sameRRset(before[rrtype], records):
-				changes = append(changes, backend.Change{
+				replacements = append(replacements, backend.Change{
 					Op: backend.Replace,
 					RRset: backend.RRset{
 						Name:    name,
@@ -135,7 +138,7 @@ func (v *View) Changes() []backend.Change {
 			}
 		}
 	}
-	return changes
+	return append(deletions, replacements...)
 }
 
 // load reads the RRsets of a name from the backend, once.

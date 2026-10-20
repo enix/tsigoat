@@ -1,0 +1,15 @@
+description: >-
+  An update may replace the data of a name with a CNAME: it deletes every
+  RRset of the name, then adds the CNAME.
+refs: ["RFC 2136 3.4.2", "RFC 2181 10.1"]
+zone:
+  records:
+    - www 300 IN TXT "text"
+    - www 300 IN AAAA 2001:db8::1
+requests:
+  - updates:
+      - delete www
+      - add www 300 IN CNAME target.example.
+expect:
+  records:
+    - www 300 IN CNAME target.example.

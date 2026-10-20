@@ -165,7 +165,7 @@ func TestViewChanges(t *testing.T) {
 			want: []string{`replace www.example.test. TXT 30 ["hello"]`},
 		},
 		{
-			name: "every kind, sorted",
+			name: "every kind, deletions first",
 			modify: func(ctx context.Context, view *zone.View) error {
 				return errors.Join(
 					view.SetRRset(ctx, "WWW.example.test.", dns.TypeTXT, nil),
@@ -178,9 +178,9 @@ func TestViewChanges(t *testing.T) {
 				)
 			},
 			want: []string{
+				"delete www.example.test. TXT",
 				"replace new.example.test. AAAA 60 [2001:db8::1]",
 				"replace www.example.test. A 120 [192.0.2.1, 192.0.2.9]",
-				"delete www.example.test. TXT",
 			},
 		},
 	}

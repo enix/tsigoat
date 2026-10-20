@@ -1,0 +1,14 @@
+description: >-
+  An update may replace a CNAME with other data at the same name: it deletes
+  the CNAME, then adds the data.
+refs: ["RFC 2136 3.4.2", "RFC 2181 10.1"]
+zone:
+  records:
+    - www 300 IN CNAME target.example.
+requests:
+  - updates:
+      - delete www CNAME
+      - add www 300 IN A 192.0.2.1
+expect:
+  records:
+    - www 300 IN A 192.0.2.1
