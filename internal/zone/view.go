@@ -163,7 +163,10 @@ func (v *View) load(ctx context.Context, name string) (map[uint16][]dns.RR, erro
 		}
 		records := make([]dns.RR, 0, len(set.Records))
 		for _, rr := range set.Records {
-			c, err := canonical(rr)
+			// Records parsed from text may hold their RDATA in another form
+			// than the records of an update, which dns.IsDuplicate would tell
+			// apart.
+			c, err := backend.Canonical(rr)
 			if err != nil {
 				return nil, fmt.Errorf("reading %s %s: %w", name, dns.Type(set.Type), err)
 			}
@@ -208,23 +211,6 @@ func SameRecords(a, b []dns.RR) bool {
 		}
 	}
 	return true
-}
-
-// canonical returns a copy of a record decoded from its wire format. Records
-// parsed from text may hold their RDATA in another form than the same records
-// received in a message, such as TXT strings with escapes, which would make
-// dns.IsDuplicate tell them apart.
-func canonical(rr dns.RR) (dns.RR, error) {
-	buf := make([]byte, dns.Len(rr)+1)
-	n, err := dns.PackRR(rr, buf, 0, nil, false)
-	if err != nil {
-		return nil, fmt.Errorf("encoding %s: %w", rr, err)
-	}
-	decoded, _, err := dns.UnpackRR(buf[:n], 0)
-	if err != nil {
-		return nil, fmt.Errorf("decoding %s: %w", rr, err)
-	}
-	return decoded, nil
 }
 
 func copyRecords(records []dns.RR) []dns.RR {
