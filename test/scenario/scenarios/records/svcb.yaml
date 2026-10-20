@@ -1,0 +1,13 @@
+description: >-
+  An SVCB record with several kinds of service parameters reaches the backend
+  intact, and can be deleted by value.
+refs: ["RFC 9460", "RFC 2136 3.4.2.4"]
+requests:
+  - updates:
+      - add _8443._api 300 IN SVCB 1 svc.example. mandatory=alpn alpn=h2,h3 no-default-alpn port=8443 ipv4hint=192.0.2.1,192.0.2.2 ipv6hint=2001:db8::1
+      - add _8443._api 300 IN SVCB 2 backup.example. alpn=h2
+  - updates:
+      - delete _8443._api SVCB 2 backup.example. alpn=h2
+expect:
+  records:
+    - _8443._api 300 IN SVCB 1 svc.example. mandatory=alpn alpn=h2,h3 no-default-alpn port=8443 ipv4hint=192.0.2.1,192.0.2.2 ipv6hint=2001:db8::1

@@ -1,0 +1,8 @@
+description: A URI record reaches the backend intact.
+refs: ["RFC 7553"]
+requests:
+  - updates:
+      - add _ftp._tcp 300 IN URI 10 1 "ftp://ftp.example.test/public"
+expect:
+  records:
+    - _ftp._tcp 300 IN URI 10 1 "ftp://ftp.example.test/public"

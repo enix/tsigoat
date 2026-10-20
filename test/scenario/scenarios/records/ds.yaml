@@ -1,0 +1,10 @@
+description: A delegation with its DS record reaches the backend intact.
+refs: ["RFC 4034 5"]
+requests:
+  - updates:
+      - add sub 3600 IN NS ns.elsewhere.test.
+      - add sub 3600 IN DS 12345 13 2 3E1B1E5D6A0C9B8F7E6D5C4B3A29180706F5E4D3C2B1A09F8E7D6C5B4A392817
+expect:
+  records:
+    - sub 3600 IN NS ns.elsewhere.test.
+    - sub 3600 IN DS 12345 13 2 3E1B1E5D6A0C9B8F7E6D5C4B3A29180706F5E4D3C2B1A09F8E7D6C5B4A392817

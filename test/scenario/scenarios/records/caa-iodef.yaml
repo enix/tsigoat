@@ -1,0 +1,10 @@
+description: CAA records with the critical flag and several tags reach the backend intact.
+refs: ["RFC 8659"]
+requests:
+  - updates:
+      - add @ 300 IN CAA 0 issue "letsencrypt.org; validationmethods=dns-01"
+      - add @ 300 IN CAA 128 iodef "mailto:security@example.test"
+expect:
+  records:
+    - '@ 300 IN CAA 0 issue "letsencrypt.org; validationmethods=dns-01"'
+    - '@ 300 IN CAA 128 iodef "mailto:security@example.test"'

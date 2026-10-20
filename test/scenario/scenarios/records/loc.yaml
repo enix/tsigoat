@@ -1,0 +1,8 @@
+description: A LOC record reaches the backend intact.
+refs: ["RFC 1876"]
+requests:
+  - updates:
+      - add office 300 IN LOC 48 51 24.000 N 2 21 3.000 E 35.00m 10m 100m 10m
+expect:
+  records:
+    - office 300 IN LOC 48 51 24.000 N 2 21 3.000 E 35.00m 10m 100m 10m

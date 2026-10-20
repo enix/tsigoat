@@ -1,0 +1,8 @@
+description: A PTR record reaches the backend intact.
+refs: ["RFC 1035 3.3.12"]
+requests:
+  - updates:
+      - add 10 300 IN PTR host.example.test.
+expect:
+  records:
+    - 10 300 IN PTR host.example.test.

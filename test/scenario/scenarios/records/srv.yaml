@@ -1,0 +1,11 @@
+description: SRV records reach the backend intact, and one of them can be deleted by value.
+refs: ["RFC 2782", "RFC 2136 3.4.2.4"]
+requests:
+  - updates:
+      - add _sip._tcp 300 IN SRV 10 60 5060 sip1
+      - add _sip._tcp 300 IN SRV 20 60 5060 sip2
+  - updates:
+      - delete _sip._tcp SRV 10 60 5060 sip1
+expect:
+  records:
+    - _sip._tcp 300 IN SRV 20 60 5060 sip2

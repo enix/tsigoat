@@ -1,0 +1,8 @@
+description: A NAPTR record reaches the backend intact.
+refs: ["RFC 3403"]
+requests:
+  - updates:
+      - add @ 300 IN NAPTR 100 10 "S" "SIP+D2U" "" _sip._udp
+expect:
+  records:
+    - '@ 300 IN NAPTR 100 10 "S" "SIP+D2U" "" _sip._udp'

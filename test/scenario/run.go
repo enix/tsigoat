@@ -96,11 +96,20 @@ func normalizedRecords(ctx context.Context, target Target, zone string) ([]strin
 }
 
 // Normalize returns the canonical text of a record, so that records read from
-// a backend and records written in a scenario compare equal.
+// a backend and records written in a scenario compare equal: the record goes
+// through its wire format, which erases the textual variations of its RDATA,
+// such as the case of hexadecimal strings or the escapes of TXT strings.
 func Normalize(rr dns.RR) string {
+	buf := make([]byte, dns.Len(rr)+1)
+	if n, err := dns.PackRR(rr, buf, 0, nil, false); err == nil {
+		if decoded, _, err := dns.UnpackRR(buf[:n], 0); err == nil {
+			rr = decoded
+		}
+	}
 	rr = dns.Copy(rr)
 	rr.Header().Name = dns.CanonicalName(rr.Header().Name)
-	return strings.Join(strings.Fields(rr.String()), " ")
+	// Fields are tab-separated; the RDATA keeps its own spacing.
+	return strings.Join(strings.SplitN(rr.String(), "\t", 5), " ")
 }
 
 type response struct {

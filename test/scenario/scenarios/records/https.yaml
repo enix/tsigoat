@@ -1,0 +1,8 @@
+description: An HTTPS record with service parameters reaches the backend intact.
+refs: ["RFC 9460"]
+requests:
+  - updates:
+      - add @ 300 IN HTTPS 1 . alpn="h2,h3" port=8443
+expect:
+  records:
+    - '@ 300 IN HTTPS 1 . alpn="h2,h3" port=8443'

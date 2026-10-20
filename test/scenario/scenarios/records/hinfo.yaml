@@ -1,0 +1,8 @@
+description: An HINFO record reaches the backend intact.
+refs: ["RFC 8482 4.2"]
+requests:
+  - updates:
+      - add host 300 IN HINFO "RFC8482" ""
+expect:
+  records:
+    - host 300 IN HINFO "RFC8482" ""

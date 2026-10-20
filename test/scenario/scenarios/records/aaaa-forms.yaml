@@ -1,0 +1,11 @@
+description: An AAAA record can be deleted with another textual form of its address.
+refs: ["RFC 5952", "RFC 2136 3.4.2.4"]
+requests:
+  - updates:
+      - add host 300 IN AAAA 2001:0DB8:0000:0000:0000:0000:0000:0010
+      - add host 300 IN AAAA 2001:db8::20
+  - updates:
+      - delete host AAAA 2001:db8::10
+expect:
+  records:
+    - host 300 IN AAAA 2001:db8::20

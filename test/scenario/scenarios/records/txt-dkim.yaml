@@ -1,0 +1,13 @@
+description: >-
+  A DKIM key longer than one TXT string keeps its strings apart, and can be
+  deleted by value.
+refs: ["RFC 6376 3.6.2.2", "RFC 2136 3.4.2.4"]
+requests:
+  - updates:
+      - add mail._domainkey 300 IN TXT "v=DKIM1; k=rsa; p=bjQLnP+zepicpUTmu3gKLHiQHT+zNzh2hRGjBhevoB1L9RIvNEVUxTveLruM0rfj0WAK1jHDhaXXzOI8d4VFmtvBtMkA/+SNV1tdpcY4BAEl9l2w/j4kSUt26phkV9mGCE/tCLl4r019GWp0RqhrWACeY2thHbFiEbZamq3/KcXlLZxQjFAjRzRNjAetkcvWBor8df9ikvBioJyjgcieced7mprp4wsNvbb1EKJk753ng" "VAde2uSronrBZxat0PbZ1humPrSfaC5lovAOaHvNMk5ubjlI6i++J1HhgjF7PbKNYdY9tJ+bPRScpN5d6dI/Yg5HbZ5ztp9x78fAF7oeb7q13mUz1czQewXtYu/frNNJxHJk8HZdrEosxiNwYKa"
+      - add mail._domainkey 300 IN TXT "kept"
+  - updates:
+      - delete mail._domainkey TXT "v=DKIM1; k=rsa; p=bjQLnP+zepicpUTmu3gKLHiQHT+zNzh2hRGjBhevoB1L9RIvNEVUxTveLruM0rfj0WAK1jHDhaXXzOI8d4VFmtvBtMkA/+SNV1tdpcY4BAEl9l2w/j4kSUt26phkV9mGCE/tCLl4r019GWp0RqhrWACeY2thHbFiEbZamq3/KcXlLZxQjFAjRzRNjAetkcvWBor8df9ikvBioJyjgcieced7mprp4wsNvbb1EKJk753ng" "VAde2uSronrBZxat0PbZ1humPrSfaC5lovAOaHvNMk5ubjlI6i++J1HhgjF7PbKNYdY9tJ+bPRScpN5d6dI/Yg5HbZ5ztp9x78fAF7oeb7q13mUz1czQewXtYu/frNNJxHJk8HZdrEosxiNwYKa"
+expect:
+  records:
+    - mail._domainkey 300 IN TXT "kept"
