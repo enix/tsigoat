@@ -65,6 +65,9 @@ Dagger specifics:
   too.
 - Tests and clients run as containers bound to the services; nothing is
   published on the host.
+- `dagger ... up --ports` only forwards TCP: from the host, query the dev
+  PowerDNS with `dig +tcp`. tsigoat itself runs natively in the dev loop, so
+  UDP clients reach it directly.
 - Generated bindings (`dagger/dagger.gen.go`, `dagger/internal/`) are not
   committed; run `task dagger:develop` after changing `dagger.json`.
 

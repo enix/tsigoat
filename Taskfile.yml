@@ -220,6 +220,7 @@ tasks:
   # ─── Development loop ────────────────────────────────────────────────────
   dev:
     desc: "Run PowerDNS with the example.test. zone, exposed on localhost (API :8081, DNS :5300)"
+    # `dagger up` forwards TCP only: query this PowerDNS with `dig +tcp`.
     cmds:
       - "{{.DAGGER}} call dev-backend --api-key={{.DEV_PDNS_API_KEY}} up --ports 8081:8081,5300:5300"
 
