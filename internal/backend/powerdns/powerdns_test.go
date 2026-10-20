@@ -704,13 +704,12 @@ func TestUnansweredPatch(t *testing.T) {
 
 	t.Run("unreachable", func(t *testing.T) {
 		t.Parallel()
+		// A backend that read nothing has no connection to reuse, which the
+		// server could close under a request written whole: that request
+		// would leave its outcome unknown.
 		_, server := newFakeAPI(t)
-		b := newBackend(t, server.URL)
-		if _, err := b.Lookup(t.Context(), "example.test.", "www.example.test."); err != nil {
-			t.Fatal(err)
-		}
 		server.Close()
-		err := b.Apply(t.Context(), "example.test.", changes(t))
+		err := newBackend(t, server.URL).Apply(t.Context(), "example.test.", changes(t))
 		if err == nil || backend.IsIndeterminate(err) {
 			t.Errorf("Apply() to a closed server = %v, want a plain error", err)
 		}
