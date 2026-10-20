@@ -91,5 +91,7 @@ func (o *serveOptions) run(settings *cmd.ServerSettings) error {
 	// The legacy server package logs through a package-level logger.
 	server.Logger = logger
 
-	return server.NewServer(&config).Run()
+	srv := server.NewServer(&config)
+	srv.ListenAddress = settings.ListenAddress
+	return srv.Run()
 }

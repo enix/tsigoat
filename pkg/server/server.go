@@ -14,9 +14,13 @@ import (
 
 var Logger *zap.SugaredLogger // TODO move to Server struct
 
+// DefaultListenAddress is used when no listen address is configured.
+const DefaultListenAddress = "[::]:5353"
+
 // FIXME refactor server state
 type Server struct {
 	Configuration  *Configuration
+	ListenAddress  string
 	keyring        tsig.TsigKeyring
 	defaultKeyName string
 	adapters       []common.IAdapter
@@ -60,7 +64,7 @@ func (s *Server) Run() error {
 
 func (s *Server) serve(net string, provider *tsig.TsigProvider, soreuseport bool) {
 	server := &miekgdns.Server{
-		Addr:          "[::]:5353", // FIXME config from cobra and ServerSettings
+		Addr:          s.listenAddress(),
 		Net:           net,
 		ReusePort:     soreuseport,
 		TsigProvider:  provider,
@@ -74,6 +78,13 @@ func (s *Server) serve(net string, provider *tsig.TsigProvider, soreuseport bool
 	if err := server.ListenAndServe(); err != nil {
 		Logger.Fatalw("failed to start network server", "protocol", net, "error", err)
 	}
+}
+
+func (s *Server) listenAddress() string {
+	if s.ListenAddress == "" {
+		return DefaultListenAddress
+	}
+	return s.ListenAddress
 }
 
 func (s *Server) msgAcceptAction(dh miekgdns.Header) miekgdns.MsgAcceptAction {

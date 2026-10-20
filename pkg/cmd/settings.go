@@ -37,6 +37,7 @@ type ServerSettings struct {
 	SlogLogger        *slog.Logger
 	UseAutoMaxProcs   bool
 	UseAutoMemLimit   bool
+	ListenAddress     string
 	ConfigurationFile *server.ConfigurationFile
 }
 
@@ -76,6 +77,9 @@ func (s *ServerSettings) AddFlags(fs *pflag.FlagSet) {
 		"Automatically set GOMAXPROCS to match Linux cgroups CPU quota")
 	fs.BoolVar(&s.UseAutoMemLimit, "auto-gomemlimit", true,
 		"Automatically set GOMEMLIMIT to match Linux cgroups memory limit")
+
+	fs.StringVar(&s.ListenAddress, "listen", server.DefaultListenAddress,
+		"Address and port to listen on, for both UDP and TCP")
 
 	fs.VarP(&s.ConfigurationFile.Type, "config-format", "e",
 		fmt.Sprintf("Decoder for the configuration file. Also sets the file extension for -p. Valid values are: %s.",
