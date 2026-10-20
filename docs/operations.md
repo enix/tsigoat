@@ -19,9 +19,12 @@ default. `serve` also takes:
 | `--log-level` | `debug`, `info`, the default, `warn` or `error` |
 | `--auto-gomemlimit` | Set the Go memory limit from the cgroup; on by default |
 
-A request runs for at most ten seconds, backend calls included. On SIGINT or
-SIGTERM, tsigoat stops listening on every address at once, then finishes the
-requests in progress.
+A request runs for at most ten seconds, backend calls included; an update
+that fails at a hosted provider may go on for up to fifteen seconds more, to
+read its records back or to restore them. On SIGINT or SIGTERM, tsigoat stops
+listening on every address at once, then finishes the requests in progress,
+for 26 seconds at most: give it that much time to stop, as the 30 seconds of
+the `terminationGracePeriodSeconds` of the chart do.
 
 ## Container images
 

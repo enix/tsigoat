@@ -5,14 +5,17 @@
 // servers serve a zone as it stood at its last refresh. tsigoat reads the
 // records of a name, computes which records to create, delete or retime,
 // applies them one request at a time, then refreshes the zone once, so that
-// the name servers see the update whole. The API has no transaction: when a
-// step fails, tsigoat undoes the steps before it and refreshes nothing; when
-// undoing fails too, the error says so, and the zone keeps the changes made
-// until the next refresh, which publishes them. OVHcloud manages the SOA and
-// the NS records of the apex, which tsigoat shows but never changes.
+// the name servers see the update whole. The API has no transaction, and a
+// request that fails may have applied: when a request or the refresh fails,
+// tsigoat reads the records again and brings them back to their content
+// before the update, then publishes the zone; when that fails too, the
+// outcome is unknown, and the zone may hold part of the update. OVHcloud
+// manages the SOA and the NS records of the apex, which tsigoat shows but
+// never changes.
 package ovh
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,7 +24,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -53,6 +55,9 @@ type Options struct {
 	TokenURL string
 	// Timeout bounds every call to the API; DefaultTimeout when zero.
 	Timeout time.Duration
+	// RefreshDelay is the delay before the second attempt of a refresh,
+	// which doubles for the next one; one second when zero.
+	RefreshDelay time.Duration
 	// UserAgent identifies tsigoat.
 	UserAgent string
 }
@@ -64,11 +69,8 @@ type Backend struct {
 	// clock tells the time of the API, for the signatures; nil with an
 	// OAuth2 service account.
 	clock *clock
-
-	// unpublished holds the zones whose records changed since their last
-	// refresh, which failed: the next update refreshes them.
-	unpublishedMu sync.Mutex
-	unpublished   map[string]bool
+	// refreshDelay is the delay before the second attempt of a refresh.
+	refreshDelay time.Duration
 }
 
 var (
@@ -99,8 +101,8 @@ func New(options *Options) (*Backend, error) {
 			UserAgent: options.UserAgent,
 			Describe:  describe,
 		},
-		limits:      newLimits(),
-		unpublished: map[string]bool{},
+		limits:       newLimits(),
+		refreshDelay: cmp.Or(options.RefreshDelay, defaultRefreshDelay),
 	}
 
 	if err := b.authenticate(options, client, timeout); err != nil {

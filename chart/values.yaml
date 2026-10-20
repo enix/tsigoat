@@ -354,7 +354,8 @@ priorityClassName: ""
 # type: integer
 # minimum: 0
 # @schema
-# -- Time given to the updates in progress when the pod stops
+# -- Time given to the updates in progress when the pod stops: tsigoat
+# needs 26 seconds at most
 terminationGracePeriodSeconds: 30
 
 # -- Additional objects to deploy with the release, as YAML objects or

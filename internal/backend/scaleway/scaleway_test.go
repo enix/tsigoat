@@ -143,8 +143,8 @@ func TestAmbiguousOutcome(t *testing.T) {
 	}
 	api.FailPatch(http.StatusServiceUnavailable, "maintenance")
 	err := b.Apply(t.Context(), testZone, []backend.Change{replace(t, `www.example.test. 300 IN TXT "b"`)})
-	if err == nil || !strings.Contains(err.Error(), "do not show the update") {
-		t.Errorf("Apply() = %v, want the failure, read back", err)
+	if !backend.IsIndeterminate(err) || !strings.Contains(err.Error(), "do not show the update") {
+		t.Errorf("Apply() = %v, want an unknown outcome, read back", err)
 	}
 }
 

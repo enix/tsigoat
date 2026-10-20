@@ -62,15 +62,20 @@ type API struct {
 	// published holds the records of every zone at its last refresh.
 	published map[string][]Record
 	refreshes int
-	// failures holds the responses of the next write requests: a nil entry
-	// lets a request through.
-	failures []*failure
+	// failures holds the outcomes of the next write requests.
+	failures []Failure
 	tokens   int
 }
 
-type failure struct {
-	status  int
-	message string
+// Failure is the outcome of a write request, refreshes included.
+type Failure struct {
+	// Status is the status of the error response; 0 lets the request
+	// through.
+	Status  int
+	Message string
+	// AfterCommit applies the request before answering the error, as a
+	// request whose response is lost.
+	AfterCommit bool
 }
 
 // New starts a simulated API until the end of the test.
@@ -165,20 +170,12 @@ func (a *API) SetSkew(skew time.Duration) {
 	a.skew = skew
 }
 
-// FailWrites makes the next write requests, refreshes included, fail with the
-// status and the message; a status of 0 lets a request through.
-func (a *API) FailWrites(failures ...[2]any) {
+// FailWrites sets the outcomes of the next write requests, refreshes
+// included.
+func (a *API) FailWrites(failures ...Failure) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, f := range failures {
-		status, _ := f[0].(int)
-		message, _ := f[1].(string)
-		if status == 0 {
-			a.failures = append(a.failures, nil)
-			continue
-		}
-		a.failures = append(a.failures, &failure{status: status, message: message})
-	}
+	a.failures = append(a.failures, failures...)
 }
 
 func (a *API) publish(zone string) {
@@ -233,8 +230,11 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method != http.MethodGet {
-		if f := a.nextFailure(); f != nil {
-			errorBody(w, f.status, "Client::BadRequest", f.message)
+		if f := a.nextFailure(); f.Status != 0 {
+			if f.AfterCommit {
+				a.zone(httptest.NewRecorder(), r, parts, body)
+			}
+			errorBody(w, f.Status, "Server::InternalServerError", f.Message)
 			return
 		}
 	}
@@ -269,11 +269,11 @@ func (a *API) zone(w http.ResponseWriter, r *http.Request, parts []string, body 
 	}
 }
 
-func (a *API) nextFailure() *failure {
+func (a *API) nextFailure() Failure {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.failures) == 0 {
-		return nil
+		return Failure{}
 	}
 	f := a.failures[0]
 	a.failures = a.failures[1:]

@@ -203,6 +203,6 @@ covers the images and the binaries.
 | tolerations | list | `[]` | Tolerations of the pod |
 | affinity | object | `{}` | Affinity of the pod |
 | priorityClassName | string | `""` | Priority class of the pod |
-| terminationGracePeriodSeconds | int | `30` | Time given to the updates in progress when the pod stops |
+| terminationGracePeriodSeconds | int | `30` | Time given to the updates in progress when the pod stops: tsigoat needs 26 seconds at most |
 | extraDeploy | list | `[]` | Additional objects to deploy with the release, as YAML objects or strings, both rendered as templates |
 | global.imageRegistry | string | `""` | Registry of every image, which overrides `image.registry` |

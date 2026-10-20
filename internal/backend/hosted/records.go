@@ -139,16 +139,28 @@ func (s *Steps) Empty() bool {
 // change at the provider, into the content of the change. A record that the
 // RRset keeps stays, and only changes its TTL if needed; a duplicate goes.
 func Diff(current []Record, change *backend.Change) Steps {
-	var steps Steps
-	if change.Op == backend.Delete {
-		steps.Delete = slices.Clone(current)
-		return steps
+	var wanted []Record
+	if change.Op == backend.Replace {
+		for _, rr := range change.RRset.Records {
+			record := dns.Copy(rr)
+			record.Header().Ttl = change.RRset.TTL
+			wanted = append(wanted, Record{RR: record})
+		}
 	}
+	return Restore(current, wanted)
+}
+
+// Restore returns the steps that turn current, the records of an RRset at the
+// provider, into wanted, records with their own TTLs, such as the records of
+// the RRset before an update that failed. A record that wanted holds stays,
+// and only gets the TTL of wanted if needed; the others go.
+func Restore(current, wanted []Record) Steps {
+	var steps Steps
 	kept := make([]bool, len(current))
-	for _, rr := range change.RRset.Records {
-		i := slices.IndexFunc(current, func(r Record) bool { return dns.IsDuplicate(r.RR, rr) })
+	for _, w := range wanted {
+		i := slices.IndexFunc(current, func(r Record) bool { return dns.IsDuplicate(r.RR, w.RR) })
 		for i >= 0 && kept[i] {
-			next := slices.IndexFunc(current[i+1:], func(r Record) bool { return dns.IsDuplicate(r.RR, rr) })
+			next := slices.IndexFunc(current[i+1:], func(r Record) bool { return dns.IsDuplicate(r.RR, w.RR) })
 			if next < 0 {
 				i = -1
 				break
@@ -156,15 +168,13 @@ func Diff(current []Record, change *backend.Change) Steps {
 			i += next + 1
 		}
 		if i < 0 {
-			created := dns.Copy(rr)
-			created.Header().Ttl = change.RRset.TTL
-			steps.Create = append(steps.Create, created)
+			steps.Create = append(steps.Create, dns.Copy(w.RR))
 			continue
 		}
 		kept[i] = true
-		if current[i].RR.Header().Ttl != change.RRset.TTL {
+		if ttl := w.RR.Header().Ttl; current[i].RR.Header().Ttl != ttl {
 			retimed := dns.Copy(current[i].RR)
-			retimed.Header().Ttl = change.RRset.TTL
+			retimed.Header().Ttl = ttl
 			steps.Retime = append(steps.Retime, Record{ID: current[i].ID, RR: retimed})
 		}
 	}

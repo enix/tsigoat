@@ -96,8 +96,10 @@ lower TTLs down, and the server raises the TTLs of an update to the minimum,
 which the update log reports. The PowerDNS backend sends one PATCH request,
 which PowerDNS applies in one transaction, as the Cloudflare and Scaleway
 backends send one batch, or PATCH, request. The API of OVHcloud has no
-transaction: its backend writes one record at a time, undoes what it wrote
-when a request fails, and publishes the zone once, at the end.
+transaction: its backend writes one record at a time and publishes the zone
+once, at the end; when a request fails, it reads the records again and brings
+them back to their content before the update, whatever the failed request
+did.
 
 The backends of the hosted providers share `internal/backend/hosted`. They read
 the records of a name, with their identifiers, and group them into RRsets; to
@@ -106,7 +108,9 @@ tells which records to delete, to create, or whose TTL changes, so that the
 records that stay keep their identifier. `hosted.Limits` turns down, before any
 request, what a provider cannot hold intact. When a write fails without telling
 whether it applied, as after a timeout, the backend reads the records again and
-reports a success if they show the update.
+reports a success if they show the update. These recoveries go on past the
+deadline of the update, within `backend.RecoveryBudget`, which the server
+waits for at shutdown.
 
 ```go
 type Relay interface {

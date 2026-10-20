@@ -35,6 +35,18 @@ type Backend interface {
 	Apply(ctx context.Context, zone string, changes []Change) error
 }
 
+// RecoveryBudget bounds the work that a backend does past the deadline of an
+// update, to establish its outcome or to undo it: reading the records back,
+// undoing what it wrote. The server waits for it at shutdown.
+const RecoveryBudget = 15 * time.Second
+
+// RecoveryContext returns the context of a recovery past the deadline of
+// ctx: it keeps the values of ctx, but not its cancellation, and ends after
+// RecoveryBudget.
+func RecoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), RecoveryBudget)
+}
+
 // IndeterminateError reports a write whose outcome tsigoat could not
 // establish, as after a timeout whose effect it could not read back, or a
 // recovery that failed: the backend may hold all of the update, part of it,

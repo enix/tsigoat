@@ -16,15 +16,19 @@ see of it, such as a comment.
 
 | Provider | An update is | Whole or not at all |
 | --- | --- | --- |
-| Cloudflare | One batch request | Yes: one transaction |
-| Scaleway | One PATCH request | Yes: one version of the zone |
-| OVHcloud | One request per record, then a refresh of the zone | The name servers see the update whole, at the refresh; a failure undoes the requests made |
+| Cloudflare | One batch request | Yes, in the API: one transaction; the name servers may serve its records a few seconds apart |
+| Scaleway | One PATCH request | Yes, in the API: one version of the zone |
+| OVHcloud | One request per record, then a refresh of the zone | The name servers see the update whole, at the refresh; after a failure, tsigoat brings the records back as they were |
 
-When a request times out, or gets a server error, the update may have applied
-or not: tsigoat reads the records again, and answers NOERROR when they show
-the update, SERVFAIL otherwise. A request turned down for its rate goes again
-after the delay that the provider asks for, within the deadline of the
-update.
+Whole does not mean certain: when a request times out, or gets a server
+error, the update may have applied or not. tsigoat then reads the records
+again, and answers NOERROR when they show the update. Otherwise the update
+gets SERVFAIL, and its outcome is unknown, since the request may still apply:
+the update log tells so, the metrics count the call as `indeterminate`, and the
+[TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates) alert fires.
+A client that sends the update again brings its RRsets to the wanted content
+anyway. A request turned down for its rate goes again after the delay that the
+provider asks for, when the deadline of the update leaves time for it.
 
 ## What tsigoat turns down
 

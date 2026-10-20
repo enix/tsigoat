@@ -78,13 +78,16 @@ Service accounts need one of the endpoints `ovh-eu`, `ovh-ca` and `ovh-us`.
   stood at its last refresh. tsigoat applies the records of an update one
   request at a time, the deletions, the changes of TTL, then the creations,
   and refreshes the zone once, so that the name servers see the update whole.
-- **No transaction**: when a request fails, tsigoat undoes the requests before
-  it, in reverse order, and the update gets SERVFAIL; the zone is as it was. A
-  refresh that fails three times undoes the update the same way. When undoing
-  fails too, the error tells so: the records of the update that stay wait for
-  the next refresh of the zone, by tsigoat or by anyone, which publishes them.
-  A refresh by another writer, such as the control panel, publishes what an
-  update of tsigoat is writing too, if it comes in between.
+- **No transaction**: a request that fails may have applied anyway, before
+  its response was lost. When a request fails, or the refresh fails three
+  times, tsigoat reads the records of the update again, brings them back to
+  their content before the update, whatever the requests did, checks them,
+  and refreshes the zone; the update gets SERVFAIL. When that fails too, the
+  outcome is unknown: the zone may hold part of the update, which the next
+  refresh, by tsigoat or by anyone, publishes; the update log tells so, and
+  the [TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates) alert
+  fires. A refresh by another writer, such as the control panel, publishes
+  what an update of tsigoat is writing too, if it comes in between.
 - **Lookups**: one request lists the records of a name, then one request
   reads each of them.
 

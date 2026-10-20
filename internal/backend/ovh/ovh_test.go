@@ -2,6 +2,7 @@ package ovh_test
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -116,7 +117,7 @@ func TestClock(t *testing.T) {
 }
 
 // TestPublication checks that an update is published by one refresh, and that
-// an update that fails is undone and not published.
+// an update that fails before any request applied publishes nothing.
 func TestPublication(t *testing.T) {
 	t.Parallel()
 	b, api := newBackend(t, rr(t, `www.example.test. 300 IN TXT "kept"`))
@@ -130,28 +131,84 @@ func TestPublication(t *testing.T) {
 		t.Errorf("after an update: %d refreshes, published %v", api.Refreshes()-refreshes, api.Published(testZone))
 	}
 
-	// The third write, the second creation, fails: the deletion and the
-	// first creation are undone, and nothing is published.
-	before := api.Records(testZone)
-	api.FailWrites([2]any{0, ""}, [2]any{0, ""}, [2]any{http.StatusBadRequest, "injected failure"})
-	err := b.Apply(ctx, testZone, []backend.Change{replace(t, `www.example.test. 300 IN TXT "c"`, `www.example.test. 300 IN TXT "d"`)})
-	if err == nil || !strings.Contains(err.Error(), "injected failure") || !strings.Contains(err.Error(), "were undone") {
-		t.Errorf("Apply() = %v, want the failure, undone", err)
+	// The first request fails, before it applies: nothing changes, and
+	// nothing is refreshed.
+	before, refreshes := api.Records(testZone), api.Refreshes()
+	api.FailWrites(ovhtest.Failure{Status: http.StatusBadRequest, Message: "injected failure"})
+	err := b.Apply(ctx, testZone, []backend.Change{replace(t, `www.example.test. 300 IN TXT "c"`)})
+	if err == nil || backend.IsIndeterminate(err) || !strings.Contains(err.Error(), "injected failure") {
+		t.Errorf("Apply() = %v, want the failure", err)
 	}
-	if !sameTargets(api.Records(testZone), before) || published(api, `"c"`) {
-		t.Errorf("after a failed update: records %v, published %v", api.Records(testZone), api.Published(testZone))
+	if !sameRecords(api.Records(testZone), before) || api.Refreshes() != refreshes {
+		t.Errorf("after a failed update: records %v, %d refreshes", api.Records(testZone), api.Refreshes()-refreshes)
 	}
+}
 
-	// The refresh fails three times: the update is undone.
-	api.FailWrites([2]any{0, ""}, [2]any{0, ""}, [2]any{0, ""},
-		[2]any{http.StatusConflict, "refresh in progress"}, [2]any{http.StatusConflict, "refresh in progress"},
-		[2]any{http.StatusConflict, "refresh in progress"})
-	err = b.Apply(ctx, testZone, []backend.Change{replace(t, `www.example.test. 300 IN TXT "e"`)})
-	if err == nil || !strings.Contains(err.Error(), "refreshing the zone") {
-		t.Errorf("Apply() = %v, want the failure of the refresh", err)
-	}
-	if !sameTargets(api.Records(testZone), before) {
-		t.Errorf("after a failed refresh: records %v, want them undone", api.Records(testZone))
+// TestRecovery checks that an update whose request or refresh fails, after it
+// applied or not, leaves the zone as it was, published, or tells that its
+// outcome is unknown.
+func TestRecovery(t *testing.T) {
+	t.Parallel()
+	pass := ovhtest.Failure{}
+	committed := ovhtest.Failure{Status: http.StatusInternalServerError, Message: "lost response", AfterCommit: true}
+	refused := ovhtest.Failure{Status: http.StatusInternalServerError, Message: "refused"}
+	for _, c := range []struct {
+		label         string
+		change        string
+		failures      []ovhtest.Failure
+		indeterminate bool
+	}{
+		// Delete "old", create "new", which applies but fails.
+		{label: "creation", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{pass, committed}},
+		// Delete "old", which applies but fails.
+		{label: "deletion", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{committed}},
+		// Retime "old", which applies but fails.
+		{label: "retime", change: `www.example.test. 600 IN TXT "old"`, failures: []ovhtest.Failure{committed}},
+		// The three refreshes apply but fail; the refresh of the records
+		// restored succeeds.
+		{label: "refresh", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{
+			pass, pass, committed, committed, committed,
+		}},
+		// The refresh of the records restored fails too: the name servers
+		// may serve the update.
+		{label: "refresh after restoring", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{
+			pass, pass, committed, committed, committed, pass, pass, refused, refused, refused,
+		}},
+		// Restoring fails: the zone may hold part of the update.
+		{label: "restoring", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{
+			pass, committed, refused,
+		}},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			t.Parallel()
+			api := ovhtest.New(t)
+			api.CreateZone(testZone, rr(t, `www.example.test. 300 IN TXT "old"`))
+			b, err := ovh.New(&ovh.Options{
+				Endpoint:       api.URL,
+				ApplicationKey: ovhtest.ApplicationKey, ApplicationSecret: ovhtest.ApplicationSecret, ConsumerKey: ovhtest.ConsumerKey,
+				RefreshDelay: time.Millisecond,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			before := api.Records(testZone)
+			api.FailWrites(c.failures...)
+			err = b.Apply(t.Context(), testZone, []backend.Change{replace(t, c.change)})
+			switch {
+			case err == nil:
+				t.Fatal("Apply() succeeded, want an error")
+			case backend.IsIndeterminate(err) != c.indeterminate:
+				t.Fatalf("Apply() = %v, want an indeterminate outcome: %t", err, c.indeterminate)
+			case c.indeterminate:
+				return
+			}
+			if !strings.Contains(err.Error(), "the records are as they were") {
+				t.Errorf("Apply() = %v, want the records restored", err)
+			}
+			if !sameRecords(api.Records(testZone), before) || !sameRecords(api.Published(testZone), before) {
+				t.Errorf("records %v, published %v, want %v", api.Records(testZone), api.Published(testZone), before)
+			}
+		})
 	}
 }
 
@@ -164,18 +221,18 @@ func published(api *ovhtest.API, target string) bool {
 	return false
 }
 
-// sameTargets reports whether two lists of records hold the same records,
-// whatever their identifiers.
-func sameTargets(a, b []ovhtest.Record) bool {
+// sameRecords reports whether two lists of records hold the same records,
+// TTLs included, whatever their identifiers.
+func sameRecords(a, b []ovhtest.Record) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	count := map[string]int{}
 	for _, r := range a {
-		count[r.SubDomain+" "+r.FieldType+" "+r.Target]++
+		count[fmt.Sprintf("%s %s %s %d", r.SubDomain, r.FieldType, r.Target, r.TTL)]++
 	}
 	for _, r := range b {
-		count[r.SubDomain+" "+r.FieldType+" "+r.Target]--
+		count[fmt.Sprintf("%s %s %s %d", r.SubDomain, r.FieldType, r.Target, r.TTL)]--
 	}
 	for _, n := range count {
 		if n != 0 {

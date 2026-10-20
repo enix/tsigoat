@@ -182,15 +182,18 @@ func (b *Backend) send(ctx context.Context, info *zoneInfo, body *batch) error {
 }
 
 // verify reads the records of the changes again after a request whose
-// outcome is unknown: it returns nil if they are as the changes want them,
-// cause otherwise.
+// outcome is unknown: it returns nil if they show the changes. Otherwise the
+// outcome stays unknown: the request may not have applied, or may apply
+// still, after the response that tsigoat did not get.
 func (b *Backend) verify(ctx context.Context, info *zoneInfo, zone string, changes []backend.Change, cause error) error {
-	current, err := b.current(context.WithoutCancel(ctx), info, zone, changes)
+	ctx, cancel := backend.RecoveryContext(ctx)
+	defer cancel()
+	current, err := b.current(ctx, info, zone, changes)
 	if err != nil {
-		return errors.Join(cause, fmt.Errorf("reading the records again: %w", err))
+		return backend.Indeterminate(errors.Join(cause, fmt.Errorf("reading the records again: %w", err)))
 	}
 	if !hosted.Settled(current, changes) {
-		return fmt.Errorf("%w; the records do not show the update", cause)
+		return backend.Indeterminate(fmt.Errorf("%w; the records do not show the update, which may apply still", cause))
 	}
 	return nil
 }

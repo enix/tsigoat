@@ -319,7 +319,8 @@ func (s *Server) Run(ctx context.Context) error {
 		s.logger.ErrorContext(ctx, "a listener failed, shutting down", "error", err)
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout+time.Second)
+	// The updates in flight may last their timeout, then recover past it.
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout+backend.RecoveryBudget+time.Second)
 	defer cancel()
 	return errors.Join(err, s.Shutdown(shutdownCtx))
 }
