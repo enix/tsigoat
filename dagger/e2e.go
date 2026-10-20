@@ -13,8 +13,8 @@ import (
 const (
 	e2eZone      = "example.test."
 	e2eKeyName   = "e2e."
-	e2eKeySecret = "c2VjcmV0LWZvci10aGUtZTJlLXRlc3RzLW9ubHktMzJi"
-	e2eAPIKey    = "ZTJlLWFwaS1rZXk="
+	e2eKeySecret = "c2VjcmV0LWZvci10aGUtZTJlLXRlc3RzLW9ubHktMzJi" // gitleaks:allow (throwaway)
+	e2eAPIKey    = "ZTJlLWFwaS1rZXk="                             // gitleaks:allow (throwaway)
 	e2eDNSPort   = 5353
 	pdnsDNSPort  = 5300
 	pdnsAPIPort  = 8081
