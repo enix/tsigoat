@@ -44,17 +44,17 @@ func newFakeAPI(t *testing.T) (*fakeAPI, *httptest.Server) {
 	t.Helper()
 	api := &fakeAPI{t: t, zones: map[string][]rrset{
 		"example.test.": {
-			{Name: "example.test.", Type: "SOA", TTL: 3600, Records: []record{{Content: "ns1.example.test. hostmaster.example.test. 1 10800 3600 604800 3600"}}},
-			{Name: "example.test.", Type: "NS", TTL: 3600, Records: []record{{Content: "ns1.example.test."}}},
-			{Name: "example.test.", Type: "ALIAS", TTL: 300, Records: []record{{Content: "lb.example.net."}}},
-			{Name: "www.example.test.", Type: "A", TTL: 300, Records: []record{
+			{Name: "example.test.", Type: "SOA", TTL: ttl(3600), Records: []record{{Content: "ns1.example.test. hostmaster.example.test. 1 10800 3600 604800 3600"}}},
+			{Name: "example.test.", Type: "NS", TTL: ttl(3600), Records: []record{{Content: "ns1.example.test."}}},
+			{Name: "example.test.", Type: "ALIAS", TTL: ttl(300), Records: []record{{Content: "lb.example.net."}}},
+			{Name: "www.example.test.", Type: "A", TTL: ttl(300), Records: []record{
 				{Content: "192.0.2.1"}, {Content: "192.0.2.9", Disabled: true},
 			}},
-			{Name: "www.example.test.", Type: "TXT", TTL: 60, Records: []record{{Content: `"a b" "c\"d"`}}},
-			{Name: "WWW.example.test.", Type: "MX", TTL: 60, Records: []record{{Content: "10 mail.example.test."}}},
-			{Name: "www.example.test.", Type: "CAA", TTL: 60, Records: []record{{Content: `0 issue "letsencrypt.org"`}}},
-			{Name: "off.example.test.", Type: "A", TTL: 60, Records: []record{{Content: "192.0.2.2", Disabled: true}}},
-			{Name: "other.example.test.", Type: "A", TTL: 60, Records: []record{{Content: "192.0.2.3"}}},
+			{Name: "www.example.test.", Type: "TXT", TTL: ttl(60), Records: []record{{Content: `"a b" "c\"d"`}}},
+			{Name: "WWW.example.test.", Type: "MX", TTL: ttl(60), Records: []record{{Content: "10 mail.example.test."}}},
+			{Name: "www.example.test.", Type: "CAA", TTL: ttl(60), Records: []record{{Content: `0 issue "letsencrypt.org"`}}},
+			{Name: "off.example.test.", Type: "A", TTL: ttl(60), Records: []record{{Content: "192.0.2.2", Disabled: true}}},
+			{Name: "other.example.test.", Type: "A", TTL: ttl(60), Records: []record{{Content: "192.0.2.3"}}},
 		},
 	}}
 	server := httptest.NewServer(api)
@@ -119,6 +119,10 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
 	}
+}
+
+func ttl(seconds uint32) *uint32 {
+	return new(seconds)
 }
 
 func newBackend(t *testing.T, url string) *Backend {
@@ -222,6 +226,10 @@ func TestApply(t *testing.T) {
 		}},
 		{Op: backend.Delete, RRset: backend.RRset{Name: "www.example.test.", Type: dns.TypeA}},
 		{Op: backend.Replace, RRset: backend.RRset{
+			Name: "zero.example.test.", Type: dns.TypeA, TTL: 0,
+			Records: records("zero.example.test. 0 IN A 192.0.2.1"),
+		}},
+		{Op: backend.Replace, RRset: backend.RRset{
 			Name: "new.example.test.", Type: 65534, TTL: 30,
 			Records: []dns.RR{&dns.RFC3597{Hdr: dns.RR_Header{Rrtype: 65534, Class: dns.ClassINET}, Rdata: "0a000001"}},
 		}},
@@ -236,6 +244,8 @@ func TestApply(t *testing.T) {
 		`{"name":"_acme-challenge.www.example.test.","type":"TXT","ttl":60,"changetype":"REPLACE","records":[` +
 		`{"content":"\"token one\"","disabled":false},{"content":"\"with \\\"quotes\\\"\"","disabled":false}]},` +
 		`{"name":"www.example.test.","type":"A","changetype":"DELETE","records":null},` +
+		`{"name":"zero.example.test.","type":"A","ttl":0,"changetype":"REPLACE","records":[` +
+		`{"content":"192.0.2.1","disabled":false}]},` +
 		`{"name":"new.example.test.","type":"TYPE65534","ttl":30,"changetype":"REPLACE","records":[` +
 		`{"content":"\\# 4 0a000001","disabled":false}]}]}`
 	if api.patches[0] != want {
@@ -385,7 +395,7 @@ func TestErrors(t *testing.T) {
 		t.Parallel()
 		api, server := newFakeAPI(t)
 		api.zones["example.test."] = append(api.zones["example.test."], rrset{
-			Name: "bad.example.test.", Type: "A", TTL: 60, Records: []record{{Content: "not an address"}},
+			Name: "bad.example.test.", Type: "A", TTL: ttl(60), Records: []record{{Content: "not an address"}},
 		})
 		b := newBackend(t, server.URL)
 		if _, err := b.Lookup(t.Context(), "example.test.", "bad.example.test."); err == nil {

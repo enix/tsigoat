@@ -69,7 +69,7 @@ func (p *powerDNS) serial(ctx context.Context, zone string) (uint32, error) {
 		if set.Type != "SOA" || len(set.Records) == 0 {
 			continue
 		}
-		rr, err := dns.NewRR(fmt.Sprintf("%s %d IN SOA %s", set.Name, set.TTL, set.Records[0].Content))
+		rr, err := dns.NewRR(fmt.Sprintf("%s 3600 IN SOA %s", set.Name, set.Records[0].Content))
 		if err != nil {
 			return 0, fmt.Errorf("parsing the SOA of %s: %w", zone, err)
 		}

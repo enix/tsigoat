@@ -48,7 +48,7 @@ type powerDNS struct {
 type rrset struct {
 	Name       string   `json:"name"`
 	Type       string   `json:"type"`
-	TTL        uint32   `json:"ttl,omitempty"`
+	TTL        *uint32  `json:"ttl,omitempty"`
 	ChangeType string   `json:"changetype,omitempty"`
 	Records    []record `json:"records"`
 }
@@ -94,7 +94,7 @@ func (p *powerDNS) addRecords(ctx context.Context, zone string, records []dns.RR
 		k := key{name: dns.CanonicalName(h.Name), rrtype: dns.TypeToString[h.Rrtype]}
 		set, ok := sets[k]
 		if !ok {
-			set = &rrset{Name: k.name, Type: k.rrtype, TTL: h.Ttl, ChangeType: "REPLACE"}
+			set = &rrset{Name: k.name, Type: k.rrtype, TTL: new(h.Ttl), ChangeType: "REPLACE"}
 			sets[k] = set
 			order = append(order, k)
 		}
@@ -122,7 +122,11 @@ func (p *powerDNS) records(ctx context.Context, zone string) ([]dns.RR, error) {
 			continue
 		}
 		for _, r := range set.Records {
-			rr, err := dns.NewRR(fmt.Sprintf("%s %d IN %s %s", set.Name, set.TTL, set.Type, r.Content))
+			var ttl uint32
+			if set.TTL != nil {
+				ttl = *set.TTL
+			}
+			rr, err := dns.NewRR(fmt.Sprintf("%s %d IN %s %s", set.Name, ttl, set.Type, r.Content))
 			if err == nil && rr == nil {
 				err = errors.New("no record")
 			}

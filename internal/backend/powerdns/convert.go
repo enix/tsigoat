@@ -63,12 +63,15 @@ func fromAPI(set *rrset) (backend.RRset, error) {
 	if err != nil {
 		return backend.RRset{}, err
 	}
-	converted := backend.RRset{Name: dns.CanonicalName(set.Name), Type: code, TTL: set.TTL}
+	converted := backend.RRset{Name: dns.CanonicalName(set.Name), Type: code}
+	if set.TTL != nil {
+		converted.TTL = *set.TTL
+	}
 	for _, r := range set.Records {
 		if r.Disabled {
 			continue
 		}
-		rr, err := parseContent(converted.Name, set.TTL, code, r.Content)
+		rr, err := parseContent(converted.Name, converted.TTL, code, r.Content)
 		if err != nil {
 			return backend.RRset{}, err
 		}
@@ -106,7 +109,7 @@ func toAPI(change backend.Change) (rrset, error) {
 			return rrset{}, fmt.Errorf("tsigoat cannot write %s records", set.Type)
 		}
 		set.ChangeType = "REPLACE"
-		set.TTL = change.RRset.TTL
+		set.TTL = new(change.RRset.TTL)
 		set.Records = make([]record, 0, len(change.RRset.Records))
 		for _, rr := range change.RRset.Records {
 			set.Records = append(set.Records, record{Content: content(rr)})

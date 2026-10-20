@@ -1,0 +1,13 @@
+description: >-
+  Records with a TTL of zero reach the backend intact, and so does their RRset
+  once one of them is deleted.
+refs: ["RFC 2181 8"]
+requests:
+  - updates:
+      - add zero 0 IN TXT "one"
+      - add zero 0 IN TXT "two"
+  - updates:
+      - delete zero TXT "one"
+expect:
+  records:
+    - zero 0 IN TXT "two"

@@ -134,9 +134,10 @@ func loadRoots(path string) (*x509.CertPool, error) {
 
 // rrset is an RRset as the API represents it.
 type rrset struct {
-	Name       string   `json:"name"`
-	Type       string   `json:"type"`
-	TTL        uint32   `json:"ttl,omitempty"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+	// TTL is absent from deletions, but a TTL of zero is a TTL.
+	TTL        *uint32  `json:"ttl,omitempty"`
 	ChangeType string   `json:"changetype,omitempty"`
 	Records    []record `json:"records"`
 }
