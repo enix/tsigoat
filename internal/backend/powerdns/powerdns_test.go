@@ -339,6 +339,34 @@ func TestErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("redirect", func(t *testing.T) {
+		t.Parallel()
+		var followed sync.Mutex
+		reached := false
+		target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+			followed.Lock()
+			reached = true
+			followed.Unlock()
+		}))
+		t.Cleanup(target.Close)
+		redirecting := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, target.URL+r.URL.Path, http.StatusFound)
+		}))
+		t.Cleanup(redirecting.Close)
+
+		b := newBackend(t, redirecting.URL)
+		err := b.Apply(t.Context(), "example.test.", []backend.Change{{Op: backend.Delete, RRset: backend.RRset{Name: "x.example.test.", Type: dns.TypeA}}})
+		apiErr, ok := errors.AsType[*APIError](err)
+		if !ok || apiErr.Status != http.StatusFound || !strings.Contains(apiErr.Message, "redirected to "+target.URL) {
+			t.Errorf("Apply() through a redirect: %v, want an HTTP 302 error naming the target", err)
+		}
+		followed.Lock()
+		defer followed.Unlock()
+		if reached {
+			t.Error("the redirect was followed")
+		}
+	})
+
 	t.Run("invalid record", func(t *testing.T) {
 		t.Parallel()
 		api, server := newFakeAPI(t)

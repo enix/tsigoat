@@ -104,7 +104,15 @@ func New(options *Options) (*Backend, error) {
 		server:  base.String() + "/api/v1/servers/" + url.PathEscape(serverID),
 		apiKey:  options.APIKey,
 		timeout: timeout,
-		client:  &http.Client{Transport: transport},
+		client: &http.Client{
+			Transport: transport,
+			// A redirect turns a PATCH into a GET, which would succeed without
+			// applying anything, and hands the API key to another server:
+			// redirects are errors.
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}, nil
 }
 
@@ -229,6 +237,9 @@ func (b *Backend) do(ctx context.Context, method, path string, in, out any) erro
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		apiErr := &APIError{Status: resp.StatusCode, Message: errorMessage(body)}
+		if location := resp.Header.Get("Location"); location != "" {
+			apiErr.Message = "redirected to " + location + ": set the URL of the backend to the final address"
+		}
 		if resp.StatusCode == http.StatusNotFound {
 			return fmt.Errorf("%w: %w", backend.ErrZoneNotFound, apiErr)
 		}
