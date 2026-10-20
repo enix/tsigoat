@@ -15,3 +15,26 @@ advisory unless you prefer otherwise.
 
 No version has been released yet. Once releases start, security fixes target
 the latest minor release.
+
+## Verifying releases
+
+Releases sign every image, and the checksums of their archives, with cosign
+keyless. GitHub attests the build provenance of the archives, and every image
+carries a CycloneDX SBOM as a cosign attestation. Before deploying a release:
+
+```sh
+cosign verify ghcr.io/enix/tsigoat:<version> \
+  --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+gh attestation verify tsigoat-v<version>-linux-amd64.tar.gz --owner enix
+```
+
+## Security model
+
+The [Security section of the README](README.md#security) describes what
+tsigoat protects and what it does not: TSIG authenticates the updates without
+encrypting them, keys are restricted by policy, and HMAC-MD5 and HMAC-SHA1
+remain available only to the keys that opt into them.
