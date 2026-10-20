@@ -1,0 +1,13 @@
+keys:
+  - name: admin.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: bind
+    type: rfc2136
+    rfc2136:
+      key:
+        name: tsigoat.
+        secretEnv: TSIGOAT_TEST_SECRET
+zones:
+  - name: example.test.
+    keys: [admin.]

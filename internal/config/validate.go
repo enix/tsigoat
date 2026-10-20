@@ -13,12 +13,36 @@ import (
 	"github.com/miekg/dns"
 )
 
-// PowerDNS defaults.
+// Backend defaults.
 const (
 	defaultPowerDNSServerID = "localhost"
-	defaultPowerDNSTimeout  = 5 * time.Second
-	maxPowerDNSTimeout      = time.Minute
+	// defaultBackendTimeout bounds every call to a backend, up to
+	// maxBackendTimeout.
+	defaultBackendTimeout = 5 * time.Second
+	maxBackendTimeout     = time.Minute
 )
+
+// keyHolder tells who shares a TSIG key with tsigoat, for the advice of the
+// warnings about legacy algorithms.
+type keyHolder int
+
+const (
+	// clientKey is a key that clients sign their requests with.
+	clientKey keyHolder = iota
+	// serverKey is the key that tsigoat signs with for a name server.
+	serverKey
+)
+
+// legacyAdvice tells what to do about a key with HMAC-SHA1, and with
+// HMAC-MD5.
+func (h keyHolder) legacyAdvice() (sha1, md5 string) {
+	if h == serverKey {
+		return "switch the name server and this key to hmac-sha256",
+			"keep it only for a name server that cannot switch to hmac-sha256"
+	}
+	return "switch the clients of this key to hmac-sha256",
+		"keep it only for clients that cannot switch to hmac-sha256"
+}
 
 // validator turns the configuration as written into a validated Config,
 // collecting every error and warning on the way.
@@ -99,50 +123,53 @@ func (v *validator) keys(raw []fileKey) []Key {
 	seen := map[string]string{}
 	for i := range raw {
 		path := fmt.Sprintf("keys[%d]", i)
-		k := &raw[i]
-
-		name, nameOK := v.domainName(path+".name", k.Name)
+		k, nameOK := v.key(path, &raw[i], clientKey)
 		if nameOK {
-			if previous, duplicate := seen[name]; duplicate {
-				v.errorf(path+".name", "duplicate key %q, already defined by %s", name, previous)
+			if previous, duplicate := seen[k.Name]; duplicate {
+				v.errorf(path+".name", "duplicate key %q, already defined by %s", k.Name, previous)
 			}
-			seen[name] = path
+			seen[k.Name] = path
 		}
-
-		algorithm := v.algorithm(path+".algorithm", k.Algorithm)
-		encoded, secretOK := v.secret(path, "secret", k.Secret, k.SecretFile, k.SecretEnv)
-		var secret []byte
-		if secretOK {
-			decoded, err := base64.StdEncoding.DecodeString(encoded)
-			switch {
-			case err != nil:
-				v.errorf(path+".secret", "not valid base64: %v", err)
-			case len(decoded) == 0:
-				v.errorf(path+".secret", "empty secret")
-			case len(decoded) < algorithmSize(algorithm):
-				v.warnf(path+".secret", "%d bytes is shorter than the %d-byte output of %s, as RFC 8945 advises against",
-					len(decoded), algorithmSize(algorithm), algorithm)
-			}
-			secret = decoded
-		}
-
-		keys = append(keys, Key{Name: name, Algorithm: algorithm, Secret: secret})
+		keys = append(keys, k)
 	}
 	return keys
 }
 
+// key validates a TSIG key, and tells whether its name is valid.
+func (v *validator) key(path string, k *fileKey, holder keyHolder) (Key, bool) {
+	name, nameOK := v.domainName(path+".name", k.Name)
+	algorithm := v.algorithm(path+".algorithm", k.Algorithm, holder)
+	encoded, secretOK := v.secret(path, "secret", k.Secret, k.SecretFile, k.SecretEnv)
+	var secret []byte
+	if secretOK {
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		switch {
+		case err != nil:
+			v.errorf(path+".secret", "not valid base64: %v", err)
+		case len(decoded) == 0:
+			v.errorf(path+".secret", "empty secret")
+		case len(decoded) < algorithmSize(algorithm):
+			v.warnf(path+".secret", "%d bytes is shorter than the %d-byte output of %s, as RFC 8945 advises against",
+				len(decoded), algorithmSize(algorithm), algorithm)
+		}
+		secret = decoded
+	}
+	return Key{Name: name, Algorithm: algorithm, Secret: secret}, nameOK
+}
+
 // algorithm validates a TSIG algorithm; HMAC-SHA256 when empty.
-func (v *validator) algorithm(path, name string) Algorithm {
+func (v *validator) algorithm(path, name string, holder keyHolder) Algorithm {
 	if name == "" {
 		return HMACSHA256
 	}
 	algorithm := Algorithm(strings.ToLower(name))
+	sha1Advice, md5Advice := holder.legacyAdvice()
 	switch algorithm {
 	case HMACSHA256, HMACSHA384, HMACSHA512, HMACSHA224:
 	case HMACSHA1:
-		v.warnf(path, "RFC 8945 recommends against HMAC-SHA1: switch the clients of this key to hmac-sha256")
+		v.warnf(path, "RFC 8945 recommends against HMAC-SHA1: %s", sha1Advice)
 	case HMACMD5:
-		v.warnf(path, "RFC 8945 forbids HMAC-MD5: keep it only for clients that cannot switch to hmac-sha256")
+		v.warnf(path, "RFC 8945 forbids HMAC-MD5: %s", md5Advice)
 	default:
 		v.errorf(path, "unknown algorithm %q (expected hmac-sha256, hmac-sha384, hmac-sha512, hmac-sha224, "+
 			"or the legacy hmac-sha1 and hmac-md5)", name)
@@ -221,29 +248,46 @@ func (v *validator) backends(raw []fileBackend) []Backend {
 			seen[b.Name] = path
 		}
 
-		backend := Backend{Name: b.Name, Type: b.Type}
-		switch b.Type {
-		case "powerdns":
-			if b.PowerDNS == nil {
-				v.errorf(path+".powerdns", "missing the settings of the powerdns backend")
-			} else {
-				backend.PowerDNS = v.powerDNS(path+".powerdns", b.PowerDNS)
-			}
-		case "":
-			v.errorf(path+".type", "missing type (expected powerdns)")
-		default:
-			v.errorf(path+".type", "unknown type %q (expected powerdns)", b.Type)
-		}
-		backends = append(backends, backend)
+		backends = append(backends, v.backend(path, b))
 	}
 	return backends
+}
+
+// backend validates the type of a backend and its settings, which must match.
+func (v *validator) backend(path string, b *fileBackend) Backend {
+	backend := Backend{Name: b.Name, Type: b.Type}
+	switch b.Type {
+	case "powerdns":
+		if b.PowerDNS == nil {
+			v.errorf(path+".powerdns", "missing the settings of the powerdns backend")
+		} else {
+			backend.PowerDNS = v.powerDNS(path+".powerdns", b.PowerDNS)
+		}
+		if b.RFC2136 != nil {
+			v.errorf(path+".rfc2136", "settings of an rfc2136 backend, on a backend of type powerdns")
+		}
+	case "rfc2136":
+		if b.RFC2136 == nil {
+			v.errorf(path+".rfc2136", "missing the settings of the rfc2136 backend")
+		} else {
+			backend.RFC2136 = v.rfc2136(path+".rfc2136", b.RFC2136)
+		}
+		if b.PowerDNS != nil {
+			v.errorf(path+".powerdns", "settings of a powerdns backend, on a backend of type rfc2136")
+		}
+	case "":
+		v.errorf(path+".type", "missing type (expected powerdns or rfc2136)")
+	default:
+		v.errorf(path+".type", "unknown type %q (expected powerdns or rfc2136)", b.Type)
+	}
+	return backend
 }
 
 func (v *validator) powerDNS(path string, raw *filePowerDNS) *PowerDNS {
 	p := &PowerDNS{
 		URL:      strings.TrimRight(raw.URL, "/"),
 		ServerID: raw.ServerID,
-		Timeout:  defaultPowerDNSTimeout,
+		Timeout:  v.backendTimeout(path+".timeout", raw.Timeout),
 		CAFile:   raw.CAFile,
 	}
 	if p.ServerID == "" {
@@ -256,23 +300,48 @@ func (v *validator) powerDNS(path string, raw *filePowerDNS) *PowerDNS {
 	if apiKey, ok := v.secret(path, "apiKey", raw.APIKey, raw.APIKeyFile, raw.APIKeyEnv); ok {
 		p.APIKey = apiKey
 	}
-	if raw.Timeout != "" {
-		timeout, err := time.ParseDuration(raw.Timeout)
-		switch {
-		case err != nil:
-			v.errorf(path+".timeout", "invalid duration %q", raw.Timeout)
-		case timeout <= 0 || timeout > maxPowerDNSTimeout:
-			v.errorf(path+".timeout", "%s is out of range (0s, %s]", timeout, maxPowerDNSTimeout)
-		default:
-			p.Timeout = timeout
-		}
-	}
 	if raw.CAFile != "" {
 		if _, err := v.options.ReadFile(raw.CAFile); err != nil {
 			v.errorf(path+".caFile", "%v", err)
 		}
 	}
 	return p
+}
+
+func (v *validator) rfc2136(path string, raw *fileRFC2136) *RFC2136 {
+	r := &RFC2136{
+		Server:  raw.Server,
+		Timeout: v.backendTimeout(path+".timeout", raw.Timeout),
+	}
+	if raw.Server == "" {
+		v.errorf(path+".server", "missing server: the host:port of the name server")
+	} else {
+		v.hostPort(path+".server", raw.Server)
+	}
+	if raw.Key == nil {
+		v.errorf(path+".key", "missing key: the TSIG key that tsigoat signs with, which the name server accepts")
+	} else {
+		r.Key, _ = v.key(path+".key", raw.Key, serverKey)
+	}
+	return r
+}
+
+// backendTimeout validates the timeout of the calls to a backend;
+// defaultBackendTimeout when empty.
+func (v *validator) backendTimeout(path, raw string) time.Duration {
+	if raw == "" {
+		return defaultBackendTimeout
+	}
+	timeout, err := time.ParseDuration(raw)
+	switch {
+	case err != nil:
+		v.errorf(path, "invalid duration %q", raw)
+	case timeout <= 0 || timeout > maxBackendTimeout:
+		v.errorf(path, "%s is out of range (0s, %s]", timeout, maxBackendTimeout)
+	default:
+		return timeout
+	}
+	return defaultBackendTimeout
 }
 
 func (v *validator) zones(raw []fileZone, c *Config) []Zone {

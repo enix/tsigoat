@@ -1,9 +1,12 @@
-// Package backend defines the contract between the update engine and the DNS
-// providers that hold the zones.
+// Package backend defines the contract between tsigoat and the DNS providers
+// that hold the zones.
 //
-// The engine reads the RRsets of the names it touches with Lookup, computes
-// the result of an update in memory, then hands the resulting RRset-level
-// changes to Apply in a single call, which must be atomic.
+// A Backend holds zones for the update engine of tsigoat: the engine reads the
+// RRsets of the names it touches with Lookup, computes the result of an update
+// in memory, then hands the resulting RRset-level changes to Apply in a single
+// call, which must be atomic. A Relay evaluates the updates itself, such as a
+// name server that implements RFC 2136: tsigoat checks an update and its
+// policy, then hands it over whole.
 package backend
 
 import (
@@ -11,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/miekg/dns"
 )
@@ -24,6 +28,47 @@ type Backend interface {
 	Lookup(ctx context.Context, zone, name string) ([]RRset, error)
 	// Apply applies the changes to the zone, all or nothing.
 	Apply(ctx context.Context, zone string, changes []Change) error
+}
+
+// Relay evaluates the updates of its zones itself: it checks their
+// prerequisites and applies them atomically, as RFC 2136 says.
+type Relay interface {
+	// Update relays an update of the zone, and returns the rcode that the
+	// client gets. Errors are failures of the relay, of its server or of
+	// their configuration, which the client cannot fix.
+	Update(ctx context.Context, zone string, prerequisites, updates []dns.RR) (int, error)
+	// SOA returns the SOA record of the zone.
+	SOA(ctx context.Context, zone string) (dns.RR, error)
+}
+
+// Observer is told about the calls to a backend: the operation, when it
+// started, and its error.
+type Observer func(operation string, start time.Time, err error)
+
+// ObservedRelay returns a relay that reports its calls to observe: relay for
+// the updates, lookup for the SOA queries. An update that the server turns
+// down, such as one whose prerequisites fail, is no error.
+func ObservedRelay(r Relay, observe Observer) Relay {
+	return &observedRelay{relay: r, observe: observe}
+}
+
+type observedRelay struct {
+	relay   Relay
+	observe Observer
+}
+
+func (o *observedRelay) Update(ctx context.Context, zone string, prerequisites, updates []dns.RR) (int, error) {
+	start := time.Now()
+	rcode, err := o.relay.Update(ctx, zone, prerequisites, updates)
+	o.observe("relay", start, err)
+	return rcode, err
+}
+
+func (o *observedRelay) SOA(ctx context.Context, zone string) (dns.RR, error) {
+	start := time.Now()
+	soa, err := o.relay.SOA(ctx, zone)
+	o.observe("lookup", start, err)
+	return soa, err
 }
 
 // RRset is a set of records sharing an owner name, a type and a TTL.

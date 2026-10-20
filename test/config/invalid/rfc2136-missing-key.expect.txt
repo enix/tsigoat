@@ -1,0 +1,2 @@
+# Substrings the error must contain, anchored on the configuration path.
+backends[0].rfc2136.key: missing key

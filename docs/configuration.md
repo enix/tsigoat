@@ -76,14 +76,28 @@ ignored.
 | Setting | Meaning |
 | --- | --- |
 | `name` | Name of the backend, which zones refer to |
-| `type` | `powerdns`, the only type so far |
+| `type` | `powerdns`, or `rfc2136` for a name server that tsigoat relays the updates to; the settings of the type follow |
+
+A `powerdns` backend writes to the HTTP API of PowerDNS, see
+[PowerDNS](powerdns.md):
+
+| Setting | Meaning |
+| --- | --- |
 | `powerdns.url` | Base URL of the PowerDNS HTTP API, such as `http://pdns:8081` |
 | `powerdns.serverId` | Server of the API; `localhost` by default |
 | `powerdns.apiKey`, `apiKeyFile`, `apiKeyEnv` | The API key: inline, in a file, or in an environment variable; exactly one of them |
 | `powerdns.timeout` | Timeout of every API call, up to one minute; `5s` by default |
 | `powerdns.caFile` | PEM bundle trusted for the certificate of the API, on top of the system roots |
 
-[PowerDNS](powerdns.md) tells what tsigoat needs from PowerDNS.
+An `rfc2136` backend relays the updates to a name server that implements RFC
+2136 itself, such as BIND, which applies them, see [RFC 2136
+servers](rfc2136.md):
+
+| Setting | Meaning |
+| --- | --- |
+| `rfc2136.server` | Address of the name server, as `host:port` |
+| `rfc2136.key` | The TSIG key that tsigoat signs with, which the server accepts: `name`, `algorithm` and the secret, as a key of `keys` |
+| `rfc2136.timeout` | Timeout of every exchange with the server, up to one minute; `5s` by default |
 
 ## Zones
 

@@ -1,0 +1,33 @@
+# tsigoat in front of BIND, for cert-manager: tsigoat checks the key and the
+# policy of every update, then relays it to the primary name server, signed
+# with its own key. docs/rfc2136.md tells how to set BIND up.
+#
+# The Secret holds the TSIG secret of the cert-manager. key, and the one that
+# tsigoat shares with BIND; create it before installing the chart:
+#
+#   kubectl -n tsigoat create secret generic tsigoat-secrets \
+#     --from-literal=cert-manager="$(openssl rand -base64 32)" \
+#     --from-literal=bind="$(openssl rand -base64 32)"
+config:
+  keys:
+    - name: cert-manager.
+      secretFile: /run/secrets/tsigoat/cert-manager
+  backends:
+    - name: bind
+      type: rfc2136
+      rfc2136:
+        # The primary name server of the zones.
+        server: ns1.example.com:53
+        # The key of tsigoat, which BIND grants the right to update the zones.
+        key:
+          name: tsigoat.
+          secretFile: /run/secrets/tsigoat/bind
+  zones:
+    - name: example.com.
+      policy:
+        - key: cert-manager.
+          names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
+          types: [TXT]
+
+secret:
+  existingSecret: tsigoat-secrets

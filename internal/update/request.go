@@ -8,6 +8,8 @@ import (
 	"slices"
 
 	"github.com/miekg/dns"
+
+	"github.com/enix/tsigoat/internal/backend"
 )
 
 // MaxRecords bounds the records of the prerequisite and update sections of
@@ -180,6 +182,24 @@ func checkUpdate(rr dns.RR, zone string, class uint16, served []string) error {
 func Describe(rr dns.RR) string {
 	h := rr.Header()
 	return fmt.Sprintf("%s %s %s", h.Name, dns.Class(h.Class), dns.Type(h.Rrtype))
+}
+
+// Operation describes a record of the update section as nsupdate writes it:
+// "add" with the record, "delete" with the name, then the type and the RDATA
+// when the deletion names them.
+func Operation(rr dns.RR) string {
+	h := rr.Header()
+	switch h.Class {
+	case dns.ClassANY:
+		if h.Rrtype == dns.TypeANY {
+			return "delete " + h.Name
+		}
+		return fmt.Sprintf("delete %s %s", h.Name, dns.Type(h.Rrtype))
+	case dns.ClassNONE:
+		return fmt.Sprintf("delete %s %s %s", h.Name, dns.Type(h.Rrtype), backend.RData(rr))
+	default:
+		return fmt.Sprintf("add %s %d %s %s", h.Name, h.Ttl, dns.Type(h.Rrtype), backend.RData(rr))
+	}
 }
 
 // isMetaType reports the types that only exist in messages, ANY aside.

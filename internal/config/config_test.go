@@ -129,6 +129,12 @@ func TestParseFull(t *testing.T) {
 	if other := c.Backends[1].PowerDNS; other.Timeout != 5*time.Second || other.ServerID != "localhost" {
 		t.Errorf("PowerDNS defaults = %+v", other)
 	}
+	relay := c.Backends[2].RFC2136
+	if c.Backends[2].PowerDNS != nil || relay.Server != "ns1.example.test:53" || relay.Timeout != 3*time.Second ||
+		relay.Key.Name != "tsigoat." || relay.Key.Algorithm != config.HMACSHA1 ||
+		string(relay.Key.Secret) != "this is a test secret, thirty-two!" {
+		t.Errorf("RFC 2136 settings = %+v", relay)
+	}
 
 	zone := c.Zones[0]
 	if zone.Name != "example.test." || zone.Backend != "pdns" || !slices.Equal(zone.Keys, []string{"admin."}) {
@@ -147,6 +153,7 @@ func TestParseFull(t *testing.T) {
 	for _, want := range []string{
 		"keys[1].secret: 28 bytes is shorter than the 32-byte output of hmac-sha256",
 		"keys[2].algorithm: RFC 8945 forbids HMAC-MD5",
+		"backends[2].rfc2136.key.algorithm: RFC 8945 recommends against HMAC-SHA1: switch the name server",
 		"zones[1]: accepts unauthenticated updates",
 	} {
 		if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, want) }) {

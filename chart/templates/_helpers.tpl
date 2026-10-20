@@ -125,6 +125,9 @@ the secrets out of the ConfigMap: they belong in the Secret mounted in
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.powerdns) (hasKey $backend.powerdns "apiKey") -}}
 {{- fail (printf "config.backends[%d].powerdns.apiKey would store an API key in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with apiKeyFile" $i) -}}
 {{- end -}}
+{{- if and (kindIs "map" $backend) (kindIs "map" $backend.rfc2136) (kindIs "map" $backend.rfc2136.key) (hasKey $backend.rfc2136.key "secret") -}}
+{{- fail (printf "config.backends[%d].rfc2136.key.secret would store a TSIG secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with secretFile" $i) -}}
+{{- end -}}
 {{- end -}}
 {{- toYaml $config -}}
 {{- end -}}

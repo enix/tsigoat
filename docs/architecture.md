@@ -15,7 +15,7 @@ development workflow.
 | `internal/auth` | TSIG keyring, one algorithm per key; update policy |
 | `internal/update` | The RFC 2136 engine: parsing, prerequisites, update section |
 | `internal/zone` | Working view of a zone: lazy reads, changes in memory, diff |
-| `internal/backend` | Backend contract; `memory` for the tests, `powerdns` for production |
+| `internal/backend` | Backend and relay contracts; `memory` for the tests, `powerdns` for production, `rfc2136` to relay to a name server |
 | `internal/metrics`, `internal/admin` | Prometheus collectors; `/healthz`, `/readyz` and `/metrics` |
 | `internal/logging` | `log/slog` setup |
 
@@ -38,7 +38,10 @@ with depguard rules.
    section (RFC 2136 3.2, 3.4.1): FORMERR or NOTZONE, or REFUSED beyond 256
    records.
 5. **Policy**: every record of the update section must be allowed, and every
-   name of the prerequisite section updatable by the key, or REFUSED.
+   name of the prerequisite section updatable by the key, or REFUSED. The
+   update of a zone on an `rfc2136` backend then goes to its relay, which
+   returns the answer of the name server: the steps below are the job of that
+   server, see [RFC 2136 servers](rfc2136.md).
 6. **Lock** of the zone, which honours the deadline of the request: the
    updates of a zone run one at a time.
 7. **Prerequisites**, evaluated on a view of the zone: NXDOMAIN, YXDOMAIN,
@@ -79,6 +82,21 @@ changes of a call atomically, or not at all; `ErrZoneNotFound` reports a
 missing zone. The PowerDNS backend sends one PATCH request, which PowerDNS
 applies in one transaction.
 
+```go
+type Relay interface {
+    // Update relays an update of the zone, and returns the rcode that the
+    // client gets.
+    Update(ctx context.Context, zone string, prerequisites, updates []dns.RR) (int, error)
+    // SOA returns the SOA record of the zone.
+    SOA(ctx context.Context, zone string) (dns.RR, error)
+}
+```
+
+A relay evaluates the updates itself: the `rfc2136` backend sends them to a
+name server, which applies them. Its errors are those of the server or of the
+configuration, which the client gets as SERVFAIL. tsigoat takes no lock for
+the zones of a relay.
+
 ## Queries
 
 Clients find the zone of a name with SOA queries. tsigoat answers those of the
@@ -96,7 +114,8 @@ those of other zones REFUSED.
 | Fuzzing | Configuration, engine, whole request handling, name patterns | `Fuzz*` targets, `task test:fuzz`; ten minutes each, nightly |
 | Scenarios in process | Each scenario of `test/scenario/scenarios` against tsigoat on the in-memory backend | `internal/app` |
 | Scenarios end to end | The same scenarios against a tsigoat binary and PowerDNS 4.9 and 5.0; faults injected with toxiproxy | `test/e2e`, `task test:e2e` |
-| Differential | The same scenarios against BIND 9, the reference implementation; the intended divergences are listed with their reason | `test/differential`, `task test:differential` |
+| Scenarios relayed | The same scenarios through a tsigoat that relays the updates to another tsigoat on the in-memory backend | `internal/app` |
+| Differential | The same scenarios against BIND 9, the reference implementation, with the intended divergences listed with their reason; and through tsigoat relaying to BIND, where every scenario passes | `test/differential`, `task test:differential` |
 | Real clients | nsupdate; lego and certbot getting certificates from Pebble | `task test:clients`, `task test:acme` |
 | Helm chart | The chart rendered with every example and fixture: the configuration valid in the pod, ports, probes, mounts and selectors in agreement, invalid values refused, the alerts unit-tested with promtool, the objects valid for kubeconform | `test/chart`, `task test:helm` |
 | Acceptance | tsigoat installed with its chart in a k3s cluster, under the restricted Pod Security profile; cert-manager gets certificates through it, with explicit, legacy and unsigned setups | `task test:acceptance`, nightly |

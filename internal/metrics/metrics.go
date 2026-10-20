@@ -55,7 +55,8 @@ func New(info *product.Info) *Metrics {
 		backendCalls: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "backend_calls_total",
-			Help:      "Calls to the backends, by backend, operation (lookup or apply) and result (success or error).",
+			Help: "Calls to the backends, by backend, operation (lookup or apply, relay for the updates " +
+				"that a relay evaluates) and result (success or error).",
 		}, []string{"backend", "operation", "result"}),
 		backendCallTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
@@ -126,10 +127,22 @@ func (i *instrumented) Apply(ctx context.Context, zone string, changes []backend
 }
 
 func (i *instrumented) observe(operation string, start time.Time, err error) {
+	i.metrics.observeCall(i.name, operation, start, err)
+}
+
+// Relay wraps a relay to measure its calls: relay for the updates, lookup for
+// the SOA queries.
+func (m *Metrics) Relay(name string, r backend.Relay) backend.Relay {
+	return backend.ObservedRelay(r, func(operation string, start time.Time, err error) {
+		m.observeCall(name, operation, start, err)
+	})
+}
+
+func (m *Metrics) observeCall(backendName, operation string, start time.Time, err error) {
 	result := "success"
 	if err != nil {
 		result = "error"
 	}
-	i.metrics.backendCalls.WithLabelValues(i.name, operation, result).Inc()
-	i.metrics.backendCallTime.WithLabelValues(i.name, operation).Observe(time.Since(start).Seconds())
+	m.backendCalls.WithLabelValues(backendName, operation, result).Inc()
+	m.backendCallTime.WithLabelValues(backendName, operation).Observe(time.Since(start).Seconds())
 }

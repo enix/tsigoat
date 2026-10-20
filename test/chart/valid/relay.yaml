@@ -1,0 +1,25 @@
+# tsigoat in front of a name server that implements RFC 2136, which it relays
+# the updates to, signed with its own key.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: bind
+      type: rfc2136
+      rfc2136:
+        server: ns1.example.test:53
+        key:
+          name: tsigoat.
+          secretFile: /run/secrets/tsigoat/bind
+        timeout: 3s
+  zones:
+    - name: example.test.
+      policy:
+        - key: acme.
+          names: ["_acme-challenge.example.test.", "_acme-challenge.**.example.test."]
+          types: [TXT]
+secret:
+  files:
+    acme: c2hhMjU2LXNlY3JldC1mb3ItdGhlLWNoYXJ0LXRlc3Q= # gitleaks:allow (fixture)
+    bind: dGhpcnR5LXR3byBieXRlcyBvZiByZWxheSBzZWNyZXQ= # gitleaks:allow (fixture)

@@ -25,6 +25,7 @@ internal/auth/         TSIG keyring (one key = one algorithm), update policy
 internal/backend/      Backend interface: Lookup(name) and atomic Apply(changes)
 internal/backend/powerdns/  in-house HTTP client, generic presentation-format conversion
 internal/backend/memory/    in-memory backend for tests and dry runs
+internal/backend/rfc2136/   relay to a name server that implements RFC 2136, signed with tsigoat's key
 internal/metrics/      Prometheus collectors: responses, TSIG failures, backend calls
 internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
 chart/                 Helm chart; README.md and values.schema.json generated
@@ -34,6 +35,12 @@ chart/                 Helm chart; README.md and values.schema.json generated
   view and the backend applies them in one atomic call (one PowerDNS PATCH).
 - One mutex per zone serialises updates in the process; a single instance is
   supported for now.
+- A zone on an `rfc2136` backend skips the engine: once the policy allows an
+  update, `backend.Relay` sends it whole to the name server, which evaluates
+  and applies it; no zone lock. The server's NOERROR, prerequisite failures,
+  FORMERR and NOTZONE pass through; anything else is an error, SERVFAIL for
+  the client. miekg/dns decodes RDATA-less records into typed empty structs
+  that would re-encode with RDATA: the relay rewrites them (`withoutRDATA`).
 - Names are canonicalised (lowercase FQDN) at the edge.
 - miekg/dns v1 stays, confined to the DNS-facing packages (depguard checks it).
 - Logging is `log/slog`.
@@ -63,7 +70,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | E2E scenarios | `task test:e2e` | `dagger call test-end-to-end --pdns-version=5.0`; `task test:e2e:dev` against `task dev` |
 | Real clients | `task test:clients` | `dagger call test-clients`: nsupdate in a container |
 | ACME flow | `task test:acme` | `dagger call test-acme`: lego and certbot get certificates from Pebble |
-| BIND differential | `task test:differential` | `dagger call test-differential`: the scenarios against BIND 9; intended divergences in `test/differential/divergences.yaml` |
+| BIND differential | `task test:differential` | `dagger call test-differential`: the scenarios against BIND 9, intended divergences in `test/differential/divergences.yaml`; and through tsigoat relaying to BIND, with no divergence |
 | Helm chart | `task test:helm` | `dagger call test-helm`: `test/chart` (build tag `chart`) renders every example and fixture, then promtool and kubeconform; `task lint:helm` too |
 | Chart docs | `task doc:helm` | regenerates `chart/README.md` and `chart/values.schema.json`; `task check:helm-docs` fails when stale |
 | cert-manager | `task test:acceptance` | `dagger call test-acceptance`: the chart in k3s, cert-manager through it, inside Dagger; nightly |
@@ -97,7 +104,7 @@ the runner, which drives a `Target`: tsigoat in front of a backend it can
 reset and read. The scenarios run twice, one zone per scenario:
 
 - in-process on the in-memory backend, in `internal/app` (plain `go test`,
-  part of the unit tests);
+  part of the unit tests), directly and through a relaying tsigoat;
 - against a tsigoat binary and PowerDNS in `test/e2e` (build tag `e2e`).
 
 `scenario.Config` renders the tsigoat configuration of both runs, the one
@@ -123,9 +130,9 @@ removed with the fix.
 ## Documentation
 
 `README.md` presents tsigoat and links to `docs/`: `configuration.md`,
-`clients.md`, `powerdns.md`, `operations.md`, `security.md`, and
-`architecture.md` for contributors; and to `chart/README.md` for Kubernetes. A change of behavior updates the page that
-describes it. `docs/local/` is ignored by git: it holds the French working
+`clients.md`, `powerdns.md`, `rfc2136.md`, `operations.md`, `security.md`, and
+`architecture.md` for contributors; and to `chart/README.md` for Kubernetes.
+A change of behavior updates the page that describes it. `docs/local/` is ignored by git: it holds the French working
 notes of the restart (analysis with the P*/A* defect identifiers, restart plan
 with the D* decisions, tooling), which must never be committed.
 

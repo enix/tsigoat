@@ -57,9 +57,10 @@ type Key struct {
 // Backend is a DNS provider that tsigoat applies the updates to.
 type Backend struct {
 	Name string
-	// Type is "powerdns", the only backend type so far.
+	// Type is "powerdns" or "rfc2136"; the settings of that type are set.
 	Type     string
 	PowerDNS *PowerDNS
+	RFC2136  *RFC2136
 }
 
 // PowerDNS holds the settings of a PowerDNS backend.
@@ -73,6 +74,17 @@ type PowerDNS struct {
 	// CAFile is a PEM bundle trusted for the API certificate, on top of the
 	// system roots.
 	CAFile string
+}
+
+// RFC2136 holds the settings of an rfc2136 backend: a name server that
+// implements RFC 2136 itself, which tsigoat relays the updates to.
+type RFC2136 struct {
+	// Server is the host:port of the name server.
+	Server string
+	// Key signs the messages to the server, and verifies its responses.
+	Key Key
+	// Timeout bounds every exchange with the server.
+	Timeout time.Duration
 }
 
 // Zone is a zone served by tsigoat.
@@ -172,6 +184,7 @@ type fileBackend struct {
 	Name     string        `yaml:"name"`
 	Type     string        `yaml:"type"`
 	PowerDNS *filePowerDNS `yaml:"powerdns"`
+	RFC2136  *fileRFC2136  `yaml:"rfc2136"`
 }
 
 type filePowerDNS struct {
@@ -182,6 +195,12 @@ type filePowerDNS struct {
 	APIKeyEnv  string `yaml:"apiKeyEnv"`
 	Timeout    string `yaml:"timeout"`
 	CAFile     string `yaml:"caFile"`
+}
+
+type fileRFC2136 struct {
+	Server  string   `yaml:"server"`
+	Key     *fileKey `yaml:"key"`
+	Timeout string   `yaml:"timeout"`
 }
 
 type fileZone struct {

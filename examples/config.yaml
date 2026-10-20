@@ -46,6 +46,22 @@ backends:
       # PEM bundle trusted for the API certificate, on top of the system roots.
       caFile: /etc/tsigoat/powerdns-ca.pem
 
+  # A name server that implements RFC 2136 itself, such as BIND: tsigoat checks
+  # the keys and the policy, then relays the updates, signed with its own key,
+  # and the server applies them. docs/rfc2136.md tells how to set it up.
+  - name: bind
+    type: rfc2136
+    rfc2136:
+      # Address of the name server, as host:port.
+      server: ns1.example.net:53
+      # The key that tsigoat signs with, which the server must accept: a key
+      # as above.
+      key:
+        name: tsigoat.
+        secretFile: /run/secrets/tsigoat/bind
+      # Timeout of every exchange with the server. Default: 5s.
+      timeout: 5s
+
 # Zones that tsigoat accepts updates for. They must exist in their backend.
 zones:
   - name: example.com.
@@ -68,4 +84,13 @@ zones:
   # A zone open to unsigned updates from anyone who can reach tsigoat. It
   # draws a warning: prefer keys.
   - name: lab.example.com.
+    backend: pdns
     allowUnauthenticated: true
+
+  # A zone of the name server, which applies the updates that tsigoat relays.
+  - name: example.net.
+    backend: bind
+    policy:
+      - key: cert-manager.
+        names: ["_acme-challenge.example.net.", "_acme-challenge.**.example.net."]
+        types: [TXT]

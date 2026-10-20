@@ -71,12 +71,18 @@ describes it, without `listen` and `admin`: the chart sets the listen
 addresses. The chart refuses a configuration without zones or backends, and
 one that writes a secret inline, which would land in a ConfigMap.
 
-The secrets come from one of:
+The secrets, the TSIG secrets of the clients and those of the backends, come
+from one of:
 
 - `secret.existingSecret`, a Secret created apart from the chart, which keeps
   the secrets out of the Helm release;
 - `secret.files`, the files of a Secret that the chart creates;
 - environment variables of `extraEnv`, read with `secretEnv` and `apiKeyEnv`.
+
+In front of BIND or another name server that implements RFC 2136, an
+`rfc2136` backend relays the updates with a key of tsigoat, see
+[RFC 2136 servers](https://github.com/enix/tsigoat/blob/main/docs/rfc2136.md)
+and `examples/helm/bind-relay.values.yaml`.
 
 tsigoat reads its configuration and its secrets at startup. The chart
 restarts it when `config` or `secret.files` changes; after a change to an

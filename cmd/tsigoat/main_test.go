@@ -36,7 +36,7 @@ func TestCheckConfig(t *testing.T) {
 	for _, want := range []string{
 		"warning: keys[2].algorithm: RFC 8945 forbids HMAC-MD5",
 		"warning: zones[1]: accepts unauthenticated updates",
-		"is valid: 3 keys, 2 backends, 2 zones",
+		"is valid: 3 keys, 3 backends, 3 zones",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("output %q lacks %q", stdout, want)

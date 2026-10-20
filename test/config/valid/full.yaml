@@ -26,6 +26,15 @@ backends:
     powerdns:
       url: http://other:8081
       apiKeyEnv: TSIGOAT_TEST_API_KEY
+  - name: bind
+    type: rfc2136
+    rfc2136:
+      server: ns1.example.test:53
+      key:
+        name: TSIGoat
+        algorithm: hmac-sha1
+        secretEnv: TSIGOAT_TEST_SECRET
+      timeout: 3s
 zones:
   - name: Example.Test
     backend: pdns
@@ -40,3 +49,6 @@ zones:
   - name: open.test.
     backend: other
     allowUnauthenticated: true
+  - name: relayed.test.
+    backend: bind
+    keys: [admin.]

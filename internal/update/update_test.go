@@ -538,3 +538,37 @@ func checkInvariants(t *testing.T, b *memory.Backend) {
 		}
 	}
 }
+
+func TestOperation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		rr   dns.RR
+		want string
+	}{
+		{mustRR(t, "www.example.test. 300 IN A 192.0.2.1"), "add www.example.test. 300 A 192.0.2.1"},
+		{mustRR(t, `txt.example.test. 0 NONE TXT "a b"`), `delete txt.example.test. TXT "a b"`},
+		{
+			&dns.ANY{Hdr: dns.RR_Header{Name: "mx.example.test.", Rrtype: dns.TypeMX, Class: dns.ClassANY}},
+			"delete mx.example.test. MX",
+		},
+		{
+			&dns.ANY{Hdr: dns.RR_Header{Name: "old.example.test.", Rrtype: dns.TypeANY, Class: dns.ClassANY}},
+			"delete old.example.test.",
+		},
+	}
+	for _, tt := range tests {
+		if got := update.Operation(tt.rr); got != tt.want {
+			t.Errorf("Operation(%v) = %q, want %q", tt.rr, got, tt.want)
+		}
+	}
+}
+
+func mustRR(t *testing.T, text string) dns.RR {
+	t.Helper()
+	rr, err := dns.NewRR(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rr
+}

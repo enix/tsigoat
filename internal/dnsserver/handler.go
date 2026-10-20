@@ -193,6 +193,9 @@ type outcome struct {
 	// err is a failure of tsigoat or of the backend, answered SERVFAIL.
 	err     error
 	changes []backend.Change
+	// relayed holds the updates relayed to the relay of the zone, whose
+	// effect tsigoat does not know.
+	relayed []dns.RR
 }
 
 func (o *outcome) refuse(reason string) {
@@ -231,6 +234,13 @@ func (s *Server) update(ctx context.Context, ex *exchange) *dns.Msg {
 			changes = append(changes, change.String())
 		}
 		attrs = append(attrs, "changes", changes)
+	}
+	if len(out.relayed) > 0 {
+		updates := make([]string, 0, len(out.relayed))
+		for _, rr := range out.relayed {
+			updates = append(updates, update.Operation(rr))
+		}
+		attrs = append(attrs, "updates", updates)
 	}
 	level := slog.LevelInfo
 	switch out.rcode {
@@ -271,6 +281,10 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		out.refuse(reason)
 		return
 	}
+	if z.Relay != nil {
+		relay(ctx, z, req, out)
+		return
+	}
 
 	if err := z.acquire(ctx); err != nil {
 		out.fail(err)
@@ -295,6 +309,22 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		}
 	}
 	out.rcode = dns.RcodeSuccess
+}
+
+// relay hands an authorized update over to the relay of its zone, which
+// evaluates its prerequisites and applies it: tsigoat neither reads the zone
+// nor serializes its updates.
+func relay(ctx context.Context, z *servedZone, req *update.Request, out *outcome) {
+	out.relayed = req.Updates
+	rcode, err := z.Relay.Update(ctx, z.Name, req.Prerequisites, req.Updates)
+	if err != nil {
+		out.fail(fmt.Errorf("relaying the update: %w", err))
+		return
+	}
+	out.rcode = rcode
+	if rcode != dns.RcodeSuccess {
+		out.reason = "answered by the server of backend " + z.BackendName
+	}
 }
 
 // admit returns the zone that an update names, or the rcode and the reason
@@ -385,6 +415,13 @@ func (s *Server) query(ctx context.Context, ex *exchange) *dns.Msg {
 }
 
 func lookupSOA(ctx context.Context, z *servedZone) (dns.RR, error) {
+	if z.Relay != nil {
+		soa, err := z.Relay.SOA(ctx, z.Name)
+		if err != nil {
+			return nil, fmt.Errorf("querying the SOA of %s: %w", z.Name, err)
+		}
+		return soa, nil
+	}
 	sets, err := z.Backend.Lookup(ctx, z.Name, z.Name)
 	if err != nil {
 		return nil, fmt.Errorf("looking up the apex of %s: %w", z.Name, err)

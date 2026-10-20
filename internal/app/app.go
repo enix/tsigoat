@@ -15,6 +15,7 @@ import (
 	"github.com/enix/tsigoat/internal/auth"
 	"github.com/enix/tsigoat/internal/backend"
 	"github.com/enix/tsigoat/internal/backend/powerdns"
+	"github.com/enix/tsigoat/internal/backend/rfc2136"
 	"github.com/enix/tsigoat/internal/config"
 	"github.com/enix/tsigoat/internal/dnsserver"
 	"github.com/enix/tsigoat/internal/metrics"
@@ -28,7 +29,8 @@ const (
 	adminShutdownTimeout = 5 * time.Second
 )
 
-// BackendFactory builds the backend of a configuration entry.
+// BackendFactory builds the backend of a configuration entry, for the update
+// engine of tsigoat. The rfc2136 backends are relays, which New builds itself.
 type BackendFactory func(*config.Backend) (backend.Backend, error)
 
 // App is tsigoat, assembled.
@@ -60,30 +62,23 @@ func New(c *config.Config, logger *slog.Logger, newBackend BackendFactory) (*App
 		a.admin = admin.New(c.AdminListen, m.Gatherer(), a.ready)
 	}
 
-	backends := make(map[string]backend.Backend, len(c.Backends))
-	for i := range c.Backends {
-		b, backendErr := newBackend(&c.Backends[i])
-		if backendErr != nil {
-			return nil, fmt.Errorf("backend %s: %w", c.Backends[i].Name, backendErr)
-		}
-		if m != nil {
-			b = m.Backend(c.Backends[i].Name, b)
-		}
-		backends[c.Backends[i].Name] = b
+	backends, relays, err := newBackends(c.Backends, newBackend, m)
+	if err != nil {
+		return nil, err
 	}
-
 	zones := make([]dnsserver.Zone, 0, len(c.Zones))
 	for i := range c.Zones {
 		z := &c.Zones[i]
-		b, ok := backends[z.Backend]
-		if !ok {
+		b, isBackend := backends[z.Backend]
+		relay, isRelay := relays[z.Backend]
+		if !isBackend && !isRelay {
 			return nil, fmt.Errorf("zone %s: unknown backend %q", z.Name, z.Backend)
 		}
 		policy, policyErr := auth.NewPolicy(z)
 		if policyErr != nil {
 			return nil, policyErr
 		}
-		zones = append(zones, dnsserver.Zone{Name: z.Name, Backend: b, BackendName: z.Backend, Policy: policy})
+		zones = append(zones, dnsserver.Zone{Name: z.Name, Backend: b, Relay: relay, BackendName: z.Backend, Policy: policy})
 	}
 
 	options := &dnsserver.Options{
@@ -100,6 +95,42 @@ func New(c *config.Config, logger *slog.Logger, newBackend BackendFactory) (*App
 		return nil, fmt.Errorf("creating the DNS server: %w", err)
 	}
 	return a, nil
+}
+
+// newBackends builds the backends of the configuration, by name: those of the
+// update engine, and the relays. Their calls feed the metrics, when m is set.
+func newBackends(entries []config.Backend, newBackend BackendFactory, m *metrics.Metrics) (
+	backends map[string]backend.Backend, relays map[string]backend.Relay, err error,
+) {
+	backends, relays = map[string]backend.Backend{}, map[string]backend.Relay{}
+	for i := range entries {
+		entry := &entries[i]
+		if entry.Type == "rfc2136" && entry.RFC2136 != nil {
+			r, relayErr := rfc2136.New(&rfc2136.Options{
+				Server:  entry.RFC2136.Server,
+				Key:     entry.RFC2136.Key,
+				Timeout: entry.RFC2136.Timeout,
+			})
+			if relayErr != nil {
+				return nil, nil, fmt.Errorf("backend %s: %w", entry.Name, relayErr)
+			}
+			var relay backend.Relay = r
+			if m != nil {
+				relay = m.Relay(entry.Name, r)
+			}
+			relays[entry.Name] = relay
+			continue
+		}
+		b, backendErr := newBackend(entry)
+		if backendErr != nil {
+			return nil, nil, fmt.Errorf("backend %s: %w", entry.Name, backendErr)
+		}
+		if m != nil {
+			b = m.Backend(entry.Name, b)
+		}
+		backends[entry.Name] = b
+	}
+	return backends, relays, nil
 }
 
 // NewBackend builds the backend of a configuration entry.

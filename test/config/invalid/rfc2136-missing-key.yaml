@@ -1,0 +1,11 @@
+keys:
+  - name: admin.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: bind
+    type: rfc2136
+    rfc2136:
+      server: ns1.example.test:53
+zones:
+  - name: example.test.
+    keys: [admin.]

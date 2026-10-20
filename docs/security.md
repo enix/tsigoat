@@ -1,7 +1,8 @@
 # Security
 
 tsigoat holds the credentials of a DNS provider, which can change whole zones,
-and hands out TSIG keys that can only change what their policy allows. Its
+or the TSIG key of a name server that it relays the updates to, and hands out
+TSIG keys that can only change what their policy allows. Its
 security rests on the secrecy of those keys, on the policy, and on the
 exposure of the DNS and administration ports.
 
@@ -81,5 +82,8 @@ To move a client off a legacy algorithm:
   does.
 - Restrict the PowerDNS API to tsigoat, and serve it over HTTPS when it
   crosses a network.
+- Let a name server behind an `rfc2136` backend grant the key of tsigoat only
+  what its clients need, and keep the server out of reach of the clients. TSIG
+  authenticates the relayed updates without encrypting them.
 - Verify the signature of the images before deploying them, see
   [SECURITY.md](../SECURITY.md#verifying-releases).

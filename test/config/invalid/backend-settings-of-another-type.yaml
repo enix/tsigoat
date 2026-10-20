@@ -1,0 +1,14 @@
+keys:
+  - name: admin.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: pdns
+    type: powerdns
+    powerdns:
+      url: http://pdns.example.test:8081
+      apiKeyEnv: TSIGOAT_TEST_API_KEY
+    rfc2136:
+      server: ns1.example.test:53
+zones:
+  - name: example.test.
+    keys: [admin.]

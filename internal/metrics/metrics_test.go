@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/miekg/dns"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 
 	"github.com/enix/tsigoat/internal/backend"
@@ -77,6 +78,35 @@ func TestBackend(t *testing.T) {
 	for _, operation := range []string{"lookup", "apply"} {
 		if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("pdns", operation, "error")); got != 1 {
 			t.Errorf("failed %s calls = %v, want 1", operation, got)
+		}
+	}
+}
+
+// stubRelay turns every update down with NXRRSET, and fails the SOA queries.
+type stubRelay struct{}
+
+func (stubRelay) Update(context.Context, string, []dns.RR, []dns.RR) (int, error) {
+	return dns.RcodeNXRrset, nil
+}
+
+func (stubRelay) SOA(context.Context, string) (dns.RR, error) {
+	return nil, errors.New("unreachable")
+}
+
+func TestRelay(t *testing.T) {
+	t.Parallel()
+	m := newMetrics(t)
+	r := m.Relay("bind", stubRelay{})
+
+	if rcode, err := r.Update(t.Context(), "example.test.", nil, nil); rcode != dns.RcodeNXRrset || err != nil {
+		t.Errorf("Update() = %d, %v, want the answer of the relay", rcode, err)
+	}
+	if _, err := r.SOA(t.Context(), "example.test."); err == nil {
+		t.Error("SOA() succeeded, want the error of the relay")
+	}
+	for _, call := range []struct{ operation, result string }{{"relay", "success"}, {"lookup", "error"}} {
+		if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("bind", call.operation, call.result)); got != 1 {
+			t.Errorf("%s calls with result %s = %v, want 1", call.operation, call.result, got)
 		}
 	}
 }

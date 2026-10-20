@@ -7,6 +7,12 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// Backend is the backend of every zone of the scenarios: PowerDNS or RFC2136.
+type Backend interface {
+	// entry returns the backend in the configuration of tsigoat.
+	entry() backendEntry
+}
+
 // PowerDNS locates the PowerDNS API that tsigoat writes to.
 type PowerDNS struct {
 	URL    string
@@ -15,63 +21,90 @@ type PowerDNS struct {
 	Timeout string
 }
 
-// Config renders the configuration of tsigoat that serves the zones of the
-// scenarios under parent, with every configured test key. It is the only
-// code that knows the configuration format.
-func Config(scenarios []Scenario, parent string, pdns PowerDNS) ([]byte, error) {
-	type key struct {
+func (p PowerDNS) entry() backendEntry {
+	return backendEntry{Name: "pdns", Type: "powerdns", PowerDNS: &powerDNSEntry{URL: p.URL, APIKey: p.APIKey, Timeout: p.Timeout}}
+}
+
+// RFC2136 locates a name server that tsigoat relays the updates to.
+type RFC2136 struct {
+	// Server is the host:port of the name server.
+	Server string
+	// KeyName and Secret, base64-encoded, make the HMAC-SHA256 key that
+	// tsigoat signs with.
+	KeyName string
+	Secret  string
+}
+
+func (r RFC2136) entry() backendEntry {
+	return backendEntry{Name: "relay", Type: "rfc2136", RFC2136: &rfc2136Entry{
+		Server: r.Server,
+		Key:    keyEntry{Name: r.KeyName, Algorithm: "hmac-sha256", Secret: r.Secret},
+	}}
+}
+
+// The configuration file of tsigoat, as far as the scenarios use it.
+type (
+	keyEntry struct {
 		Name      string `yaml:"name"`
 		Algorithm string `yaml:"algorithm"`
 		Secret    string `yaml:"secret"`
 	}
-	type powerDNS struct {
+	powerDNSEntry struct {
 		URL     string `yaml:"url"`
 		APIKey  string `yaml:"apiKey"`
 		Timeout string `yaml:"timeout,omitempty"`
 	}
-	type backend struct {
-		Name     string   `yaml:"name"`
-		Type     string   `yaml:"type"`
-		PowerDNS powerDNS `yaml:"powerdns"`
+	rfc2136Entry struct {
+		Server string   `yaml:"server"`
+		Key    keyEntry `yaml:"key"`
 	}
-	type rule struct {
+	backendEntry struct {
+		Name     string         `yaml:"name"`
+		Type     string         `yaml:"type"`
+		PowerDNS *powerDNSEntry `yaml:"powerdns,omitempty"`
+		RFC2136  *rfc2136Entry  `yaml:"rfc2136,omitempty"`
+	}
+	ruleEntry struct {
 		Key   string   `yaml:"key"`
 		Names []string `yaml:"names"`
 		Types []string `yaml:"types,omitempty"`
 	}
-	type zone struct {
-		Name                 string   `yaml:"name"`
-		AllowUnauthenticated bool     `yaml:"allowUnauthenticated,omitempty"`
-		Keys                 []string `yaml:"keys,omitempty"`
-		Policy               []rule   `yaml:"policy,omitempty"`
+	zoneEntry struct {
+		Name                 string      `yaml:"name"`
+		AllowUnauthenticated bool        `yaml:"allowUnauthenticated,omitempty"`
+		Keys                 []string    `yaml:"keys,omitempty"`
+		Policy               []ruleEntry `yaml:"policy,omitempty"`
 	}
-	type configuration struct {
-		Keys     []key     `yaml:"keys"`
-		Backends []backend `yaml:"backends"`
-		Zones    []zone    `yaml:"zones"`
+	configuration struct {
+		Keys     []keyEntry     `yaml:"keys"`
+		Backends []backendEntry `yaml:"backends"`
+		Zones    []zoneEntry    `yaml:"zones"`
 	}
+)
 
-	config := configuration{
-		Backends: []backend{{Name: "pdns", Type: "powerdns", PowerDNS: powerDNS(pdns)}},
-	}
+// Config renders the configuration of tsigoat that serves the zones of the
+// scenarios under parent, with every configured test key, on one backend. It
+// is the only code that knows the configuration format.
+func Config(scenarios []Scenario, parent string, b Backend) ([]byte, error) {
+	config := configuration{Backends: []backendEntry{b.entry()}}
 	var allKeys []string
 	for _, k := range Keyring() {
 		if !k.Configured {
 			continue
 		}
-		config.Keys = append(config.Keys, key{Name: k.ConfigName, Algorithm: configAlgorithm(k.Algorithm), Secret: k.Secret()})
+		config.Keys = append(config.Keys, keyEntry{Name: k.ConfigName, Algorithm: configAlgorithm(k.Algorithm), Secret: k.Secret()})
 		allKeys = append(allKeys, k.ConfigName)
 	}
 
 	for i := range scenarios {
 		s := &scenarios[i]
 		name := s.ZoneName(parent)
-		z := zone{Name: name, AllowUnauthenticated: s.Zone.Unauthenticated}
+		z := zoneEntry{Name: name, AllowUnauthenticated: s.Zone.Unauthenticated}
 		for _, id := range s.Zone.Keys {
 			z.Keys = append(z.Keys, configName(id))
 		}
 		for _, r := range s.Zone.Policy {
-			compiled := rule{Key: configName(r.Key), Types: r.Types}
+			compiled := ruleEntry{Key: configName(r.Key), Types: r.Types}
 			for _, pattern := range r.Names {
 				compiled.Names = append(compiled.Names, absolute(pattern, name))
 			}

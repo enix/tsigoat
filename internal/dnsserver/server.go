@@ -31,8 +31,12 @@ const bindAttempts = 10
 // Zone is a zone that the server accepts updates for.
 type Zone struct {
 	// Name is the canonical name of the zone.
-	Name    string
+	Name string
+	// Backend holds the zone, for the update engine of tsigoat.
 	Backend backend.Backend
+	// Relay, set in place of Backend, evaluates the updates of the zone
+	// itself: the server checks an update and its policy, then relays it.
+	Relay backend.Relay
 	// BackendName names the backend in messages.
 	BackendName string
 	Policy      *auth.Policy
@@ -103,7 +107,8 @@ const (
 	soaFailureTTL = 5 * time.Second
 )
 
-// servedZone is a zone with the lock that serializes its updates.
+// servedZone is a zone with the lock that serializes its updates, unless a
+// relay evaluates them.
 type servedZone struct {
 	Zone
 	// lock is a channel rather than a mutex, so that waiting for it honours
@@ -141,8 +146,8 @@ func New(options *Options) (*Server, error) {
 		if _, duplicate := s.zones[name]; duplicate {
 			return nil, fmt.Errorf("duplicate zone %s", name)
 		}
-		if z.Backend == nil || z.Policy == nil {
-			return nil, fmt.Errorf("zone %s: missing backend or policy", name)
+		if (z.Backend == nil) == (z.Relay == nil) || z.Policy == nil {
+			return nil, fmt.Errorf("zone %s: set a policy, and either a backend or a relay", name)
 		}
 		z.Name = name
 		s.zones[name] = &servedZone{Zone: z, lock: make(chan struct{}, 1)}
