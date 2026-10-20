@@ -149,7 +149,8 @@ applies them; see [Webhooks](webhook.md):
 
 `basicAuth` and `bearer` exclude each other, since both take the
 `Authorization` header; `signature` goes with either. A webhook without any of
-them draws a warning, as do credentials sent over plain HTTP. Headers may not
+them draws a warning, as do credentials sent over plain HTTP, and plain HTTP
+beyond the loopback, where someone in the middle may fake the answers. Headers may not
 take the place of those that tsigoat sets.
 
 ## Zones

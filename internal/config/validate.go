@@ -405,6 +405,9 @@ func (v *validator) webhookWarnings(path string, w *Webhook, plainHTTP bool) {
 		v.warnf(path, "the requests carry neither a signature nor credentials: the endpoint must authenticate them otherwise")
 	case credentials && plainHTTP:
 		v.warnf(path, "sends its credentials in clear text over http")
+	case plainHTTP && !loopback(w.URL):
+		v.warnf(path, "uses http beyond the loopback: the signature protects the requests, not the answers, "+
+			"which someone in the middle may fake")
 	}
 	if w.InsecureSkipVerify {
 		exposure := "read the requests"
@@ -412,10 +415,23 @@ func (v *validator) webhookWarnings(path string, w *Webhook, plainHTTP bool) {
 			exposure += ", steal the credentials"
 		}
 		if w.SignatureSecret == "" {
-			exposure += " and change the requests"
+			exposure += ", change the requests"
 		}
-		v.warnf(path+".insecureSkipVerify", "accepts any certificate: someone in the middle may %s", exposure)
+		v.warnf(path+".insecureSkipVerify", "accepts any certificate: someone in the middle may %s and fake the answers", exposure)
 	}
+}
+
+// loopback reports whether a URL names a host of the loopback.
+func loopback(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	if u.Hostname() == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(u.Hostname())
+	return ip != nil && ip.IsLoopback()
 }
 
 // validHeaderName reports whether a header name is a token of RFC 9110

@@ -267,3 +267,36 @@ func TestParseProviders(t *testing.T) {
 		t.Errorf("Scaleway settings = %+v", s)
 	}
 }
+
+func TestWebhookWarnings(t *testing.T) {
+	t.Parallel()
+	const head = "keys:\n  - name: e2e.\n    secretEnv: TSIGOAT_TEST_SECRET\nbackends:\n  - name: hook\n    type: webhook\n    webhook:\n"
+	const tail = "zones:\n  - name: example.test.\n    backend: hook\n    keys: [e2e.]\n"
+	for _, c := range []struct {
+		webhook string
+		want    string
+	}{
+		{webhook: "      url: http://127.0.0.1:8053/\n      signature: {secret: s}\n", want: ""},
+		{webhook: "      url: http://localhost:8053/\n      signature: {secret: s}\n", want: ""},
+		{webhook: "      url: https://hooks.example.test/\n      signature: {secret: s}\n", want: ""},
+		{webhook: "      url: http://hooks.example.test/\n      signature: {secret: s}\n", want: "the signature protects the requests, not the answers"},
+		{webhook: "      url: http://hooks.example.test/\n      bearer: {token: t}\n", want: "sends its credentials in clear text over http"},
+		{webhook: "      url: https://hooks.example.test/\n", want: "neither a signature nor credentials"},
+		{
+			webhook: "      url: https://hooks.example.test/\n      signature: {secret: s}\n      insecureSkipVerify: true\n",
+			want:    "someone in the middle may read the requests and fake the answers",
+		},
+	} {
+		_, warnings, err := config.Parse([]byte(head+c.webhook+tail), testOptions())
+		if err != nil {
+			t.Fatal(err)
+		}
+		joined := strings.Join(warnings, "\n")
+		switch {
+		case c.want == "" && len(warnings) > 0:
+			t.Errorf("%s: warnings %q, want none", c.webhook, joined)
+		case c.want != "" && !strings.Contains(joined, c.want):
+			t.Errorf("%s: warnings %q, want %q", c.webhook, joined, c.want)
+		}
+	}
+}
