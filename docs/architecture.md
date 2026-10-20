@@ -80,8 +80,10 @@ type Backend interface {
 
 A change replaces a whole RRset, or deletes one. A backend must apply the
 changes of a call atomically, or not at all; `ErrZoneNotFound` reports a
-missing zone. The PowerDNS backend sends one PATCH request, which PowerDNS
-applies in one transaction.
+missing zone. A `*backend.RejectionError` turns the update down before
+anything changes, such as a record that the provider cannot hold: the client
+gets its rcode, and the metrics count no backend error. The PowerDNS backend
+sends one PATCH request, which PowerDNS applies in one transaction.
 
 ```go
 type Relay interface {

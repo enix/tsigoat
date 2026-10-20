@@ -80,6 +80,17 @@ func TestBackend(t *testing.T) {
 			t.Errorf("failed %s calls = %v, want 1", operation, got)
 		}
 	}
+
+	// An update that the backend turns down is no failure of the backend.
+	rejecting := memory.New()
+	rejecting.FailApply(&backend.RejectionError{Rcode: dns.RcodeRefused, Reason: "rejected"})
+	b = m.Backend("provider", rejecting)
+	if err := b.Apply(context.Background(), "example.test.", nil); err == nil {
+		t.Error("Apply() succeeded, want the rejection of the backend")
+	}
+	if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("provider", "apply", "success")); got != 1 {
+		t.Errorf("turned down apply calls with result success = %v, want 1", got)
+	}
 }
 
 // stubRelay turns updates down, with NXRRSET or with a rejection for those

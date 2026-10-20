@@ -3,7 +3,6 @@
 package metrics
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -101,33 +100,11 @@ func algorithmName(algorithm string) string {
 	return strings.TrimSuffix(strings.TrimSuffix(algorithm, "."), ".sig-alg.reg.int")
 }
 
-// Backend wraps a backend to measure its calls.
+// Backend wraps a backend to measure its calls: lookup and apply.
 func (m *Metrics) Backend(name string, b backend.Backend) backend.Backend {
-	return &instrumented{metrics: m, name: name, backend: b}
-}
-
-type instrumented struct {
-	metrics *Metrics
-	name    string
-	backend backend.Backend
-}
-
-func (i *instrumented) Lookup(ctx context.Context, zone, name string) ([]backend.RRset, error) {
-	start := time.Now()
-	sets, err := i.backend.Lookup(ctx, zone, name)
-	i.observe("lookup", start, err)
-	return sets, err
-}
-
-func (i *instrumented) Apply(ctx context.Context, zone string, changes []backend.Change) error {
-	start := time.Now()
-	err := i.backend.Apply(ctx, zone, changes)
-	i.observe("apply", start, err)
-	return err
-}
-
-func (i *instrumented) observe(operation string, start time.Time, err error) {
-	i.metrics.observeCall(i.name, operation, start, err)
+	return backend.ObservedBackend(b, func(operation string, start time.Time, err error) {
+		m.observeCall(name, operation, start, err)
+	})
 }
 
 // Relay wraps a relay to measure its calls: relay for the updates, lookup for

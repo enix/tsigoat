@@ -322,6 +322,29 @@ func TestBackendFailures(t *testing.T) {
 	}
 }
 
+// TestBackendRejections checks that an update that the backend turns down
+// gets the rcode and the reason of the backend, not SERVFAIL.
+func TestBackendRejections(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+
+	f.backend.FailApply(&backend.RejectionError{Rcode: dns.RcodeRefused, Reason: "the provider holds no such record"})
+	resp, err := f.exchange(t, "udp", updateMsg(t), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Rcode != dns.RcodeRefused {
+		t.Errorf("rcode %s, want REFUSED", dns.RcodeToString[resp.Rcode])
+	}
+	logs := f.logs.String()
+	if !strings.Contains(logs, "the provider holds no such record") || !strings.Contains(logs, "level=WARN") {
+		t.Errorf("the reason is missing from the logs:\n%s", logs)
+	}
+	if strings.Contains(logs, "level=ERROR") {
+		t.Errorf("a rejection is logged as an error:\n%s", logs)
+	}
+}
+
 // countingBackend counts the lookups.
 type countingBackend struct {
 	*memory.Backend

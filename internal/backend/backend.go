@@ -26,7 +26,10 @@ var ErrZoneNotFound = errors.New("zone not found")
 type Backend interface {
 	// Lookup returns every RRset of the zone owned by the canonical name.
 	Lookup(ctx context.Context, zone, name string) ([]RRset, error)
-	// Apply applies the changes to the zone, all or nothing.
+	// Apply applies the changes to the zone, all or nothing. A
+	// *RejectionError turns the update down before anything changes, such
+	// as a record that the provider cannot hold; other errors are failures,
+	// which the client cannot fix.
 	Apply(ctx context.Context, zone string, changes []Change) error
 }
 
@@ -45,7 +48,8 @@ type Relay interface {
 }
 
 // RejectionError is an update that a relay turns down before evaluating it,
-// with the rcode of the response and the reason.
+// or that a backend turns down before applying it, with the rcode of the
+// response and the reason.
 type RejectionError struct {
 	Rcode  int
 	Reason string
@@ -58,6 +62,39 @@ func (r *RejectionError) Error() string {
 // Observer is told about the calls to a backend: the operation, when it
 // started, and its error.
 type Observer func(operation string, start time.Time, err error)
+
+// ObservedBackend returns a backend that reports its calls to observe: lookup
+// and apply. An update that the backend turns down is no error.
+func ObservedBackend(b Backend, observe Observer) Backend {
+	return &observedBackend{backend: b, observe: observe}
+}
+
+type observedBackend struct {
+	backend Backend
+	observe Observer
+}
+
+func (o *observedBackend) Lookup(ctx context.Context, zone, name string) ([]RRset, error) {
+	start := time.Now()
+	sets, err := o.backend.Lookup(ctx, zone, name)
+	o.observe("lookup", start, err)
+	return sets, err
+}
+
+func (o *observedBackend) Apply(ctx context.Context, zone string, changes []Change) error {
+	start := time.Now()
+	err := o.backend.Apply(ctx, zone, changes)
+	o.observe("apply", start, failure(err))
+	return err
+}
+
+// failure returns err, unless it turns an update down.
+func failure(err error) error {
+	if _, rejected := errors.AsType[*RejectionError](err); rejected {
+		return nil
+	}
+	return err
+}
 
 // ObservedRelay returns a relay that reports its calls to observe: relay for
 // the updates, lookup for the SOA queries, check for the checks. An update
@@ -75,11 +112,7 @@ type observedRelay struct {
 func (o *observedRelay) Update(ctx context.Context, zone, key string, prerequisites, updates []dns.RR) (int, error) {
 	start := time.Now()
 	rcode, err := o.relay.Update(ctx, zone, key, prerequisites, updates)
-	if _, rejected := errors.AsType[*RejectionError](err); rejected {
-		o.observe("relay", start, nil)
-	} else {
-		o.observe("relay", start, err)
-	}
+	o.observe("relay", start, failure(err))
 	return rcode, err
 }
 

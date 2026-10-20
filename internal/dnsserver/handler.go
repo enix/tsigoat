@@ -303,7 +303,12 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 	}
 	out.changes = view.Changes()
 	if len(out.changes) > 0 {
-		if err := z.Backend.Apply(ctx, zoneName, out.changes); err != nil {
+		err := z.Backend.Apply(ctx, zoneName, out.changes)
+		if rejection, ok := errors.AsType[*backend.RejectionError](err); ok {
+			out.rcode, out.reason = rejection.Rcode, rejection.Reason
+			return
+		}
+		if err != nil {
 			out.fail(fmt.Errorf("applying the changes: %w", err))
 			return
 		}
