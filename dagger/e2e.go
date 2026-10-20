@@ -104,16 +104,20 @@ func (m *Tsigoat) TestClients(
 // e2eImage returns a runtime container with tsigoat compiled from the source
 // tree.
 func (m *Tsigoat) e2eImage() *dagger.Container {
-	binary := goBase(m.Source).
+	return dag.Container().
+		From(alpineImage).
+		WithFile("/usr/local/bin/tsigoat", m.binary())
+}
+
+// binary returns tsigoat compiled from the source tree, for the platform of
+// the engine.
+func (m *Tsigoat) binary() *dagger.File {
+	return goBase(m.Source).
 		WithExec([]string{
 			"go", "build", "-trimpath", "-tags", "osusergo,netgo",
 			"-o", "/out/tsigoat", "./cmd/tsigoat",
 		}).
 		File("/out/tsigoat")
-
-	return dag.Container().
-		From(alpineImage).
-		WithFile("/usr/local/bin/tsigoat", binary)
 }
 
 // toxiproxy returns a toxiproxy service that relays the PowerDNS API on

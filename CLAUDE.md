@@ -66,7 +66,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | BIND differential | `task test:differential` | `dagger call test-differential`: the scenarios against BIND 9; intended divergences in `test/differential/divergences.yaml` |
 | Helm chart | `task test:helm` | `dagger call test-helm`: `test/chart` (build tag `chart`) renders every example and fixture, then promtool and kubeconform; `task lint:helm` too |
 | Chart docs | `task doc:helm` | regenerates `chart/README.md` and `chart/values.schema.json`; `task check:helm-docs` fails when stale |
-| cert-manager | `task test:acceptance` | `dagger call test-acceptance`: cert-manager in k3s, inside Dagger; nightly |
+| cert-manager | `task test:acceptance` | `dagger call test-acceptance`: the chart in k3s, cert-manager through it, inside Dagger; nightly |
 | Mutation | `task test:mutation` | `dagger call mutation`: gremlins on update, zone and auth; informational, nightly |
 | Fuzzing | `task test:fuzz` | `dagger call fuzz --fuzztime=1m`: every `Fuzz*` target; 10 minutes each in the nightly workflow |
 | Security | `task security` | gitleaks, govulncheck, Trivy |

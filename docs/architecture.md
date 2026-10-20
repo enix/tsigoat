@@ -99,7 +99,7 @@ those of other zones REFUSED.
 | Differential | The same scenarios against BIND 9, the reference implementation; the intended divergences are listed with their reason | `test/differential`, `task test:differential` |
 | Real clients | nsupdate; lego and certbot getting certificates from Pebble | `task test:clients`, `task test:acme` |
 | Helm chart | The chart rendered with every example and fixture: the configuration valid in the pod, ports, probes, mounts and selectors in agreement, invalid values refused, the alerts unit-tested with promtool, the objects valid for kubeconform | `test/chart`, `task test:helm` |
-| Acceptance | cert-manager in a k3s cluster, with explicit, legacy and unsigned setups | `task test:acceptance`, nightly |
+| Acceptance | tsigoat installed with its chart in a k3s cluster, under the restricted Pod Security profile; cert-manager gets certificates through it, with explicit, legacy and unsigned setups | `task test:acceptance`, nightly |
 | Mutation | Mutants of `update`, `zone` and `auth` that the tests miss | `task test:mutation`, nightly |
 
 A scenario describes a zone, requests in the syntax of nsupdate, and the

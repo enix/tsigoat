@@ -55,7 +55,7 @@ Single sources of truth:
 | Real DNS clients | `task test:clients` (nsupdate), `task test:acme` (lego and certbot with Pebble) |
 | Scenarios against BIND 9 | `task test:differential`; intended divergences go to `test/differential/divergences.yaml` |
 | Helm chart | `task lint:helm`, `task test:helm`; `task doc:helm` after a change to `chart/values.yaml` |
-| cert-manager in Kubernetes | `task test:acceptance`, which runs k3s inside Dagger; nightly in CI |
+| cert-manager in Kubernetes | `task test:acceptance`, which installs the chart in k3s inside Dagger; nightly in CI |
 | Fuzzing | `task test:fuzz`, `FUZZTIME=10m` for longer runs; nightly in CI |
 | Linters | `task lint`, or `task lint:go`, `lint:markdown`, `lint:actions`... |
 | Security scans | `task security` |

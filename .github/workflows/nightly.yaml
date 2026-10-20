@@ -1,8 +1,9 @@
 name: Nightly
 
 # Long checks that do not fit in a pull request: every fuzz target runs for
-# ten minutes, cert-manager obtains certificates through tsigoat in a k3s
-# cluster, and gremlins reports the mutants that the tests miss.
+# ten minutes, cert-manager obtains certificates through tsigoat installed
+# with its chart in a k3s cluster, and gremlins reports the mutants that the
+# tests miss.
 on:
   schedule:
     - cron: "17 3 * * *"

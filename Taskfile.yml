@@ -197,7 +197,7 @@ tasks:
       - "{{.DAGGER}} call test-differential"
 
   test:acceptance:
-    desc: "cert-manager in k3s gets certificates from Pebble through tsigoat, inside Dagger (PDNS_VERSION=4.9|5.0)"
+    desc: "tsigoat installed with its chart in k3s, where cert-manager gets certificates from Pebble through it, inside Dagger (PDNS_VERSION=4.9|5.0)"
     cmds:
       - "{{.DAGGER}} call test-acceptance --pdns-version={{.PDNS_VERSION | default \"5.0\"}}"
 
