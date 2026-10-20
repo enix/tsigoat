@@ -51,28 +51,34 @@ func (*fakeWriter) Hijack() {}
 
 const openZone = "open.test."
 
-// fuzzServer returns a server, not listening, for a secured zone and an
-// open zone.
-func fuzzServer(f *testing.F) (*Server, *memory.Backend, *auth.Keyring) {
-	f.Helper()
+// fuzzKeyring returns the keyring of the fuzz tests.
+func fuzzKeyring(tb testing.TB) *auth.Keyring {
+	tb.Helper()
 	keyring, err := auth.NewKeyring([]config.Key{{Name: keyName, Algorithm: config.HMACSHA256, Secret: secret}})
 	if err != nil {
-		f.Fatal(err)
+		tb.Fatal(err)
 	}
+	return keyring
+}
+
+// fuzzServer returns a server, not listening, for a secured zone and an
+// open zone, each holding its SOA and NS records alone.
+func fuzzServer(tb testing.TB, keyring *auth.Keyring) (*Server, *memory.Backend) {
+	tb.Helper()
 	secured, err := auth.NewPolicy(&config.Zone{Name: testZone, Keys: []string{keyName}})
 	if err != nil {
-		f.Fatal(err)
+		tb.Fatal(err)
 	}
 	open, err := auth.NewPolicy(&config.Zone{Name: openZone, AllowUnauthenticated: true})
 	if err != nil {
-		f.Fatal(err)
+		tb.Fatal(err)
 	}
 	b := memory.New()
 	for _, zone := range []string{testZone, openZone} {
 		soa, soaErr := dns.NewRR(zone + " 3600 IN SOA ns1." + zone + " hostmaster." + zone + " 1 7200 900 1209600 300")
 		ns, nsErr := dns.NewRR(zone + " 3600 IN NS ns1." + zone)
 		if soaErr != nil || nsErr != nil {
-			f.Fatal(soaErr, nsErr)
+			tb.Fatal(soaErr, nsErr)
 		}
 		b.SetZone(zone, soa, ns)
 	}
@@ -87,26 +93,29 @@ func fuzzServer(f *testing.F) (*Server, *memory.Backend, *auth.Keyring) {
 		Timeout: time.Second,
 	})
 	if err != nil {
-		f.Fatal(err)
+		tb.Fatal(err)
 	}
-	return server, b, keyring
+	return server, b
 }
 
+// fuzzSeeds adds the seeds of FuzzServeDNS: a message, and whether to sign it
+// at the time of the test. The messages signed in advance exercise the
+// verification of signatures, which their mutations, and time, break.
 func fuzzSeeds(f *testing.F, keyring *auth.Keyring) {
 	f.Helper()
 	add := func(m *dns.Msg, signed bool) {
-		var data []byte
-		var err error
-		if signed {
-			m.SetTsig(keyName, dns.HmacSHA256, 300, time.Now().Unix())
-			data, _, err = dns.TsigGenerateWithProvider(m, keyring, "", false)
-		} else {
-			data, err = m.Pack()
-		}
+		data, err := m.Pack()
 		if err != nil {
 			f.Fatal(err)
 		}
-		f.Add(data)
+		f.Add(data, signed)
+		if signed {
+			m.SetTsig(keyName, dns.HmacSHA256, fudge, time.Now().Unix())
+			if data, _, err = dns.TsigGenerateWithProvider(m, keyring, "", false); err != nil {
+				f.Fatal(err)
+			}
+			f.Add(data, false)
+		}
 	}
 	rr := func(text string) dns.RR {
 		parsed, err := dns.NewRR(text)
@@ -138,17 +147,34 @@ func fuzzSeeds(f *testing.F, keyring *auth.Keyring) {
 	add(m, true)
 }
 
-// FuzzServeDNS feeds arbitrary messages to the handler: it must answer
+// FuzzServeDNS feeds arbitrary messages to the handler, each to a server of
+// its own, so that a failure reproduces from its input alone: it must answer
 // every one of them with a message that packs, and the zones must keep their
-// SOA and apex NS.
+// SOA and apex NS. A message that sign asks to sign, and that bears no
+// signature, is signed at once: it reaches the policy and the engine of the
+// secured zone, which mutations of a signed message seldom do.
 func FuzzServeDNS(f *testing.F) {
-	server, b, keyring := fuzzServer(f)
+	keyring := fuzzKeyring(f)
 	fuzzSeeds(f, keyring)
 
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(t *testing.T, data []byte, sign bool) {
+		server, b := fuzzServer(t, keyring)
 		req := new(dns.Msg)
 		if err := req.Unpack(data); err != nil {
 			return
+		}
+		if sign && req.IsTsig() == nil {
+			req.SetTsig(keyName, dns.HmacSHA256, fudge, time.Now().Unix())
+			signed, _, err := dns.TsigGenerateWithProvider(req, keyring, "", false)
+			if err != nil {
+				return
+			}
+			data, req = signed, new(dns.Msg)
+			if err := req.Unpack(data); err != nil {
+				// miekg/dns signs some messages that it cannot read back,
+				// such as those with an empty TSIG record in an answer.
+				return
+			}
 		}
 		w := &fakeWriter{}
 		if req.IsTsig() != nil {
