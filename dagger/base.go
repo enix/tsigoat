@@ -19,6 +19,7 @@ const (
 	pdns49Image       = "powerdns/pdns-auth-49:4.9.17@sha256:b554df74bbde1afa7caedad4af9c91378be6d46d05807d089b3c7c443002e684"
 	pdns50Image       = "powerdns/pdns-auth-50:5.0.7@sha256:4d6cc4fc42a28f2df7fb55f6f36d8323f96e0da66135ccdad057ca7349b223b4"
 	toxiproxyImage    = "ghcr.io/shopify/toxiproxy:2.13.0@sha256:5d3dae09bc185dcc5ff6cf43abf6062a4a720aff0c4306a471e773acdcd107aa"
+	kubeconformImage  = "ghcr.io/yannh/kubeconform:v0.8.0@sha256:faffaf43f95aa6425306e1ab8d6fcad72acb9049158f38e574c085ea1ec0f64e"
 	golangciLint      = "v2.15.0" // installed via `go install`
 	gotestsumModule   = "v1.13.0" // ditto
 	govulncheckPath   = "latest"  // tracking latest, no Renovate pin

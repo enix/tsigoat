@@ -76,3 +76,22 @@ func (m *Tsigoat) LintRenovate(ctx context.Context) (string, error) {
 		WithExec([]string{"renovate-config-validator", "--strict"}).
 		Stdout(ctx)
 }
+
+// LintManifests validates the example Kubernetes manifests against the
+// schemas of Kubernetes, and of cert-manager from the CRDs catalog.
+func (m *Tsigoat) LintManifests(ctx context.Context) (string, error) {
+	return dag.Container().
+		From(kubeconformImage).
+		WithWorkdir("/src").
+		WithDirectory("/src", m.Source.Directory("examples/kubernetes")).
+		WithExec([]string{
+			"/kubeconform", "-strict", "-summary",
+			// Not Kubernetes resources: the kustomization and the tsigoat
+			// configuration.
+			"-ignore-filename-pattern", `(kustomization|config)\.yaml$`,
+			"-schema-location", "default",
+			"-schema-location", "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
+			".",
+		}).
+		Stdout(ctx)
+}

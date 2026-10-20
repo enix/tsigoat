@@ -36,6 +36,7 @@ jobs:
       actions: ${{ steps.filter.outputs.actions }}
       dockerfile: ${{ steps.filter.outputs.dockerfile }}
       renovate: ${{ steps.filter.outputs.renovate }}
+      manifests: ${{ steps.filter.outputs.manifests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -66,6 +67,9 @@ jobs:
               - 'dagger/**'
             renovate:
               - 'renovate.json5'
+              - 'dagger/**'
+            manifests:
+              - 'examples/kubernetes/**'
               - 'dagger/**'
 
   go:
@@ -154,3 +158,19 @@ jobs:
       - uses: ./.github/actions/dagger
         with:
           args: lint-renovate
+
+  manifests:
+    name: Kubernetes manifests
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.manifests == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: lint-manifests
