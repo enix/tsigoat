@@ -136,8 +136,10 @@ linters:
       - ^pkg/
       - ^hack/
     rules:
+      # Tests read fixtures from variable paths and hold fake credentials.
       - path: _test\.go
         linters:
+          - gosec
           - funlen
           - dupl
           - goconst

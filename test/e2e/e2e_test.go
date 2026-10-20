@@ -14,8 +14,8 @@ package e2e
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/md5"  //nolint:gosec // HMAC-MD5 is a TSIG algorithm under test
-	"crypto/sha1" //nolint:gosec // HMAC-SHA1 is a TSIG algorithm under test
+	"crypto/md5"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"

@@ -66,7 +66,7 @@ func startTsigoat(t *testing.T, env environment, scenarios []scenario.Scenario) 
 	addr := freeAddress(t)
 	logs := &syncBuffer{}
 	// The test context ends right before the cleanup, which kills tsigoat.
-	cmd := exec.CommandContext(t.Context(), binary, "serve", //nolint:gosec // the binary is the one under test
+	cmd := exec.CommandContext(t.Context(), binary, "serve",
 		"--config", config,
 		"--listen", addr,
 		"--log-format", "json",
@@ -92,7 +92,7 @@ func startTsigoat(t *testing.T, env environment, scenarios []scenario.Scenario) 
 func buildTsigoat(t *testing.T) string {
 	t.Helper()
 	binary := filepath.Join(t.TempDir(), "tsigoat")
-	cmd := exec.CommandContext(t.Context(), //nolint:gosec // fixed command, temporary output path
+	cmd := exec.CommandContext(t.Context(),
 		"go", "build", "-o", binary, "github.com/enix/tsigoat/cmd/tsigoat")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building tsigoat: %v\n%s", err, output)
