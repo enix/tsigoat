@@ -148,7 +148,8 @@ update that undid it, passes the signature and the timestamp. The endpoint
 refuses replays by their `id`, which the signature covers: it remembers the
 identifiers of the requests that it accepted for as long as their timestamp
 lets them in, and refuses a request whose identifier it knows, as the example
-does, with 409.
+does, with 409. An endpoint that forgets the identifiers when it stops refuses
+the requests signed before it started, as the example does too.
 
 The secret never travels: the signature keeps someone in the middle from
 forging or changing a request, even over plain HTTP, or with

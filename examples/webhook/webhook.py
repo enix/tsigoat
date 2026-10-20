@@ -24,7 +24,8 @@ configuration of tsigoat; every one that is set must match. Prefer the
 signature, which also protects the content of the requests. The endpoint
 refuses a request that comes twice, a replay, by its identifier: it remembers
 the identifiers of the requests that it accepted for as long as their
-timestamp lets them in.
+timestamp lets them in. It forgets them when it stops: it refuses the requests
+signed before it started, which a previous run may have accepted.
 
 This is a starting point, not a service to expose: it serves plain HTTP, one
 request at a time, which keeps the updates of a zone in order even when
@@ -72,6 +73,10 @@ SOCKET_TIMEOUT = 10
 MAX_RECENT_IDS = 10000
 
 log = logging.getLogger("webhook")
+
+# The second at which the endpoint started: a request signed before may have
+# been accepted by a previous run, whose identifiers the endpoint forgot.
+STARTED = int(time.time())
 
 
 # The operations. Each one gets the zone and the canonical owner name, such as
@@ -215,6 +220,10 @@ class Handler(BaseHTTPRequestHandler):
             log.warning("malformed update from %s", self.address_string())
             self.reply(400)
             return
+        if self.signed_before_start():
+            log.warning("update %s from %s refused: signed before the endpoint started", update["id"], self.address_string())
+            self.reply(409)
+            return
         refused = RECENT_IDS.admit(update["id"], self.expiry())
         if refused:
             reason = "replay" if refused == 409 else "too many recent requests"
@@ -238,6 +247,11 @@ class Handler(BaseHTTPRequestHandler):
         if SECRET and timestamp.isascii() and timestamp.isdigit():
             return max(int(timestamp), now) + MAX_CLOCK_SKEW
         return now + MAX_CLOCK_SKEW
+
+    def signed_before_start(self):
+        """Tells whether the request was signed before the endpoint started."""
+        timestamp = self.headers.get("X-Tsigoat-Timestamp", "")
+        return bool(SECRET) and int(timestamp) < STARTED
 
     def authenticated(self, body):
         """Checks every authentication that the settings ask for."""

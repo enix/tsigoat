@@ -24,7 +24,8 @@ const (
 // an ACME challenge through tsigoat, then deletes it; tsigoat posts the
 // updates to the example, which hands them to a command that records them. An
 // update to an endpoint with another secret fails, and the example refuses a
-// replayed request and a request without length.
+// replayed request, a request signed before it started, and a request
+// without length.
 func (m *Tsigoat) TestWebhookExample(ctx context.Context) (string, error) {
 	replacer := strings.NewReplacer(
 		"@KEY@", webhookKeySecret,
@@ -148,15 +149,16 @@ if update wrong > /tmp/wrong.log 2>&1; then fail "an update succeeded with the w
 grep -q SERVFAIL /tmp/wrong.log || fail "the update with the wrong secret did not get SERVFAIL"
 grep -q "bad signature" /tmp/signature.log || fail "the endpoint did not refuse the wrong signature"
 
-echo "== replay, and a request without length"
+echo "== replays, and a request without length"
 python3 -I - <<'PYTHON' || fail "the endpoint did not refuse a replay or a request without length"
 import hashlib, hmac, json, socket, time, urllib.error, urllib.request
 
-body = json.dumps({"version": 1, "id": "0123456789abcdef0123456789abcdef",
-                   "zone": "signature.test.", "key": "", "operations": []}).encode()
-
-def post():
-    timestamp = str(int(time.time()))
+def post(request_id, age=0):
+    body = json.dumps({"version": 1, "id": request_id,
+                       "zone": "signature.test.", "key": "", "operations": []}).encode()
+    # Within the five minutes of the timestamp, but before the endpoint
+    # started when age says so.
+    timestamp = str(int(time.time()) - age)
     mac = hmac.new(b"@SECRET@", timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
     request = urllib.request.Request("http://127.0.0.1:8053/", body, {
         "Content-Type": "application/json",
@@ -168,13 +170,15 @@ def post():
     except urllib.error.HTTPError as error:
         return error.code
 
-statuses = (post(), post())
-assert statuses == (204, 409), statuses
+replayed, early = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
+statuses = (post(replayed), post(replayed), post(early, age=250))
+assert statuses == (204, 409, 409), statuses
 with socket.create_connection(("127.0.0.1", 8053), timeout=5) as conn:
     conn.sendall(b"POST / HTTP/1.0\r\nHost: endpoint\r\n\r\n")
     status = int(conn.recv(64).split(b" ")[1])
 assert status == 411, status
 PYTHON
 grep -q "refused: replay" /tmp/signature.log || fail "the endpoint did not log the replay"
+grep -q "refused: signed before the endpoint started" /tmp/signature.log || fail "the endpoint did not log the early request"
 echo "== OK"
 `
