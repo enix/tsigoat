@@ -194,6 +194,15 @@ func TestApplyIsAtomic(t *testing.T) {
 	}
 }
 
+func TestDeleteZone(t *testing.T) {
+	t.Parallel()
+	b := newBackend(t)
+	b.DeleteZone("Example.Test")
+	if _, err := b.Lookup(t.Context(), testZone, testZone); !errors.Is(err, backend.ErrZoneNotFound) {
+		t.Errorf("Lookup() after DeleteZone(): error %v, want ErrZoneNotFound", err)
+	}
+}
+
 func TestSetZoneCopiesRecords(t *testing.T) {
 	t.Parallel()
 

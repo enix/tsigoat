@@ -54,6 +54,13 @@ func (b *Backend) SetZone(zone string, records ...dns.RR) {
 	b.zones[dns.CanonicalName(zone)] = normalized(content)
 }
 
+// DeleteZone removes a zone.
+func (b *Backend) DeleteZone(zone string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.zones, dns.CanonicalName(zone))
+}
+
 // Records returns the records of a zone, sorted by name, type and RDATA.
 func (b *Backend) Records(zone string) ([]dns.RR, error) {
 	b.mu.Lock()
