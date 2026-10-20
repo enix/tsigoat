@@ -48,7 +48,9 @@ func newRootCommand(stdout, stderr io.Writer) *cobra.Command {
 		Short: "A gateway from RFC 2136 dynamic DNS updates to DNS provider APIs",
 		Long: product.Name + ` receives DNS UPDATE messages (RFC 2136) authenticated with TSIG
 (RFC 8945), checks them against the policy of each zone, and applies them
-through the API of the DNS provider that holds the zone, PowerDNS for now.`,
+through the API of the DNS provider that holds the zone (PowerDNS, Cloudflare,
+OVHcloud, Scaleway), or relays them to a name server that implements RFC 2136
+or to an HTTP endpoint.`,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
