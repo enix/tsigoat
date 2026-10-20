@@ -1,0 +1,14 @@
+# An API key would land in the ConfigMap.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns.example.test:8081
+        apiKey: chart-test-api-key
+  zones:
+    - name: example.test.
+      keys: [acme.]

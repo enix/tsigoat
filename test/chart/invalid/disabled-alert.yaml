@@ -1,0 +1,17 @@
+# Alerts are left out by their exact name.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns.example.test:8081
+        apiKeyFile: /run/secrets/tsigoat/pdns
+  zones:
+    - name: example.test.
+      keys: [acme.]
+prometheusRules:
+  enabled: true
+  disabledAlerts: [BackendErrors]

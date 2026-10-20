@@ -36,6 +36,7 @@ jobs:
       actions: ${{ steps.filter.outputs.actions }}
       dockerfile: ${{ steps.filter.outputs.dockerfile }}
       renovate: ${{ steps.filter.outputs.renovate }}
+      helm: ${{ steps.filter.outputs.helm }}
       manifests: ${{ steps.filter.outputs.manifests }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -68,8 +69,13 @@ jobs:
             renovate:
               - 'renovate.json5'
               - 'dagger/**'
+            helm:
+              - 'chart/**'
+              - 'examples/helm/**'
+              - 'test/chart/**'
+              - 'dagger/**'
             manifests:
-              - 'examples/kubernetes/**'
+              - 'examples/helm/**'
               - 'dagger/**'
 
   go:
@@ -161,6 +167,27 @@ jobs:
       - uses: ./.github/actions/dagger
         with:
           args: lint-renovate
+
+  helm:
+    name: Helm chart
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.helm == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: lint-helm
+      # chart/README.md and chart/values.schema.json derive from
+      # chart/values.yaml: `task doc:helm` regenerates them.
+      - uses: ./.github/actions/dagger
+        with:
+          args: check-helm-docs
 
   manifests:
     name: Kubernetes manifests

@@ -42,12 +42,17 @@ docker run --rm -p 53:5353/udp -p 53:5353/tcp \
 
 ## Kubernetes
 
-[examples/kubernetes](../examples/kubernetes) deploys tsigoat for
-cert-manager: a namespace under the restricted Pod Security profile, the
-configuration and the secrets, a Deployment and a Service for DNS over UDP
-and TCP and for the administration server. The Deployment runs one replica
-with the `Recreate` strategy, since tsigoat serializes the updates of a zone
-within its process; its probes use `/healthz` and `/readyz`.
+The Helm chart of [chart](../chart) deploys tsigoat; [its
+README](../chart/README.md) covers its installation, its values, exposing
+tsigoat out of the cluster and monitoring it.
+[examples/helm](../examples/helm) holds values files, for cert-manager and
+for clients outside the cluster, and a cert-manager ClusterIssuer.
+
+The chart runs one replica with the `Recreate` strategy, since tsigoat
+serializes the updates of a zone within its process. The pod passes the
+restricted Pod Security profile, and its probes use `/healthz` and `/readyz`.
+The DNS Service and the Service of the administration server are apart, so
+that exposing the first never exposes the second.
 
 ## Logs
 
@@ -100,10 +105,37 @@ network.
 
 ## Alerts
 
-[examples/kubernetes/prometheus-rules.yaml](../examples/kubernetes/prometheus-rules.yaml)
-alerts on:
+The chart creates a PrometheusRule with the following alerts when
+`prometheusRules.enabled` is set; each links to its section below.
 
-- backend errors, which fail updates with SERVFAIL;
-- failing updates, by zone;
-- TSIG verification failures, from a misconfigured client or a probe;
-- the keys that still sign with HMAC-MD5 or HMAC-SHA1.
+### TsigoatBackendErrors
+
+Calls to a backend have failed for ten minutes, and the updates of its zones
+fail with SERVFAIL. The `error` field of the `msg=update` log entries tells
+why. Check that tsigoat reaches the API, through network policies, name
+resolution and TLS, and that its API key is valid: `tsigoat check-config
+--backends` reads the SOA of every zone through its backend.
+
+### TsigoatUpdatesFailing
+
+Updates of a zone have failed with SERVFAIL for ten minutes. The `error`
+field of their `msg=update` log entries tells why: a failing backend, which
+TsigoatBackendErrors reports too, a zone missing from its backend, or a
+backend too slow for the ten seconds that a request may last.
+
+### TsigoatSignatureFailures
+
+Requests have failed TSIG verification more than once every ten seconds, for
+fifteen minutes: BADKEY for an unknown key or another algorithm than the one
+of the key, BADSIG for a wrong secret, BADTIME for a clock beyond the time
+margin of the signature. The `TSIG verification failed` log entries name the
+client, the key and the algorithm. A steady flow from unknown clients rather
+tells of a probe: restrict who reaches the DNS port.
+
+### TsigoatLegacyAlgorithm
+
+A key has signed requests with HMAC-MD5 or HMAC-SHA1 within a day; RFC 8945
+deprecates both. tsigoat binds one algorithm to each key: move the clients
+of the key to HMAC-SHA256 together with the key, or give the moved clients a
+new HMAC-SHA256 key. cert-manager signs with HMAC-MD5 unless its issuer sets
+`tsigAlgorithm: HMACSHA256`.

@@ -1,0 +1,35 @@
+# The ServiceMonitor and the alerts, which alerts.test.yaml tests.
+config:
+  keys:
+    - name: cert-manager.
+      secretFile: /run/secrets/tsigoat/cert-manager
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns.example.test:8081
+        apiKeyFile: /run/secrets/tsigoat/powerdns-api-key
+  zones:
+    - name: example.test.
+      policy:
+        - key: cert-manager.
+          names: ["_acme-challenge.**.example.test."]
+          types: [TXT]
+secret:
+  existingSecret: tsigoat-secrets
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
+  extraLabels:
+    release: prometheus
+  metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: go_gc_.*
+      action: drop
+prometheusRules:
+  enabled: true
+  extraLabels:
+    release: prometheus
+  alertLabels:
+    team: dns

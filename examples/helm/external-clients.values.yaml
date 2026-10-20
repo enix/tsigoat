@@ -1,0 +1,51 @@
+# tsigoat for clients outside the cluster: lego, certbot or Traefik on other
+# hosts, and a DHCP server that registers the names of its leases. A load
+# balancer exposes the DNS Service to the private network alone, and the
+# Prometheus operator scrapes the metrics and evaluates the alerts.
+#
+# The Secret holds one TSIG secret per client and the key of the PowerDNS
+# API; create it before installing the chart:
+#
+#   kubectl -n tsigoat create secret generic tsigoat-secrets \
+#     --from-literal=acme="$(openssl rand -base64 32)" \
+#     --from-literal=dhcp="$(openssl rand -base64 64)" \
+#     --from-literal=powerdns-api-key=...
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+    - name: dhcp.
+      algorithm: hmac-sha512
+      secretFile: /run/secrets/tsigoat/dhcp
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: https://pdns-api.example.com
+        apiKeyFile: /run/secrets/tsigoat/powerdns-api-key
+  zones:
+    - name: example.com.
+      policy:
+        - key: acme.
+          names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
+          types: [TXT]
+    - name: lan.example.com.
+      policy:
+        - key: dhcp.
+          names: ["*.lan.example.com."]
+          types: [A, AAAA, DHCID]
+
+secret:
+  existingSecret: tsigoat-secrets
+
+service:
+  type: LoadBalancer
+  # Only the private network reaches tsigoat.
+  loadBalancerSourceRanges: [10.0.0.0/8]
+  # Keep the addresses of the clients, for the logs.
+  externalTrafficPolicy: Local
+
+serviceMonitor:
+  enabled: true
+prometheusRules:
+  enabled: true

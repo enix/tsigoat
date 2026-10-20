@@ -1,0 +1,147 @@
+# tsigoat
+
+{{ template "chart.description" . }}: DNS clients send RFC 2136 updates signed
+with TSIG keys, and tsigoat applies them through the API of the DNS provider,
+within the names and types that each key may update. Its founding use is the
+ACME DNS-01 challenge of cert-manager, whose key only reaches the
+`_acme-challenge` records and never holds the API key of the provider.
+
+The [documentation of tsigoat](https://github.com/enix/tsigoat/tree/main/docs)
+describes its configuration, its clients and its operations; this page covers
+the chart.
+
+## Installing
+
+The chart needs Kubernetes 1.26 or later, which serves UDP and TCP on one
+LoadBalancer port, and Helm 3.8 or later, which installs charts from OCI
+registries.
+
+tsigoat runs under the restricted Pod Security profile. Create its namespace,
+and the Secret that holds the TSIG secrets and the API key of the provider:
+
+```sh
+kubectl create namespace tsigoat
+kubectl label namespace tsigoat pod-security.kubernetes.io/enforce=restricted
+kubectl -n tsigoat create secret generic tsigoat-secrets \
+  --from-literal=cert-manager="$(openssl rand -base64 32)" \
+  --from-literal=powerdns-api-key=...
+```
+
+Write the configuration of tsigoat under `config`, which reads the secrets
+from the files of that Secret, in `/run/secrets/tsigoat`:
+
+```yaml
+# values.yaml
+config:
+  keys:
+    - name: cert-manager.
+      secretFile: /run/secrets/tsigoat/cert-manager
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns-api.powerdns.svc.cluster.local:8081
+        apiKeyFile: /run/secrets/tsigoat/powerdns-api-key
+  zones:
+    - name: example.com.
+      policy:
+        - key: cert-manager.
+          names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
+          types: [TXT]
+secret:
+  existingSecret: tsigoat-secrets
+```
+
+Then install the chart:
+
+```sh
+helm -n tsigoat install tsigoat oci://ghcr.io/enix/charts/tsigoat --values values.yaml
+```
+
+cert-manager reaches tsigoat at `tsigoat.tsigoat.svc.cluster.local:53`, see
+[the clients](https://github.com/enix/tsigoat/blob/main/docs/clients.md#cert-manager).
+[examples/helm](https://github.com/enix/tsigoat/tree/main/examples/helm) holds
+complete values files.
+
+## Configuration
+
+`config` holds the configuration file of tsigoat, as
+[its reference](https://github.com/enix/tsigoat/blob/main/docs/configuration.md)
+describes it, without `listen` and `admin`: the chart sets the listen
+addresses. The chart refuses a configuration without zones or backends, and
+one that writes a secret inline, which would land in a ConfigMap.
+
+The secrets come from one of:
+
+- `secret.existingSecret`, a Secret created apart from the chart, which keeps
+  the secrets out of the Helm release;
+- `secret.files`, the files of a Secret that the chart creates;
+- environment variables of `extraEnv`, read with `secretEnv` and `apiKeyEnv`.
+
+tsigoat reads its configuration and its secrets at startup. The chart
+restarts it when `config` or `secret.files` changes; after a change to an
+existing Secret, restart it yourself:
+
+```sh
+kubectl -n tsigoat rollout restart deployment tsigoat
+```
+
+A PowerDNS API served over HTTPS with a private certificate authority takes a
+CA bundle, mounted with `extraVolumes` and `extraVolumeMounts`, and named by
+the `caFile` of the backend.
+
+## Exposing tsigoat
+
+The DNS Service listens on port 53 over UDP and TCP. A `ClusterIP` Service,
+the default, serves the clients of the cluster, such as cert-manager. To
+serve clients outside of it, set `service.type` to `LoadBalancer` or
+`NodePort`; then restrict the sources with `service.loadBalancerSourceRanges`
+or a NetworkPolicy, and set `service.externalTrafficPolicy` to `Local` to log
+the addresses of the clients rather than those of the nodes.
+
+The administration server, which serves the probes and the metrics, has no
+authentication: it has its own Service, always of type `ClusterIP`.
+
+tsigoat runs as a single replica, with the `Recreate` strategy: it serializes
+the updates of a zone within its process, and two instances could lose each
+other's updates.
+
+## Monitoring
+
+With the Prometheus operator, `serviceMonitor.enabled` scrapes the metrics of
+tsigoat, and `prometheusRules.enabled` adds its alerts:
+
+| Alert | Fires when | Severity |
+| --- | --- | --- |
+| `TsigoatBackendErrors` | Calls to a backend fail for 10 minutes | warning |
+| `TsigoatUpdatesFailing` | Updates of a zone fail with SERVFAIL for 10 minutes | warning |
+| `TsigoatSignatureFailures` | Requests fail TSIG verification more than once every ten seconds, for 15 minutes | info |
+| `TsigoatLegacyAlgorithm` | A key signed with HMAC-MD5 or HMAC-SHA1 within a day | info |
+
+[The operations guide](https://github.com/enix/tsigoat/blob/main/docs/operations.md#alerts)
+tells what to do about each. `prometheusRules.disabledAlerts` leaves alerts
+out, and `prometheusRules.alertLabels` labels them, for routing or to change
+their severity. The alerts select the metrics of the release by namespace and
+by the job of the ServiceMonitor; with another scrape configuration, set
+`prometheusRules.selector`.
+
+## Verifying the chart
+
+The chart is signed with cosign, keyless, by the release workflow:
+
+```sh
+cosign verify ghcr.io/enix/charts/tsigoat:<version> \
+  --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+[SECURITY.md](https://github.com/enix/tsigoat/blob/main/SECURITY.md#verifying-releases)
+covers the images and the binaries.
+
+## Values
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+{{- range .Values }}
+| {{ .Key }} | {{ .Type }} | {{ if .Default }}{{ .Default }}{{ else }}{{ .AutoDefault }}{{ end }} | {{ if .Description }}{{ .Description }}{{ else }}{{ .AutoDescription }}{{ end }} |
+{{- end }}

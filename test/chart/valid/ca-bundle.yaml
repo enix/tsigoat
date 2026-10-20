@@ -1,0 +1,29 @@
+# A PowerDNS API served over HTTPS, trusted through a CA bundle mounted from a
+# ConfigMap, next to the Secret of the chart.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: https://pdns.example.test:8443
+        serverId: localhost
+        apiKeyFile: /run/secrets/tsigoat/pdns
+        caFile: /etc/tsigoat-ca/ca.pem
+  zones:
+    - name: example.test.
+      keys: [acme.]
+secret:
+  files:
+    acme: c2hhMjU2LXNlY3JldC1mb3ItdGhlLWNoYXJ0LXRlc3Q= # gitleaks:allow (fixture)
+    pdns: chart-test-api-key
+extraVolumes:
+  - name: pdns-ca
+    configMap:
+      name: pdns-ca
+extraVolumeMounts:
+  - name: pdns-ca
+    mountPath: /etc/tsigoat-ca
+    readOnly: true

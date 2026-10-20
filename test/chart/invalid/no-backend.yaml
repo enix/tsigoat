@@ -1,0 +1,5 @@
+# Zones without a backend.
+config:
+  zones:
+    - name: example.test.
+      allowUnauthenticated: true

@@ -189,7 +189,8 @@ func TestParseEmpty(t *testing.T) {
 }
 
 // TestExamples keeps the example configurations valid. Their files and
-// variables do not exist here: every one reads as a valid secret.
+// variables do not exist here: every one reads as a valid secret. The test of
+// the chart validates the configurations of examples/helm.
 func TestExamples(t *testing.T) {
 	t.Parallel()
 
@@ -198,8 +199,7 @@ func TestExamples(t *testing.T) {
 		LookupEnv: func(string) (string, bool) { return secret, true },
 		ReadFile:  func(string) ([]byte, error) { return []byte(secret), nil },
 	}
-	paths := append(fixtures(t, "../../examples/*.yaml"), "../../examples/kubernetes/config.yaml")
-	for _, path := range paths {
+	for _, path := range fixtures(t, "../../examples/*.yaml") {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)

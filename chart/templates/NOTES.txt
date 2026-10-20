@@ -1,0 +1,31 @@
+{{- $fullname := include "tsigoat.fullname" . }}
+{{- $namespace := include "tsigoat.namespace" . }}
+tsigoat serves DNS updates for {{ len .Values.config.zones }} zone(s) on
+{{ $fullname }}.{{ $namespace }}.svc:{{ .Values.service.port }}, over UDP and TCP.
+{{- if eq .Values.service.type "LoadBalancer" }}
+Out of the cluster, on port {{ .Values.service.port }} of the load balancer:
+
+  kubectl -n {{ $namespace }} get service {{ $fullname }}
+{{- else if eq .Values.service.type "NodePort" }}
+Out of the cluster, on the node port of every node:
+
+  kubectl -n {{ $namespace }} get service {{ $fullname }}
+{{- end }}
+
+Check the configuration, and that every zone answers through its backend:
+
+  kubectl -n {{ $namespace }} exec deploy/{{ $fullname }} -- /tsigoat check-config --backends
+
+Point cert-manager to tsigoat with an RFC 2136 solver:
+
+  solvers:
+    - dns01:
+        rfc2136:
+          nameserver: {{ $fullname }}.{{ $namespace }}.svc.cluster.local:{{ .Values.service.port }}
+          tsigKeyName: <a key of config.keys>
+          tsigAlgorithm: HMACSHA256
+          tsigSecretSecretRef:
+            name: <a Secret of the namespace of cert-manager>
+            key: <the key holding the TSIG secret>
+
+See https://github.com/enix/tsigoat/blob/main/docs/clients.md for the other clients.

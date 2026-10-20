@@ -1,0 +1,62 @@
+{{- if .Values.prometheusRules.enabled }}
+{{- $rules := .Values.prometheusRules }}
+{{- $selector := $rules.selector | default (printf "namespace=%q, job=%q" (include "tsigoat.namespace" .) (printf "%s-admin" (include "tsigoat.fullname" .))) }}
+{{- $runbook := "https://github.com/enix/tsigoat/blob/main/docs/operations.md" }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "tsigoat.fullname" . }}
+  namespace: {{ include "tsigoat.namespace" . }}
+  labels:
+    {{- include "tsigoat.labels" . | nindent 4 }}
+    {{- with $rules.extraLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: tsigoat
+      rules:
+        {{- if not (has "TsigoatBackendErrors" $rules.disabledAlerts) }}
+        - alert: TsigoatBackendErrors
+          expr: sum by (namespace, backend, operation) (rate(tsigoat_backend_calls_total{ {{- $selector }}, result="error"}[5m])) > 0
+          for: 10m
+          labels:
+            {{- merge (deepCopy $rules.alertLabels) (dict "severity" "warning") | toYaml | nindent 12 }}
+          annotations:
+            summary: {{ `tsigoat fails to {{ $labels.operation }} through backend {{ $labels.backend }}` | quote }}
+            description: Updates fail with SERVFAIL while the backend errors; check the reachability and the API key of the backend.
+            runbook_url: {{ $runbook }}#tsigoatbackenderrors
+        {{- end }}
+        {{- if not (has "TsigoatUpdatesFailing" $rules.disabledAlerts) }}
+        - alert: TsigoatUpdatesFailing
+          expr: sum by (namespace, zone) (rate(tsigoat_dns_responses_total{ {{- $selector }}, opcode="UPDATE", rcode="SERVFAIL"}[5m])) > 0
+          for: 10m
+          labels:
+            {{- merge (deepCopy $rules.alertLabels) (dict "severity" "warning") | toYaml | nindent 12 }}
+          annotations:
+            summary: {{ `Updates of zone {{ $labels.zone }} fail with SERVFAIL` | quote }}
+            description: The logs of tsigoat (msg=update, rcode=SERVFAIL) tell the error of every failed update.
+            runbook_url: {{ $runbook }}#tsigoatupdatesfailing
+        {{- end }}
+        {{- if not (has "TsigoatSignatureFailures" $rules.disabledAlerts) }}
+        - alert: TsigoatSignatureFailures
+          expr: sum by (namespace, error) (rate(tsigoat_tsig_failures_total{ {{- $selector -}} }[15m])) > 0.1
+          for: 15m
+          labels:
+            {{- merge (deepCopy $rules.alertLabels) (dict "severity" "info") | toYaml | nindent 12 }}
+          annotations:
+            summary: {{ `Requests to tsigoat fail TSIG verification with {{ $labels.error }}` | quote }}
+            description: A client has the wrong key, algorithm or clock (BADKEY, BADSIG, BADTIME), or someone probes tsigoat.
+            runbook_url: {{ $runbook }}#tsigoatsignaturefailures
+        {{- end }}
+        {{- if not (has "TsigoatLegacyAlgorithm" $rules.disabledAlerts) }}
+        - alert: TsigoatLegacyAlgorithm
+          expr: sum by (namespace, key, algorithm) (increase(tsigoat_dns_responses_total{ {{- $selector }}, algorithm=~"hmac-md5|hmac-sha1"}[1d])) > 0
+          labels:
+            {{- merge (deepCopy $rules.alertLabels) (dict "severity" "info") | toYaml | nindent 12 }}
+          annotations:
+            summary: {{ `Key {{ $labels.key }} still signs with {{ $labels.algorithm }}` | quote }}
+            description: Move the clients of this key to hmac-sha256, then the key.
+            runbook_url: {{ $runbook }}#tsigoatlegacyalgorithm
+        {{- end }}
+{{- end }}

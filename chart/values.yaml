@@ -1,0 +1,370 @@
+# -- Partially override the name of the resources, which the release name prefixes
+nameOverride: ""
+# -- Fully override the name of the resources
+fullnameOverride: ""
+# -- Override the namespace of the resources
+namespaceOverride: ""
+# @schema
+# type: object
+# additionalProperties:
+#   type: string
+# @schema
+# -- Labels added to every object of the chart; `podLabels` labels the pod
+extraLabels: {}
+
+image:
+  # -- Image registry; an empty string lets the container runtime choose
+  registry: ghcr.io
+  # @schema
+  # type: string
+  # minLength: 1
+  # @schema
+  # -- Image repository
+  repository: enix/tsigoat
+  # -- Image tag; the appVersion of the chart by default
+  tag: ""
+  # -- Appended to the tag: `-busybox` selects the image with a shell
+  tagSuffix: ""
+  # -- Image digest, which takes precedence over the tag
+  digest: ""
+  # @schema
+  # type: string
+  # enum: [Always, IfNotPresent, Never]
+  # @schema
+  # -- Image pull policy
+  pullPolicy: IfNotPresent
+# @schema
+# type: array
+# items:
+#   type: string
+# @schema
+# -- Names of the Secrets to pull the image with
+imagePullSecrets: []
+
+# @schema
+# type: object
+# additionalProperties: true
+# properties: {}
+# @schema
+# -- Configuration of tsigoat: `keys`, `backends` and `zones`, as
+# [docs/configuration.md](https://github.com/enix/tsigoat/blob/main/docs/configuration.md)
+# describes them. The chart sets the listen addresses itself. Secret files
+# are read from `/run/secrets/tsigoat`, see `secret`.
+# @default -- none: the chart refuses to install without zones and backends
+config: {}
+
+secret:
+  # -- Name of an existing Secret, mounted in `/run/secrets/tsigoat`, whose
+  # keys the configuration reads with `secretFile` and `apiKeyFile`
+  existingSecret: ""
+  # @schema
+  # type: object
+  # additionalProperties:
+  #   type: string
+  # @schema
+  # -- Files of a Secret that the chart creates and mounts in
+  # `/run/secrets/tsigoat`, by file name; prefer `existingSecret`, which keeps
+  # the secrets out of the release
+  files: {}
+
+log:
+  # @schema
+  # type: string
+  # enum: [text, json]
+  # @schema
+  # -- Log format
+  format: json
+  # @schema
+  # type: string
+  # enum: [debug, info, warn, error]
+  # @schema
+  # -- Log level
+  level: info
+
+# @schema
+# type: string
+# minLength: 1
+# @schema
+# -- Host part of the listen addresses in the pod: `[::]` serves IPv4 and
+# IPv6, `0.0.0.0` serves IPv4 on nodes without IPv6
+listenHost: "[::]"
+
+service:
+  # @schema
+  # type: string
+  # enum: [ClusterIP, NodePort, LoadBalancer]
+  # @schema
+  # -- Type of the DNS Service: `LoadBalancer` or `NodePort` exposes tsigoat
+  # out of the cluster
+  type: ClusterIP
+  # @schema
+  # type: integer
+  # minimum: 1
+  # maximum: 65535
+  # @schema
+  # -- DNS port of the Service, for both UDP and TCP
+  port: 53
+  # @schema
+  # type: integer
+  # minimum: 0
+  # maximum: 65535
+  # @schema
+  # -- Node port for both UDP and TCP, with `NodePort` and `LoadBalancer`; 0
+  # lets Kubernetes choose
+  nodePort: 0
+  # @schema
+  # type: object
+  # additionalProperties:
+  #   type: string
+  # @schema
+  # -- Annotations of the DNS Service, such as those of a cloud load balancer
+  annotations: {}
+  # @schema
+  # type: string
+  # enum: ["", Cluster, Local]
+  # @schema
+  # -- externalTrafficPolicy of a `NodePort` or `LoadBalancer` Service: `Local`
+  # keeps the addresses of the clients in the logs
+  externalTrafficPolicy: ""
+  # @schema
+  # type: array
+  # items:
+  #   type: string
+  # @schema
+  # -- Sources allowed to reach a `LoadBalancer` Service, as CIDR blocks
+  loadBalancerSourceRanges: []
+  # -- Class of a `LoadBalancer` Service
+  loadBalancerClass: ""
+
+admin:
+  # @schema
+  # type: integer
+  # minimum: 1
+  # maximum: 65535
+  # @schema
+  # -- Port of the administration server, which serves `/healthz`, `/readyz`
+  # and `/metrics` to the probes and Prometheus, through its own `ClusterIP`
+  # Service
+  port: 9153
+
+serviceMonitor:
+  # -- Create a ServiceMonitor for the Prometheus operator
+  enabled: false
+  # -- Scrape interval; the default of Prometheus when empty
+  interval: ""
+  # -- Scrape timeout; the default of Prometheus when empty
+  scrapeTimeout: ""
+  # @schema
+  # type: object
+  # additionalProperties:
+  #   type: string
+  # @schema
+  # -- Labels of the ServiceMonitor, such as those that Prometheus selects
+  extraLabels: {}
+  # @schema
+  # type: array
+  # items:
+  #   type: object
+  # @schema
+  # -- Relabelings of the targets
+  relabelings: []
+  # @schema
+  # type: array
+  # items:
+  #   type: object
+  # @schema
+  # -- Relabelings of the metrics
+  metricRelabelings: []
+
+prometheusRules:
+  # -- Create a PrometheusRule with the alerts of tsigoat
+  enabled: false
+  # @schema
+  # type: object
+  # additionalProperties:
+  #   type: string
+  # @schema
+  # -- Labels of the PrometheusRule, such as those that Prometheus selects
+  extraLabels: {}
+  # @schema
+  # type: object
+  # additionalProperties:
+  #   type: string
+  # @schema
+  # -- Labels added to every alert, which override the severity of the
+  # alerts too
+  alertLabels: {}
+  # -- PromQL label matchers that select the metrics of the release, such as
+  # `job="tsigoat"`; the namespace of the release and the job of the
+  # ServiceMonitor by default
+  selector: ""
+  # @schema
+  # type: array
+  # uniqueItems: true
+  # items:
+  #   type: string
+  #   enum: [TsigoatBackendErrors, TsigoatUpdatesFailing, TsigoatSignatureFailures, TsigoatLegacyAlgorithm]
+  # @schema
+  # -- Alerts to leave out, by name: `TsigoatBackendErrors`,
+  # `TsigoatUpdatesFailing`, `TsigoatSignatureFailures`,
+  # `TsigoatLegacyAlgorithm`
+  disabledAlerts: []
+
+serviceAccount:
+  # -- Create a ServiceAccount; tsigoat makes no call to the Kubernetes API
+  create: true
+  # -- Name of the ServiceAccount; the name of the release by default
+  name: ""
+  # @schema
+  # type: object
+  # additionalProperties:
+  #   type: string
+  # @schema
+  # -- Annotations of the ServiceAccount
+  annotations: {}
+
+# @schema
+# type: object
+# additionalProperties:
+#   type: string
+# @schema
+# -- Annotations of the pod
+podAnnotations: {}
+# @schema
+# type: object
+# additionalProperties:
+#   type: string
+# @schema
+# -- Labels of the pod
+podLabels: {}
+
+# @schema
+# type: object
+# additionalProperties: true
+# properties: {}
+# @schema
+# -- Security context of the pod
+# @default -- non-root, with the runtime default seccomp profile
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  runAsGroup: 65534
+  seccompProfile:
+    type: RuntimeDefault
+
+# @schema
+# type: object
+# additionalProperties: true
+# properties: {}
+# @schema
+# -- Security context of the container
+# @default -- no privilege escalation, read-only root, no capability
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# @schema
+# type: object
+# additionalProperties: true
+# properties: {}
+# @schema
+# -- Resources of the container
+# @default -- requests of 10m CPU and 32Mi, limit of 128Mi
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+# @schema
+# type: object
+# additionalProperties: true
+# properties: {}
+# @schema
+# -- Liveness probe of the container
+# @default -- `/healthz` on the administration port
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: admin
+  periodSeconds: 10
+# @schema
+# type: object
+# additionalProperties: true
+# properties: {}
+# @schema
+# -- Readiness probe of the container
+# @default -- `/readyz` on the administration port
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: admin
+  periodSeconds: 5
+
+# @schema
+# type: array
+# items:
+#   type: object
+# @schema
+# -- Environment variables of the container, for the `secretEnv` and
+# `apiKeyEnv` settings of the configuration
+extraEnv: []
+# @schema
+# type: array
+# items:
+#   type: object
+# @schema
+# -- Volumes added to the pod, such as a CA bundle for the PowerDNS API
+extraVolumes: []
+# @schema
+# type: array
+# items:
+#   type: object
+# @schema
+# -- Volume mounts added to the container
+extraVolumeMounts: []
+
+# @schema
+# type: object
+# additionalProperties:
+#   type: string
+# @schema
+# -- Node selector of the pod
+nodeSelector: {}
+# @schema
+# type: array
+# items:
+#   type: object
+# @schema
+# -- Tolerations of the pod
+tolerations: []
+# @schema
+# type: object
+# additionalProperties: true
+# properties: {}
+# @schema
+# -- Affinity of the pod
+affinity: {}
+# -- Priority class of the pod
+priorityClassName: ""
+# @schema
+# type: integer
+# minimum: 0
+# @schema
+# -- Time given to the updates in progress when the pod stops
+terminationGracePeriodSeconds: 30
+
+# -- Additional objects to deploy with the release, as YAML objects or
+# strings, both rendered as templates
+extraDeploy: []
+
+# @schema
+# type: object
+# additionalProperties: true
+# @schema
+global:
+  # -- Registry of every image, which overrides `image.registry`
+  imageRegistry: ""

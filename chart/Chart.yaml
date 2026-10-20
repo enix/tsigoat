@@ -1,0 +1,36 @@
+apiVersion: v2
+name: tsigoat
+type: application
+description: An RFC 2136 to DNS provider API proxy, authenticated with TSIG
+# The release workflow sets both versions from the tag.
+version: "0.0.0"
+appVersion: "0.0.0"
+# Mixed-protocol LoadBalancer Services, for DNS over UDP and TCP on one port.
+kubeVersion: ">=1.26.0-0"
+keywords:
+  - dns
+  - rfc2136
+  - tsig
+  - acme
+  - cert-manager
+  - powerdns
+home: https://github.com/enix/tsigoat
+sources:
+  - https://github.com/enix/tsigoat
+maintainers:
+  - name: Enix
+    email: contact@enix.fr
+    url: https://github.com/enix
+  - name: Thibault Vincent
+    email: root@devcat.org
+    url: https://github.com/npdgm
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/links: |
+    - name: Chart Sources
+      url: https://github.com/enix/tsigoat/tree/main/chart
+    - name: Application Sources
+      url: https://github.com/enix/tsigoat
+    - name: Documentation
+      url: https://github.com/enix/tsigoat/tree/main/docs

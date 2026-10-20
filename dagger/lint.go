@@ -78,19 +78,19 @@ func (m *Tsigoat) LintRenovate(ctx context.Context) (string, error) {
 }
 
 // LintManifests validates the example Kubernetes manifests against the
-// schemas of Kubernetes, and of cert-manager from the CRDs catalog.
+// schemas of Kubernetes, and of cert-manager from the CRDs catalog. TestHelm
+// validates the objects that the chart renders.
 func (m *Tsigoat) LintManifests(ctx context.Context) (string, error) {
 	return dag.Container().
 		From(kubeconformImage).
 		WithWorkdir("/src").
-		WithDirectory("/src", m.Source.Directory("examples/kubernetes")).
+		WithDirectory("/src", m.Source.Directory("examples/helm")).
 		WithExec([]string{
 			"/kubeconform", "-strict", "-summary",
-			// Not Kubernetes resources: the kustomization and the tsigoat
-			// configuration.
-			"-ignore-filename-pattern", `(kustomization|config)\.yaml$`,
+			// Values of the chart, not Kubernetes objects.
+			"-ignore-filename-pattern", `\.values\.yaml$`,
 			"-schema-location", "default",
-			"-schema-location", "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json",
+			"-schema-location", crdCatalog,
 			".",
 		}).
 		Stdout(ctx)

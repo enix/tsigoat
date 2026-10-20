@@ -1,0 +1,13 @@
+# Patterns left out of the chart package.
+.DS_Store
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+*.orig
+*~
+.idea/
+.vscode/
+# Only needed to generate README.md.
+README.md.gotmpl

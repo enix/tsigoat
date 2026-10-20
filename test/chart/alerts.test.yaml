@@ -1,0 +1,111 @@
+# Unit tests of the alerts, run by `promtool test rules` on the rules that the
+# chart renders from valid/monitoring.yaml: release tsigoat in namespace
+# tsigoat, whose ServiceMonitor scrapes job tsigoat-admin. Every test feeds
+# the metrics of another release too, which the alerts of this one ignore.
+rule_files:
+  - rules.yaml
+evaluation_interval: 1m
+
+tests:
+  - name: backend errors
+    interval: 1m
+    input_series:
+      - series: tsigoat_backend_calls_total{namespace="tsigoat", job="tsigoat-admin", backend="pdns", operation="apply", result="error"}
+        values: 0+1x40
+      - series: tsigoat_backend_calls_total{namespace="tsigoat", job="tsigoat-admin", backend="pdns", operation="lookup", result="success"}
+        values: 0+5x40
+      - series: tsigoat_backend_calls_total{namespace="other", job="tsigoat-admin", backend="pdns", operation="apply", result="error"}
+        values: 0+1x40
+    alert_rule_test:
+      # Pending for ten minutes first.
+      - eval_time: 5m
+        alertname: TsigoatBackendErrors
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: TsigoatBackendErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: dns
+              namespace: tsigoat
+              backend: pdns
+              operation: apply
+            exp_annotations:
+              summary: tsigoat fails to apply through backend pdns
+              description: Updates fail with SERVFAIL while the backend errors; check the reachability and the API key of the backend.
+              runbook_url: https://github.com/enix/tsigoat/blob/main/docs/operations.md#tsigoatbackenderrors
+
+  - name: failing updates
+    interval: 1m
+    input_series:
+      - series: tsigoat_dns_responses_total{namespace="tsigoat", job="tsigoat-admin", opcode="UPDATE", rcode="SERVFAIL", zone="example.test.", key="cert-manager.", algorithm="hmac-sha256"}
+        values: 0+1x40
+      - series: tsigoat_dns_responses_total{namespace="tsigoat", job="tsigoat-admin", opcode="UPDATE", rcode="NOERROR", zone="other.test.", key="cert-manager.", algorithm="hmac-sha256"}
+        values: 0+10x40
+      - series: tsigoat_dns_responses_total{namespace="other", job="tsigoat-admin", opcode="UPDATE", rcode="SERVFAIL", zone="example.test.", key="cert-manager.", algorithm="hmac-sha256"}
+        values: 0+1x40
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: TsigoatUpdatesFailing
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: dns
+              namespace: tsigoat
+              zone: example.test.
+            exp_annotations:
+              summary: Updates of zone example.test. fail with SERVFAIL
+              description: The logs of tsigoat (msg=update, rcode=SERVFAIL) tell the error of every failed update.
+              runbook_url: https://github.com/enix/tsigoat/blob/main/docs/operations.md#tsigoatupdatesfailing
+
+  - name: signature failures
+    interval: 1m
+    input_series:
+      # 0.2 failures per second, above the threshold of 0.1.
+      - series: tsigoat_tsig_failures_total{namespace="tsigoat", job="tsigoat-admin", error="BADSIG"}
+        values: 0+12x60
+      # 0.05 per second: a client retrying with a stale key now and then.
+      - series: tsigoat_tsig_failures_total{namespace="tsigoat", job="tsigoat-admin", error="BADTIME"}
+        values: 0+3x60
+      - series: tsigoat_tsig_failures_total{namespace="other", job="tsigoat-admin", error="BADSIG"}
+        values: 0+12x60
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: TsigoatSignatureFailures
+        exp_alerts: []
+      - eval_time: 40m
+        alertname: TsigoatSignatureFailures
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              team: dns
+              namespace: tsigoat
+              error: BADSIG
+            exp_annotations:
+              summary: Requests to tsigoat fail TSIG verification with BADSIG
+              description: A client has the wrong key, algorithm or clock (BADKEY, BADSIG, BADTIME), or someone probes tsigoat.
+              runbook_url: https://github.com/enix/tsigoat/blob/main/docs/operations.md#tsigoatsignaturefailures
+
+  - name: legacy algorithm
+    interval: 1m
+    input_series:
+      - series: tsigoat_dns_responses_total{namespace="tsigoat", job="tsigoat-admin", opcode="UPDATE", rcode="NOERROR", zone="example.test.", key="old-client.", algorithm="hmac-md5"}
+        values: 0 1+0x30
+      - series: tsigoat_dns_responses_total{namespace="tsigoat", job="tsigoat-admin", opcode="UPDATE", rcode="NOERROR", zone="example.test.", key="cert-manager.", algorithm="hmac-sha256"}
+        values: 0+1x30
+      - series: tsigoat_dns_responses_total{namespace="other", job="tsigoat-admin", opcode="UPDATE", rcode="NOERROR", zone="example.test.", key="old-client.", algorithm="hmac-sha1"}
+        values: 0+1x30
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: TsigoatLegacyAlgorithm
+        exp_alerts:
+          - exp_labels:
+              severity: info
+              team: dns
+              namespace: tsigoat
+              key: old-client.
+              algorithm: hmac-md5
+            exp_annotations:
+              summary: Key old-client. still signs with hmac-md5
+              description: Move the clients of this key to hmac-sha256, then the key.
+              runbook_url: https://github.com/enix/tsigoat/blob/main/docs/operations.md#tsigoatlegacyalgorithm

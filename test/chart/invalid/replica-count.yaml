@@ -1,0 +1,15 @@
+# tsigoat runs as a single replica: the chart has no replicaCount.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns.example.test:8081
+        apiKeyFile: /run/secrets/tsigoat/pdns
+  zones:
+    - name: example.test.
+      keys: [acme.]
+replicaCount: 2

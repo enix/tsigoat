@@ -6,6 +6,7 @@ run:
   build-tags:
     - e2e
     - differential
+    - chart
 
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused

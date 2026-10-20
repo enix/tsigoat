@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       go: ${{ steps.filter.outputs.go }}
+      helm: ${{ steps.filter.outputs.helm }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -43,6 +44,9 @@ jobs:
               - 'go.sum'
               - 'test/**'
               - 'dagger/**'
+            helm:
+              - 'chart/**'
+              - 'examples/helm/**'
 
   unit:
     name: Unit tests
@@ -60,6 +64,25 @@ jobs:
       - uses: ./.github/actions/dagger
         with:
           args: test
+
+  # Renders the chart with every example and fixture, and checks the result
+  # with the configuration rules of tsigoat, promtool and kubeconform.
+  helm:
+    name: Helm chart
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true' || needs.changes.outputs.helm == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: test-helm
 
   e2e:
     name: E2E scenarios (PowerDNS ${{ matrix.pdns }})

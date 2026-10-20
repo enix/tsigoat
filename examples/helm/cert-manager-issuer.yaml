@@ -1,16 +1,10 @@
 # A cert-manager ClusterIssuer that solves the ACME DNS-01 challenges through
-# tsigoat. Apply it apart from the kustomization: the Secret goes to the
-# namespace of cert-manager.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: tsigoat-tsig-key
-  namespace: cert-manager
-type: Opaque
-stringData:
-  # The same secret as the cert-manager. key of tsigoat.
-  secret: REPLACE-WITH-THE-BASE64-TSIG-SECRET
----
+# tsigoat, installed with cert-manager.values.yaml. Its Secret, in the
+# namespace of cert-manager, holds the TSIG secret of the cert-manager. key:
+#
+#   kubectl -n cert-manager create secret generic tsigoat-tsig-key \
+#     --from-literal=secret="$(kubectl -n tsigoat get secret tsigoat-secrets \
+#       -o jsonpath='{.data.cert-manager}' | base64 -d)"
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:

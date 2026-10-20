@@ -1,0 +1,28 @@
+# The DNS Service exposed out of the cluster, through a load balancer.
+config:
+  keys:
+    - name: lego.
+      secretFile: /run/secrets/tsigoat/lego
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: https://pdns.example.test
+        apiKeyFile: /run/secrets/tsigoat/pdns
+  zones:
+    - name: example.test.
+      policy:
+        - key: lego.
+          names: ["_acme-challenge.example.test.", "_acme-challenge.**.example.test."]
+          types: [TXT]
+secret:
+  existingSecret: tsigoat
+service:
+  type: LoadBalancer
+  port: 53
+  nodePort: 30053
+  externalTrafficPolicy: Local
+  loadBalancerClass: example.test/lb
+  loadBalancerSourceRanges: [192.0.2.0/24, 2001:db8::/32]
+  annotations:
+    lb.example.test/internal: "true"

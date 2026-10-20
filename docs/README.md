@@ -8,7 +8,8 @@
 | [Operations](operations.md) | Command line, images, Kubernetes, logs, metrics and alerts |
 | [Security](security.md) | What tsigoat protects, its limits, and how to harden a deployment |
 | [Architecture](architecture.md) | How a request flows through tsigoat, and how it is tested |
+| [Helm chart](../chart/README.md) | Installing tsigoat in Kubernetes, and the values of the chart |
 
-[examples/](../examples) holds an annotated configuration and Kubernetes
-manifests. [CONTRIBUTING.md](../CONTRIBUTING.md) covers the development
-workflow.
+[examples/](../examples) holds an annotated configuration, values files for
+the chart and a cert-manager ClusterIssuer. [CONTRIBUTING.md](../CONTRIBUTING.md)
+covers the development workflow.

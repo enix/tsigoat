@@ -1,0 +1,127 @@
+# Every override of names, image, pod and ports, and additional objects.
+nameOverride: dns-updates
+fullnameOverride: updates
+namespaceOverride: dns
+extraLabels:
+  team: dns
+global:
+  imageRegistry: registry.example.test
+image:
+  repository: mirror/tsigoat
+  digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  pullPolicy: Always
+imagePullSecrets: [registry-credentials]
+config:
+  keys:
+    - name: admin.
+      secretFile: /run/secrets/tsigoat/admin
+    - name: legacy.
+      algorithm: hmac-sha1
+      secretFile: /run/secrets/tsigoat/legacy
+  backends:
+    - name: primary
+      type: powerdns
+      powerdns:
+        url: http://pdns-a.example.test:8081
+        apiKeyFile: /run/secrets/tsigoat/primary
+    - name: secondary
+      type: powerdns
+      powerdns:
+        url: http://pdns-b.example.test:8081
+        apiKeyFile: /run/secrets/tsigoat/secondary
+  zones:
+    - name: a.example.test.
+      backend: primary
+      keys: [admin.]
+    - name: b.example.test.
+      backend: secondary
+      keys: [admin.]
+      policy:
+        - key: legacy.
+          names: ["**.b.example.test."]
+    - name: open.example.test.
+      backend: secondary
+      allowUnauthenticated: true
+secret:
+  existingSecret: dns-secrets
+log:
+  format: text
+  level: debug
+listenHost: 0.0.0.0
+admin:
+  port: 9100
+service:
+  type: NodePort
+  port: 5353
+serviceAccount:
+  create: false
+  name: dns
+podAnnotations:
+  example.test/annotation: "yes"
+podLabels:
+  example.test/label: "yes"
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: "1"
+    memory: 256Mi
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 9100
+  initialDelaySeconds: 5
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations:
+  - key: dedicated
+    operator: Equal
+    value: dns
+    effect: NoSchedule
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/arch
+              operator: In
+              values: [amd64, arm64]
+priorityClassName: system-cluster-critical
+terminationGracePeriodSeconds: 60
+extraDeploy:
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: '{{ include "tsigoat.fullname" . }}'
+      namespace: '{{ include "tsigoat.namespace" . }}'
+    spec:
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/instance: '{{ .Release.Name }}'
+      policyTypes: [Ingress]
+      ingress:
+        - ports:
+            - {port: 5353, protocol: UDP}
+            - {port: 5353, protocol: TCP}
+        - from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: monitoring
+          ports:
+            - {port: 9100, protocol: TCP}
+  - |
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: {{ include "tsigoat.fullname" . }}-notes
+      namespace: {{ include "tsigoat.namespace" . }}
+    data:
+      release: {{ .Release.Name }}

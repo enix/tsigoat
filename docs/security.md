@@ -77,8 +77,8 @@ To move a client off a legacy algorithm:
 - Read the secrets from files or environment variables, not from the
   configuration file itself.
 - Run the `scratch` image as its unprivileged user, on a read-only root
-  filesystem, without capabilities, as the [Kubernetes
-  example](../examples/kubernetes/deployment.yaml) does.
+  filesystem, without capabilities, as the [Helm chart](../chart/README.md)
+  does.
 - Restrict the PowerDNS API to tsigoat, and serve it over HTTPS when it
   crosses a network.
 - Verify the signature of the images before deploying them, see

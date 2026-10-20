@@ -54,6 +54,7 @@ Single sources of truth:
 | End-to-end scenarios and fault injection | `task test:e2e` (`PDNS_VERSION=4.9` for the other PowerDNS line), or `task test:e2e:dev` against `task dev` |
 | Real DNS clients | `task test:clients` (nsupdate), `task test:acme` (lego and certbot with Pebble) |
 | Scenarios against BIND 9 | `task test:differential`; intended divergences go to `test/differential/divergences.yaml` |
+| Helm chart | `task lint:helm`, `task test:helm`; `task doc:helm` after a change to `chart/values.yaml` |
 | cert-manager in Kubernetes | `task test:acceptance`, which runs k3s inside Dagger; nightly in CI |
 | Fuzzing | `task test:fuzz`, `FUZZTIME=10m` for longer runs; nightly in CI |
 | Linters | `task lint`, or `task lint:go`, `lint:markdown`, `lint:actions`... |
@@ -98,6 +99,22 @@ Zones may also carry a `policy`, and requests may be SOA queries
 A scenario that fails because of a known defect carries `knownDefect`: the
 suites report it as skipped while it fails, and fail as soon as it passes, so
 that the marker is removed together with the fix.
+
+### Helm chart
+
+`chart/values.yaml` is the source of the documentation and of the schema of
+the values: a `# --` comment describes each value for helm-docs, and a
+`# @schema` block constrains it for helm-schema, with an explicit `type`.
+`task doc:helm` regenerates `chart/README.md`, from `chart/README.md.gotmpl`,
+and `chart/values.schema.json`; CI fails when they are stale.
+
+`task test:helm` renders the chart with every values file of `examples/helm`
+and `test/chart/valid`, validates the rendered configuration with the rules of
+tsigoat, in the files and environment that the pod would see, and checks that
+ports, probes, mounts and selectors agree. Each file of `test/chart/invalid`
+must fail with the messages of its `.expect.txt` file, and
+`test/chart/alerts.test.yaml` holds the unit tests of the alerts, for
+promtool.
 
 ## Conventions
 

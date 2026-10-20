@@ -70,8 +70,9 @@ tsigoat check-config --config config.yaml --backends
 tsigoat serve --config config.yaml
 ```
 
-The container images run `serve` with `/etc/tsigoat/config.yaml`, and
-[examples/kubernetes](examples/kubernetes) deploys tsigoat for cert-manager.
+The container images run `serve` with `/etc/tsigoat/config.yaml`, and [the
+Helm chart](chart/README.md) deploys tsigoat in Kubernetes, next to
+cert-manager or for clients out of the cluster.
 
 ## Documentation
 
@@ -81,6 +82,7 @@ The container images run `serve` with `/etc/tsigoat/config.yaml`, and
 | [Clients](docs/clients.md) | Setting up cert-manager, lego and Traefik, certbot and nsupdate |
 | [PowerDNS](docs/powerdns.md) | What tsigoat needs from PowerDNS, and how it writes to it |
 | [Operations](docs/operations.md) | Command line, images, Kubernetes, logs, metrics and alerts |
+| [Helm chart](chart/README.md) | Installing tsigoat in Kubernetes, and the values of the chart |
 | [Security](docs/security.md) | What tsigoat protects, its limits, and how to harden a deployment |
 | [Architecture](docs/architecture.md) | How a request flows through tsigoat, and how it is tested |
 

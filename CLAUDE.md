@@ -27,6 +27,7 @@ internal/backend/powerdns/  in-house HTTP client, generic presentation-format co
 internal/backend/memory/    in-memory backend for tests and dry runs
 internal/metrics/      Prometheus collectors: responses, TSIG failures, backend calls
 internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
+chart/                 Helm chart; README.md and values.schema.json generated
 ```
 
 - The engine computes RRset-level `Replace`/`Delete` changes on an in-memory
@@ -63,6 +64,8 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | Real clients | `task test:clients` | `dagger call test-clients`: nsupdate in a container |
 | ACME flow | `task test:acme` | `dagger call test-acme`: lego and certbot get certificates from Pebble |
 | BIND differential | `task test:differential` | `dagger call test-differential`: the scenarios against BIND 9; intended divergences in `test/differential/divergences.yaml` |
+| Helm chart | `task test:helm` | `dagger call test-helm`: `test/chart` (build tag `chart`) renders every example and fixture, then promtool and kubeconform; `task lint:helm` too |
+| Chart docs | `task doc:helm` | regenerates `chart/README.md` and `chart/values.schema.json`; `task check:helm-docs` fails when stale |
 | cert-manager | `task test:acceptance` | `dagger call test-acceptance`: cert-manager in k3s, inside Dagger; nightly |
 | Mutation | `task test:mutation` | `dagger call mutation`: gremlins on update, zone and auth; informational, nightly |
 | Fuzzing | `task test:fuzz` | `dagger call fuzz --fuzztime=1m`: every `Fuzz*` target; 10 minutes each in the nightly workflow |
@@ -103,11 +106,25 @@ because of a known defect carries `knownDefect: <id>`: its failure is reported
 as skipped, and the suite fails when it starts passing, so the marker must be
 removed with the fix.
 
+## Helm chart
+
+- `chart/values.yaml` drives both generated files: `# --` comments for
+  helm-docs, `# @schema` blocks for helm-schema. Always give a `type` in a
+  `# @schema` block (helm-schema drops the inferred one), and
+  `properties: {}` on free-form objects with defaults (it would otherwise
+  forbid their unknown nested keys).
+- The chart owns `listen` and `admin` of the configuration, and refuses inline
+  secrets, which would land in the ConfigMap.
+- `test/chart/valid` and `examples/helm/*.values.yaml` must render and pass
+  the checks; `test/chart/invalid/<name>.yaml` must fail with every line of
+  `<name>.expect.txt`; `test/chart/alerts.test.yaml` tests the alerts.
+- The alerts link to their sections of `docs/operations.md`.
+
 ## Documentation
 
 `README.md` presents tsigoat and links to `docs/`: `configuration.md`,
 `clients.md`, `powerdns.md`, `operations.md`, `security.md`, and
-`architecture.md` for contributors. A change of behavior updates the page that
+`architecture.md` for contributors; and to `chart/README.md` for Kubernetes. A change of behavior updates the page that
 describes it. `docs/local/` is ignored by git: it holds the French working
 notes of the restart (analysis with the P*/A* defect identifiers, restart plan
 with the D* decisions, tooling), which must never be committed.

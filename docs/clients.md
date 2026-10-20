@@ -35,8 +35,9 @@ solvers:
 ```
 
 The Secret holds the base64 TSIG secret, as tsigoat reads it.
-[examples/kubernetes/cert-manager-issuer.yaml](../examples/kubernetes/cert-manager-issuer.yaml)
-holds a complete ClusterIssuer. cert-manager supports `HMACMD5`, `HMACSHA1`,
+[examples/helm/cert-manager-issuer.yaml](../examples/helm/cert-manager-issuer.yaml)
+holds a complete ClusterIssuer, for tsigoat installed with [the Helm
+chart](../chart/README.md). cert-manager supports `HMACMD5`, `HMACSHA1`,
 `HMACSHA256` and `HMACSHA512`.
 
 ## lego and Traefik

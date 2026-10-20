@@ -51,11 +51,12 @@ tasks:
 
   # ─── Drift checks ────────────────────────────────────────────────────────
   check:drift:
-    desc: Formatting and module tidiness
+    desc: Formatting, module tidiness and generated chart files
     cmds:
       - task: check:fmt
       - task: check:fmt:dagger
       - task: check:tidy
+      - task: check:helm-docs
 
   check:fmt:
     desc: Fail when Go files are not formatted (gofumpt, gci)
@@ -71,6 +72,17 @@ tasks:
     desc: Fail when go.mod or go.sum is not tidy
     cmds:
       - "{{.DAGGER}} call check-tidy"
+
+  check:helm-docs:
+    desc: Fail when chart/README.md or chart/values.schema.json is stale (task doc:helm)
+    cmds:
+      - "{{.DAGGER}} call check-helm-docs"
+
+  # ─── Documentation ───────────────────────────────────────────────────────
+  doc:helm:
+    desc: Generate chart/README.md and chart/values.schema.json from chart/values.yaml
+    cmds:
+      - "{{.DAGGER}} call helm-docs export --path=chart"
 
   # ─── Build ───────────────────────────────────────────────────────────────
   build:binary:host:
@@ -142,9 +154,10 @@ tasks:
 
   # ─── Tests ───────────────────────────────────────────────────────────────
   test:
-    desc: Run all tests (unit, end-to-end scenarios, real clients, ACME flow, BIND differential)
+    desc: Run all tests (unit, Helm chart, end-to-end scenarios, real clients, ACME flow, BIND differential)
     cmds:
       - task: test:unit
+      - task: test:helm
       - task: test:e2e
       - task: test:clients
       - task: test:acme
@@ -154,6 +167,11 @@ tasks:
     desc: Unit tests with the race detector, a shuffled order and coverage
     cmds:
       - "{{.DAGGER}} call test"
+
+  test:helm:
+    desc: The Helm chart rendered with every example and fixture, checked against tsigoat, promtool and kubeconform
+    cmds:
+      - "{{.DAGGER}} call test-helm"
 
   test:e2e:
     desc: "End-to-end scenarios against PowerDNS, inside Dagger (PDNS_VERSION=4.9|5.0)"
@@ -207,6 +225,7 @@ tasks:
       - task: lint:actions
       - task: lint:dockerfile
       - task: lint:renovate
+      - task: lint:helm
       - task: lint:manifests
 
   lint:go:
@@ -234,6 +253,11 @@ tasks:
     cmds:
       - "{{.DAGGER}} call lint-renovate"
 
+  lint:helm:
+    desc: helm lint --strict on the chart, with every example and valid fixture
+    cmds:
+      - "{{.DAGGER}} call lint-helm"
+
   lint:manifests:
     desc: kubeconform on the example Kubernetes manifests
     cmds:
@@ -246,6 +270,7 @@ tasks:
       - task: security:gitleaks
       - task: security:govulncheck
       - task: security:vuln-deps
+      - task: security:chart
 
   security:gitleaks:
     desc: Gitleaks — scan the working tree for committed secrets
@@ -261,6 +286,11 @@ tasks:
     desc: Trivy filesystem scan of the dependencies (HIGH/CRITICAL)
     cmds:
       - "{{.DAGGER}} call trivy --scan-type=fs"
+
+  security:chart:
+    desc: Trivy misconfiguration scan of the Helm chart (HIGH/CRITICAL)
+    cmds:
+      - "{{.DAGGER}} call trivy --scan-type=config --scan-ref=chart --helm-values=examples/helm/cert-manager.values.yaml"
 
   # ─── Analysis ────────────────────────────────────────────────────────────
   analysis:graph:

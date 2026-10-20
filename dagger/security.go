@@ -78,6 +78,10 @@ func (m *Tsigoat) Trivy(
 	// +optional
 	// +default=true
 	ignoreUnfixed bool,
+	// For "config" scans of a Helm chart: a values file, relative to the
+	// source, to render the chart with.
+	// +optional
+	helmValues string,
 ) (string, error) {
 	switch scanType {
 	case "fs", "config":
@@ -96,6 +100,9 @@ func (m *Tsigoat) Trivy(
 	}
 	if scanType == "fs" && ignoreUnfixed {
 		args = append(args, "--ignore-unfixed")
+	}
+	if scanType == "config" && helmValues != "" {
+		args = append(args, "--helm-values", "/src/"+helmValues)
 	}
 	target := "/src"
 	if scanRef != "" && scanRef != "." {
