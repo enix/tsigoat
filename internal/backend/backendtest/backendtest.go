@@ -338,11 +338,12 @@ func compare(got, want []backend.RRset) string {
 }
 
 // sameRecords reports whether two lists hold the same records, whatever their
-// order and TTL.
+// order, their TTL and the forms of their presentation format.
 func sameRecords(a, b []dns.RR) bool {
 	if len(a) != len(b) {
 		return false
 	}
+	a, b = canonical(a), canonical(b)
 	used := make([]bool, len(b))
 	for _, x := range a {
 		i := slices.IndexFunc(b, func(y dns.RR) bool { return dns.IsDuplicate(x, y) })
@@ -360,6 +361,19 @@ func sameRecords(a, b []dns.RR) bool {
 		used[i] = true
 	}
 	return true
+}
+
+// canonical returns the canonical forms of records, or the records
+// themselves when they do not encode.
+func canonical(records []dns.RR) []dns.RR {
+	forms := make([]dns.RR, 0, len(records))
+	for _, rr := range records {
+		if form, err := backend.Canonical(rr); err == nil {
+			rr = form
+		}
+		forms = append(forms, rr)
+	}
+	return forms
 }
 
 // describe lists RRsets, one record per line, sorted.

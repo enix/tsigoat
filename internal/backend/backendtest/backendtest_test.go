@@ -30,6 +30,9 @@ func TestCompare(t *testing.T) {
 		{label: "other type", got: parse(t, name, ttl, "A 192.0.2.1"), want: two, mismatch: "missing TXT"},
 		{label: "other name", got: parse(t, "other.example.test.", ttl, `TXT "a"`, `TXT "b"`), want: two, mismatch: "name other.example.test."},
 		{label: "case of RDATA names", got: parse(t, name, ttl, "MX 10 MAIL.example.net."), want: parse(t, name, ttl, "MX 10 mail.example.net.")},
+		{label: "case of hexadecimal", got: parse(t, name, ttl, "SSHFP 4 2 AB12"), want: parse(t, name, ttl, "SSHFP 4 2 ab12")},
+		{label: "forms of IPv6", got: parse(t, name, ttl, "AAAA 2001:db8:0:0::1"), want: parse(t, name, ttl, "AAAA 2001:db8::1")},
+		{label: "escapes of TXT", got: parse(t, name, ttl, `TXT "caf\195\169"`), want: parse(t, name, ttl, "TXT \"caf\xc3\xa9\"")},
 	} {
 		diff := compare(c.got, c.want)
 		switch {

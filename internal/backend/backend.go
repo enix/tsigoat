@@ -181,6 +181,24 @@ func (c Change) String() string {
 	return fmt.Sprintf("replace %s %s %d [%s]", c.RRset.Name, typeName, c.RRset.TTL, strings.Join(values, ", "))
 }
 
+// Canonical returns a record as its wire format decodes it, which erases
+// the variations of its presentation format: the case of hexadecimal
+// strings, the escapes of TXT strings, the forms of IPv6 addresses. The
+// records of an update come in that form, so that the records that a backend
+// reads compare with them only once canonical.
+func Canonical(rr dns.RR) (dns.RR, error) {
+	buf := make([]byte, dns.Len(rr)+1)
+	n, err := dns.PackRR(rr, buf, 0, nil, false)
+	if err != nil {
+		return nil, fmt.Errorf("encoding %s: %w", rr, err)
+	}
+	decoded, _, err := dns.UnpackRR(buf[:n], 0)
+	if err != nil {
+		return nil, fmt.Errorf("decoding %s: %w", rr, err)
+	}
+	return decoded, nil
+}
+
 // RData returns the RDATA of a record in presentation format.
 func RData(rr dns.RR) string {
 	// The text of a record starts with four tab-terminated fields: name,
