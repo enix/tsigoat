@@ -9,7 +9,7 @@ import (
 	"github.com/enix/tsigoat/pkg/adapters/common"
 	"github.com/enix/tsigoat/pkg/types"
 	"github.com/go-playground/validator/v10"
-	"github.com/mitchellh/mapstructure"
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 )
 

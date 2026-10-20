@@ -30,7 +30,7 @@ func autoMaxProcs(settings *ServerSettings) error {
 }
 
 func autoMemLimit(settings *ServerSettings) error {
-	_, err := memlimit.SetGoMemLimitWithOpts(
+	_, err := memlimit.Set(
 		memlimit.WithLogger(settings.SlogLogger),
 	)
 	return err
