@@ -50,8 +50,7 @@ func (s *Server) Run() error {
 	go s.serve("udp", tsigProvider, true)
 	go s.serve("tcp", tsigProvider, true)
 
-	sig := make(chan os.Signal)
-	// FIXME sigchanyzer: misuse of unbuffered os.Signal channel as argument to signal.Notify
+	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	signal := <-sig
 	Logger.Warnw("received stop signal while running server", "signal", signal)
