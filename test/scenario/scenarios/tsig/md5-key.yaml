@@ -1,6 +1,5 @@
 description: An update signed with an HMAC-MD5 key applies when the key opts in to MD5.
 refs: ["RFC 8945 6", D5]
-knownDefect: D5
 requests:
   - key: e2e-md5
     updates:

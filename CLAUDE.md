@@ -75,14 +75,20 @@ Dagger specifics:
 ## Test scenarios
 
 `test/scenario/scenarios/<group>/<name>.yaml` describe a zone, the requests
-sent to tsigoat (prerequisites and updates in nsupdate syntax) and the
-expected outcome. `test/scenario` loads them (unit-tested, no network) and
-`test/e2e` (build tag `e2e`) runs them against tsigoat and PowerDNS, one zone
-per scenario. A scenario failing because of a legacy defect carries
-`knownDefect: <id>`: its failure is reported as skipped, and the suite fails
-when it starts passing, so the marker must be removed with the fix. The tsigoat
-configuration of the e2e tests is rendered by `legacyConfig` in
-`test/e2e/tsigoat_test.go`, the one place to update when the format changes.
+sent to tsigoat (prerequisites and updates in nsupdate syntax, SOA queries,
+other opcodes) and the expected outcome. `test/scenario` loads them and holds
+the runner, which drives a `Target`: tsigoat in front of a backend it can
+reset and read. The scenarios run twice, one zone per scenario:
+
+- in-process on the in-memory backend, in `internal/app` (plain `go test`,
+  part of the unit tests);
+- against a tsigoat binary and PowerDNS in `test/e2e` (build tag `e2e`).
+
+`scenario.Config` renders the tsigoat configuration of both runs, the one
+place to update when the configuration format changes. A scenario failing
+because of a known defect carries `knownDefect: <id>`: its failure is reported
+as skipped, and the suite fails when it starts passing, so the marker must be
+removed with the fix.
 
 ## Conventions
 

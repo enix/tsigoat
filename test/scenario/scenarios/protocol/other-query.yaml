@@ -1,0 +1,8 @@
+description: tsigoat is not a name server; queries other than SOA get NOTIMP.
+refs: ["RFC 1035 4.1.1", P13]
+requests:
+  - opcode: query
+    query: www A
+expect:
+  rcode: NOTIMP
+  signedResponse: true

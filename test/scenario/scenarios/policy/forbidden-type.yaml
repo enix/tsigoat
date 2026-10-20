@@ -1,0 +1,16 @@
+description: >-
+  An update with one record of a type that the policy does not allow is refused
+  as a whole.
+refs: ["RFC 2136 3.3"]
+zone:
+  policy:
+    - key: e2e-sha512
+      names: ["_acme-challenge.**"]
+      types: [TXT]
+requests:
+  - key: e2e-sha512
+    updates:
+      - add _acme-challenge.www 60 IN TXT "token"
+      - add _acme-challenge.www 60 IN A 192.0.2.1
+expect:
+  rcode: REFUSED

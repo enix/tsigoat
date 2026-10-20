@@ -1,6 +1,5 @@
 description: An AAAA record reaches the backend intact.
 refs: [A1]
-knownDefect: A1
 requests:
   - updates:
       - add host 300 IN AAAA 2001:db8::10

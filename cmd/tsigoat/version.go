@@ -9,16 +9,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/enix/tsigoat/internal/product"
-	"github.com/enix/tsigoat/pkg/cmd"
 )
 
 const (
-	versionDesc = `
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
-Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-`
 	versionTemplate = `Version:    {{.Version}}
 Build time: {{.BuildTime}}
 Git commit: {{.GitCommit}}
@@ -32,21 +25,17 @@ type versionOptions struct {
 	short bool
 }
 
-func newCmdVersion(settings *cmd.Settings) *cobra.Command {
+func newVersionCommand(stdout io.Writer) *cobra.Command {
 	options := &versionOptions{}
 	command := &cobra.Command{
 		Use:   "version",
-		Short: "lorem ipsum dolor sit amet",
-		Long:  versionDesc,
+		Short: "Print the version",
 		Args:  cobra.NoArgs,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return options.run(settings.Stdout)
+		RunE: func(*cobra.Command, []string) error {
+			return options.run(stdout)
 		},
 	}
-
-	flags := command.Flags()
-	flags.BoolVarP(&options.short, "short", "s", false, "Print the version number only")
-
+	command.Flags().BoolVarP(&options.short, "short", "s", false, "print the version number only")
 	return command
 }
 

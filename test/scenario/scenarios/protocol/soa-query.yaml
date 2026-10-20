@@ -1,0 +1,11 @@
+description: >-
+  A signed SOA query for the apex gets the SOA, authoritatively and signed, as
+  certbot and nsupdate expect when they look for the zone of a name.
+refs: ["RFC 1035 4.1.1"]
+requests:
+  - opcode: query
+expect:
+  authoritative: true
+  signedResponse: true
+  answer: ["@ SOA"]
+  authority: []

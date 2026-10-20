@@ -1,0 +1,10 @@
+description: >-
+  An unsigned SOA query for a zone that requires authentication is refused, as
+  for a zone that tsigoat does not serve.
+refs: [P8]
+requests:
+  - key: none
+    opcode: query
+expect:
+  rcode: REFUSED
+  answer: []

@@ -1,6 +1,5 @@
 description: The value-independent "RRset exists" prerequisite fails on an absent RRset, so nothing changes.
 refs: ["RFC 2136 2.4.1", "RFC 2136 3.2.1", P2]
-knownDefect: P2
 zone:
   records:
     - www 300 IN A 192.0.2.1

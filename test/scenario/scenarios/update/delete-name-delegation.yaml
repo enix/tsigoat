@@ -1,6 +1,5 @@
 description: Deleting a name below the apex also removes its NS RRset, the delegation.
 refs: ["RFC 2136 3.4.2.3", P12]
-knownDefect: P12
 zone:
   records:
     - sub 3600 IN NS ns.elsewhere.test.

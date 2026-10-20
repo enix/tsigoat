@@ -10,12 +10,32 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/miekg/dns"
 )
+
+// pdnsTarget is tsigoat in front of PowerDNS, for the scenario runner.
+type pdnsTarget struct {
+	api  *powerDNS
+	addr string
+}
+
+func (p *pdnsTarget) Addr() string {
+	return p.addr
+}
+
+func (p *pdnsTarget) ResetZone(ctx context.Context, zone string, records []dns.RR) error {
+	if err := p.api.resetZone(ctx, zone); err != nil {
+		return err
+	}
+	return p.api.addRecords(ctx, zone, records)
+}
+
+func (p *pdnsTarget) Records(ctx context.Context, zone string) ([]dns.RR, error) {
+	return p.api.records(ctx, zone)
+}
 
 // powerDNS is a minimal client of the PowerDNS HTTP API, used to prepare the
 // zones of the scenarios and to read their content back.
@@ -88,25 +108,30 @@ func (p *powerDNS) addRecords(ctx context.Context, zone string, records []dns.RR
 	return err
 }
 
-// records returns the content of the zone without its SOA, one normalised
-// record per line, sorted.
-func (p *powerDNS) records(ctx context.Context, zone string) ([]string, error) {
+// records returns the records of the zone, but its SOA.
+func (p *powerDNS) records(ctx context.Context, zone string) ([]dns.RR, error) {
 	var content struct {
 		RRsets []rrset `json:"rrsets"`
 	}
 	if _, err := p.do(ctx, http.MethodGet, "/zones/"+zone, nil, &content); err != nil {
 		return nil, err
 	}
-	var records []string
+	var records []dns.RR
 	for _, set := range content.RRsets {
 		if set.Type == "SOA" {
 			continue
 		}
 		for _, r := range set.Records {
-			records = append(records, normalizeContent(set.Name, set.TTL, set.Type, r.Content))
+			rr, err := dns.NewRR(fmt.Sprintf("%s %d IN %s %s", set.Name, set.TTL, set.Type, r.Content))
+			if err == nil && rr == nil {
+				err = errors.New("no record")
+			}
+			if err != nil {
+				return nil, fmt.Errorf("parsing %s %s %q: %w", set.Name, set.Type, r.Content, err)
+			}
+			records = append(records, rr)
 		}
 	}
-	sort.Strings(records)
 	return records, nil
 }
 
@@ -150,22 +175,4 @@ func (p *powerDNS) do(ctx context.Context, method, path string, body, out any) (
 // content format of the PowerDNS API.
 func rdata(rr dns.RR) string {
 	return strings.TrimPrefix(rr.String(), rr.Header().String())
-}
-
-// normalize returns the canonical text of a record, so that records read from
-// the backend and records written in a scenario compare equal.
-func normalize(rr dns.RR) string {
-	rr.Header().Name = dns.CanonicalName(rr.Header().Name)
-	return strings.Join(strings.Fields(rr.String()), " ")
-}
-
-func normalizeContent(name string, ttl uint32, rrtype, content string) string {
-	rr, err := dns.NewRR(fmt.Sprintf("%s %d IN %s %s", name, ttl, rrtype, content))
-	if err == nil && rr == nil {
-		err = errors.New("no record")
-	}
-	if err != nil {
-		return fmt.Sprintf("%s %d IN %s <unparsable %q>", dns.CanonicalName(name), ttl, rrtype, content)
-	}
-	return normalize(rr)
 }

@@ -252,21 +252,18 @@ tasks:
         fi
       - |
         cat > "{{.CONFIG_FILE}}" <<CONFIG
-        tsig:
-          keys:
-            - name: dev.
-              key: $(cat "{{.KEY_FILE}}")
-              default: true
-        handlers:
+        keys:
+          - name: dev.
+            secretFile: {{.KEY_FILE}}
+        backends:
           - name: pdns
-            adapter: powerdns
-            default: true
+            type: powerdns
             powerdns:
               url: http://127.0.0.1:8081
-              vhost: localhost
-              key: {{.DEV_PDNS_API_KEY}}
+              apiKey: {{.DEV_PDNS_API_KEY}}
         zones:
-          - zone: example.test.
+          - name: example.test.
+            keys: [dev.]
         CONFIG
       - echo "TSIG key dev. (hmac-sha256) — nsupdate -y hmac-sha256:dev.:$(cat '{{.KEY_FILE}}')"
-      - go run ./cmd/tsigoat serve --config "{{.CONFIG_FILE}}" --listen "{{.DEV_LISTEN}}" --log-format developer --log-level debug
+      - go run ./cmd/tsigoat serve --config "{{.CONFIG_FILE}}" --listen "{{.DEV_LISTEN}}" --log-level debug

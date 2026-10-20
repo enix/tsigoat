@@ -1,0 +1,11 @@
+description: A rule that names the SOA type explicitly allows SOA updates.
+refs: ["RFC 2136 3.3", D7]
+zone:
+  policy:
+    - key: e2e-sha512
+      names: ["@"]
+      types: [SOA]
+requests:
+  - key: e2e-sha512
+    updates:
+      - add @ 3600 IN SOA ns1 hostmaster 2000000000 7200 900 1209600 300

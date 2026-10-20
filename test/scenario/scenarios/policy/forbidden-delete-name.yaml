@@ -1,0 +1,17 @@
+description: >-
+  Deleting every RRset of a name needs the ANY type, which a key restricted to
+  TXT records lacks.
+refs: ["RFC 2136 3.3"]
+zone:
+  records:
+    - _acme-challenge.www 60 IN TXT "token"
+  policy:
+    - key: e2e-sha512
+      names: ["_acme-challenge.**"]
+      types: [TXT]
+requests:
+  - key: e2e-sha512
+    updates:
+      - delete _acme-challenge.www
+expect:
+  rcode: REFUSED

@@ -1,6 +1,5 @@
 description: An A record reaches the backend intact.
 refs: [A1]
-knownDefect: A1
 requests:
   - updates:
       - add host 300 IN A 192.0.2.10

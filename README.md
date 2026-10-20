@@ -14,10 +14,9 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
 ```
 
 > [!WARNING]
-> The project is being restarted. The current code is a prototype with known
-> defects: prerequisites are not evaluated, updates are not atomic, responses
-> are not signed. Do not use it in production yet. PowerDNS is the only
-> backend.
+> The project is being restarted and has no release yet. The core has been
+> rewritten, but the documentation and the deployment manifests are still to
+> come. PowerDNS is the only backend, and tsigoat runs as a single instance.
 
 ## Development quick start
 

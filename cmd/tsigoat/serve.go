@@ -1,97 +1,90 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
+	"log/slog"
+	"strings"
 
+	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 
+	"github.com/enix/tsigoat/internal/app"
+	"github.com/enix/tsigoat/internal/config"
+	"github.com/enix/tsigoat/internal/logging"
 	"github.com/enix/tsigoat/internal/product"
-	"github.com/enix/tsigoat/pkg/cmd"
-	"github.com/enix/tsigoat/pkg/server"
 )
 
-const serveDesc = `
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
-Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.
-Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
-`
-
 type serveOptions struct {
-	viper *viper.Viper
+	configPath   string
+	listen       []string
+	logFormat    string
+	logLevel     string
+	autoMemLimit bool
 }
 
-func newCmdServe(settings *cmd.Settings) *cobra.Command {
-	serverSettings := settings.ToServer()
-
-	options := &serveOptions{}
+func newServeCommand(stderr io.Writer) *cobra.Command {
+	o := &serveOptions{}
 	command := &cobra.Command{
-		Use:     "serve",
-		Aliases: []string{"server"},
-		Short:   "lorem ipsum dolor sit amet",
-		Long:    serveDesc,
-		Args:    cobra.NoArgs,
-		PreRunE: func(_ *cobra.Command, _ []string) error {
-			return serverSettings.Init()
-		},
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return options.run(serverSettings)
+		Use:   "serve",
+		Short: "Serve DNS updates",
+		Long: `Serve DNS updates over UDP and TCP until SIGINT or SIGTERM, then finish
+the updates in progress and exit. Logs go to the standard error.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return o.run(cmd.Context(), stderr)
 		},
 	}
 
 	flags := command.Flags()
-	serverSettings.AddFlags(flags)
-
-	options.viper = viper.NewWithOptions(viper.KeyDelimiter("\\"))
-	options.viper.SetEnvPrefix(product.Name)
-
+	flags.StringVarP(&o.configPath, "config", "c", defaultConfigPath, "configuration file")
+	flags.StringSliceVar(&o.listen, "listen", nil,
+		"address to listen on for both UDP and TCP, repeatable; replaces the addresses of the configuration")
+	flags.StringVar(&o.logFormat, "log-format", string(logging.FormatText),
+		"log format: "+strings.Join(logging.Formats(), ", "))
+	flags.StringVar(&o.logLevel, "log-level", "info", "log level: "+strings.Join(logging.Levels(), ", "))
+	flags.BoolVar(&o.autoMemLimit, "auto-gomemlimit", true, "set GOMEMLIMIT from the memory limit of the cgroup")
 	return command
 }
 
-func (o *serveOptions) run(settings *cmd.ServerSettings) error {
-	logger := settings.Logger.Sugar()
-
-	logger.Infow(fmt.Sprintf("initializing %s server", product.Name), product.VariadicBuildInfo()...)
-
-	if err := settings.InitRuntime(); err != nil {
+func (o *serveOptions) run(ctx context.Context, stderr io.Writer) error {
+	level, err := logging.ParseLevel(o.logLevel)
+	if err != nil {
 		return err
 	}
-
-	o.viper.SetConfigType(settings.ConfigurationFile.Type.String())
-
-	configFileName := fmt.Sprintf("%s.%s", settings.ConfigurationFile.Name, settings.ConfigurationFile.Type.String())
-	logger.Debugw("configuration file search parameters",
-		"directories", settings.ConfigurationFile.SearchPaths,
-		"filename", configFileName)
-	o.viper.SetConfigName(configFileName)
-	for _, path := range settings.ConfigurationFile.SearchPaths {
-		o.viper.AddConfigPath(path)
-	}
-
-	if settings.ConfigurationFile.FullPath != "" {
-		logger.Debugw("using a configuration full path",
-			"path", settings.ConfigurationFile.FullPath)
-		o.viper.SetConfigFile(settings.ConfigurationFile.FullPath)
-	}
-
-	err := o.viper.ReadInConfig()
+	logger, err := logging.New(stderr, logging.Format(o.logFormat), level)
 	if err != nil {
-		logger.Fatalf("failed to load configuration file: %s", err)
+		return err
+	}
+	logger.InfoContext(ctx, "starting", product.VariadicBuildInfo()...)
+
+	if o.autoMemLimit {
+		if _, limitErr := memlimit.Set(memlimit.WithLogger(logger)); limitErr != nil {
+			logger.WarnContext(ctx, "setting GOMEMLIMIT failed", "error", limitErr)
+		}
 	}
 
-	logger.Debugw("parsing configuration file", "path", o.viper.ConfigFileUsed())
-	config := server.Configuration{}
-	if err := config.Unmarshal(o.viper); err != nil {
-		logger.Fatalf("failed to decode configuration: %s", err)
+	c, warnings, err := config.Load(o.configPath)
+	if err != nil {
+		return err
 	}
+	for _, warning := range warnings {
+		logger.WarnContext(ctx, "risky configuration", "warning", warning)
+	}
+	if len(o.listen) > 0 {
+		c.Listen = o.listen
+	}
+	logger.InfoContext(ctx, "configuration loaded", slog.String("path", o.configPath),
+		slog.Int("keys", len(c.Keys)), slog.Int("backends", len(c.Backends)), slog.Int("zones", len(c.Zones)))
 
-	logger.Infow("successfully decoded configuration file", "path", o.viper.ConfigFileUsed())
-
-	// The legacy server package logs through a package-level logger.
-	server.Logger = logger
-
-	srv := server.NewServer(&config)
-	srv.ListenAddress = settings.ListenAddress
-	return srv.Run()
+	a, err := app.New(c, logger, nil)
+	if err != nil {
+		return err
+	}
+	if err := a.Run(ctx); err != nil {
+		return fmt.Errorf("%s stopped: %w", product.Slug, err)
+	}
+	logger.InfoContext(ctx, "stopped")
+	return nil
 }

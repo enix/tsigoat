@@ -1,6 +1,5 @@
 description: Deleting the NS RRset of the apex is ignored, whatever the case of the name.
 refs: ["RFC 2136 3.4.2.3", "RFC 4343", P3]
-knownDefect: P3
 requests:
   - upperCaseNames: true
     updates:

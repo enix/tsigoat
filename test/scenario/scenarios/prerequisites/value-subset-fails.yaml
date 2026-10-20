@@ -1,6 +1,5 @@
 description: A value-dependent prerequisite naming part of an RRset fails, since RRsets must be equal.
 refs: ["RFC 2136 2.4.2", "RFC 2136 3.2.3", P1]
-knownDefect: P1
 zone:
   records:
     - www 300 IN A 192.0.2.1

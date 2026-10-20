@@ -24,8 +24,12 @@ type Request struct {
 	BadSignature bool `yaml:"badSignature"`
 	// TimeShift moves the signing time of the request, in seconds.
 	TimeShift int64 `yaml:"timeShift"`
-	// Opcode is "update", the default, or "query".
+	// Opcode is "update", the default, "query", or the name of another
+	// opcode such as "notify", which sends an otherwise empty message.
 	Opcode string `yaml:"opcode"`
+	// Query is the question of a query, "<name> <TYPE>" with the name
+	// relative to the zone; "@ SOA" by default.
+	Query string `yaml:"query"`
 	// Zone overrides the zone section with an absolute name.
 	Zone string `yaml:"zone"`
 	// ZoneCount overrides the number of entries of the zone section.
@@ -113,10 +117,16 @@ func (r *Request) message(zone string, index int) (*dns.Msg, error) {
 	case "", "update":
 		m.SetUpdate(target)
 	case "query":
-		m.SetQuestion(target, dns.TypeSOA)
-		return m, nil
+		return r.query(zone)
 	default:
-		return nil, fmt.Errorf("unknown opcode %q", r.Opcode)
+		opcode, ok := dns.StringToOpcode[strings.ToUpper(r.Opcode)]
+		if !ok {
+			return nil, fmt.Errorf("unknown opcode %q", r.Opcode)
+		}
+		m.SetQuestion(target, dns.TypeSOA)
+		m.Opcode = opcode
+		m.RecursionDesired = false
+		return m, nil
 	}
 
 	if err := r.shapeZoneSection(m); err != nil {
@@ -144,6 +154,23 @@ func (r *Request) message(zone string, index int) (*dns.Msg, error) {
 			rr.Header().Name = strings.ToUpper(rr.Header().Name)
 		}
 	}
+	return m, nil
+}
+
+// query returns the message of a query.
+func (r *Request) query(zone string) (*dns.Msg, error) {
+	question := r.Query
+	if question == "" {
+		question = "@ SOA"
+	}
+	name, typeName := cut(question)
+	rrtype, ok := dns.StringToType[strings.ToUpper(typeName)]
+	if name == "" || !ok {
+		return nil, fmt.Errorf("invalid query %q: expected <name> <TYPE>", question)
+	}
+	m := new(dns.Msg)
+	m.SetQuestion(absolute(name, zone), rrtype)
+	m.RecursionDesired = false
 	return m, nil
 }
 

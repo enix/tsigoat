@@ -1,0 +1,7 @@
+description: Opcodes other than UPDATE and QUERY get NOTIMP.
+refs: ["RFC 1035 4.1.1", P13]
+requests:
+  - opcode: notify
+expect:
+  rcode: NOTIMP
+  signedResponse: true

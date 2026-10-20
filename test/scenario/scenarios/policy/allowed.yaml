@@ -1,0 +1,18 @@
+description: A key that the policy restricts to the ACME challenges may write them.
+refs: ["RFC 2136 3.3"]
+zone:
+  policy:
+    - key: e2e-sha512
+      names: ["_acme-challenge", "_acme-challenge.**"]
+      types: [TXT]
+requests:
+  - key: e2e-sha512
+    updates:
+      - add _acme-challenge 60 IN TXT "apex token"
+      - add _acme-challenge.www 60 IN TXT "token"
+      - add _acme-challenge.a.b 60 IN TXT "deep token"
+expect:
+  records:
+    - _acme-challenge 60 IN TXT "apex token"
+    - _acme-challenge.www 60 IN TXT "token"
+    - _acme-challenge.a.b 60 IN TXT "deep token"

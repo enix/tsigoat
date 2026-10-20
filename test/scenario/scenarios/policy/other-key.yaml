@@ -1,0 +1,12 @@
+description: A valid key that no rule of the zone names is refused.
+refs: ["RFC 2136 3.3"]
+zone:
+  policy:
+    - key: e2e-sha512
+      names: ["_acme-challenge.**"]
+      types: [TXT]
+requests:
+  - updates:
+      - add _acme-challenge.www 60 IN TXT "should not exist"
+expect:
+  rcode: REFUSED

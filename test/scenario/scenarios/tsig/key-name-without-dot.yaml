@@ -1,6 +1,5 @@
 description: A key configured without its trailing dot still matches the key name on the wire.
 refs: [P9]
-knownDefect: P9
 requests:
   - key: e2e-nodot
     updates:

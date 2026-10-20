@@ -1,6 +1,5 @@
 description: Adding a record with another TTL moves the whole RRset to the new TTL, since an RRset has a single TTL.
 refs: ["RFC 2181 5.2", P11]
-knownDefect: P11
 zone:
   records:
     - www 3600 IN TXT "one"

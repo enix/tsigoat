@@ -1,0 +1,17 @@
+description: A key restricted to TXT records may delete them, as ACME clients do once the challenge is over.
+refs: ["RFC 2136 3.3"]
+zone:
+  records:
+    - _acme-challenge.www 60 IN TXT "token"
+    - _acme-challenge.www 60 IN TXT "other token"
+  policy:
+    - key: e2e-sha512
+      names: ["_acme-challenge.**"]
+      types: [TXT]
+requests:
+  - key: e2e-sha512
+    updates:
+      - delete _acme-challenge.www TXT "token"
+expect:
+  records:
+    - _acme-challenge.www 60 IN TXT "other token"

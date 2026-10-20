@@ -1,0 +1,10 @@
+description: A SOA query for a name below the apex gets the SOA of the zone in the authority section.
+refs: ["RFC 1035 4.1.1"]
+requests:
+  - opcode: query
+    query: _acme-challenge.www SOA
+expect:
+  authoritative: true
+  signedResponse: true
+  answer: []
+  authority: ["@ SOA"]

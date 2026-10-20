@@ -1,6 +1,5 @@
 description: A valid key that the zone does not allow is refused.
 refs: ["RFC 2136 3.3", P14]
-knownDefect: P14
 zone:
   keys: [e2e-sha1]
 requests:

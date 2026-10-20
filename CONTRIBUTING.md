@@ -86,9 +86,14 @@ expect:
     - new 300 IN TXT "fresh"
 ```
 
+Every scenario runs twice: in-process on the in-memory backend with the unit
+tests (`go test ./internal/app/`), and against PowerDNS with `task test:e2e`.
+Zones may also carry a `policy`, and requests may be SOA queries
+(`opcode: query`), whose answers `expect` can check.
+
 A scenario that fails because of a known defect carries `knownDefect`: the
-end-to-end suite reports it as skipped while it fails, and fails as soon as it
-passes, so that the marker is removed together with the fix.
+suites report it as skipped while it fails, and fail as soon as it passes, so
+that the marker is removed together with the fix.
 
 ## Conventions
 

@@ -59,9 +59,21 @@ type Zone struct {
 	Records []string `yaml:"records"`
 	// Unauthenticated zones accept unsigned updates.
 	Unauthenticated bool `yaml:"unauthenticated"`
-	// Keys lists the identifiers of the keys allowed to update the zone; every
-	// configured test key when empty.
+	// Keys lists the identifiers of the keys allowed to update the whole
+	// zone; every configured test key when both Keys and Policy are empty.
 	Keys []string `yaml:"keys"`
+	// Policy grants narrower rights.
+	Policy []Rule `yaml:"policy"`
+}
+
+// Rule is a policy rule of a scenario zone.
+type Rule struct {
+	// Key is the identifier of a test key.
+	Key string `yaml:"key"`
+	// Names are name patterns relative to the zone, "@" for the apex.
+	Names []string `yaml:"names"`
+	// Types are record types; every type but SOA when empty.
+	Types []string `yaml:"types"`
 }
 
 // Expect is the expected outcome of a scenario.
@@ -76,6 +88,13 @@ type Expect struct {
 	// zone file syntax. The apex NS is implied unless listed. When absent,
 	// the zone must be left unchanged.
 	Records *[]string `yaml:"records"`
+	// Authoritative requires the AA flag on every response.
+	Authoritative bool `yaml:"authoritative"`
+	// Answer and Authority list the records of these sections of every
+	// response as "<owner> <TYPE>", with owner names relative to the zone
+	// ("@" for the apex). They are not checked when absent.
+	Answer    *[]string `yaml:"answer"`
+	Authority *[]string `yaml:"authority"`
 }
 
 // All loads every scenario, in lexical order of their names.
@@ -146,13 +165,26 @@ func (s *Scenario) validateShape() []error {
 			errs = append(errs, fmt.Errorf("unknown rcode %q", rcode))
 		}
 	}
-	for _, id := range s.Zone.Keys {
+	return append(errs, s.Zone.validate()...)
+}
+
+func (z *Zone) validate() []error {
+	var errs []error
+	for _, id := range z.Keys {
 		if _, ok := KeyByID(id); !ok {
 			errs = append(errs, fmt.Errorf("unknown zone key %q", id))
 		}
 	}
-	if s.Zone.Unauthenticated && len(s.Zone.Keys) > 0 {
-		errs = append(errs, errors.New("an unauthenticated zone cannot list keys"))
+	for i, rule := range z.Policy {
+		if _, ok := KeyByID(rule.Key); !ok {
+			errs = append(errs, fmt.Errorf("policy rule %d: unknown key %q", i, rule.Key))
+		}
+		if len(rule.Names) == 0 {
+			errs = append(errs, fmt.Errorf("policy rule %d: no name", i))
+		}
+	}
+	if z.Unauthenticated && (len(z.Keys) > 0 || len(z.Policy) > 0) {
+		errs = append(errs, errors.New("an unauthenticated zone cannot list keys or rules"))
 	}
 	return errs
 }

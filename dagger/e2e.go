@@ -8,16 +8,18 @@ import (
 	"dagger/tsigoat/internal/dagger"
 )
 
-// End-to-end fixtures. The TSIG secret and the API key only exist inside the
-// ephemeral Dagger network of a test run.
+// End-to-end fixtures. The TSIG secrets and the API key only exist inside
+// the ephemeral Dagger network of a test run.
 const (
-	e2eZone      = "example.test."
-	e2eKeyName   = "e2e."
-	e2eKeySecret = "c2VjcmV0LWZvci10aGUtZTJlLXRlc3RzLW9ubHktMzJi" // gitleaks:allow (throwaway)
-	e2eAPIKey    = "ZTJlLWFwaS1rZXk="                             // gitleaks:allow (throwaway)
-	e2eDNSPort   = 5353
-	pdnsDNSPort  = 5300
-	pdnsAPIPort  = 8081
+	e2eZone         = "example.test."
+	e2eKeyName      = "e2e."
+	e2eKeySecret    = "c2VjcmV0LWZvci10aGUtZTJlLXRlc3RzLW9ubHktMzJi" // gitleaks:allow (throwaway)
+	e2eMD5KeyName   = "e2e-md5."
+	e2eMD5KeySecret = "bWQ1LXNlY3JldC1mb3ItdGhlLWUyZS10ZXN0cy0zMmI=" // gitleaks:allow (throwaway)
+	e2eAPIKey       = "ZTJlLWFwaS1rZXk="                             // gitleaks:allow (throwaway)
+	e2eDNSPort      = 5353
+	pdnsDNSPort     = 5300
+	pdnsAPIPort     = 8081
 )
 
 // TestEndToEnd runs the scenarios of test/scenario against tsigoat placed in
@@ -50,9 +52,10 @@ func (m *Tsigoat) TestEndToEnd(
 
 // TestClients runs real DNS clients against tsigoat. tsigoat is built from
 // the source tree and placed in front of a PowerDNS server; a client
-// container then sends a TSIG-signed update with nsupdate and checks, through
-// the PowerDNS API, that the record landed in the zone. Everything runs
-// inside the private Dagger network: no port is published on the host.
+// container then sends TSIG-signed updates with nsupdate, with and without
+// an explicit zone and with an HMAC-MD5 key, and checks through the PowerDNS
+// API that the records landed in the zone. Everything runs inside the
+// private Dagger network: no port is published on the host.
 func (m *Tsigoat) TestClients(
 	ctx context.Context,
 	// PowerDNS release line to test against: "4.9" or "5.0".
@@ -141,35 +144,36 @@ func pdnsImageFor(version string) (string, error) {
 	}
 }
 
-// e2eConfig renders the tsigoat configuration, in the legacy format that the
-// current code understands.
+// e2eConfig renders the tsigoat configuration.
 func e2eConfig() string {
-	return fmt.Sprintf(`tsig:
-  keys:
-    - name: %s
-      key: %s
-      default: true
-handlers:
+	return fmt.Sprintf(`keys:
+  - name: %s
+    secret: %s
+  - name: %s
+    algorithm: hmac-md5
+    secret: %s
+backends:
   - name: pdns
-    adapter: powerdns
-    default: true
+    type: powerdns
     powerdns:
       url: http://pdns:%d
-      vhost: localhost
-      key: %s
+      apiKey: %s
 zones:
-  - zone: %s
-`, e2eKeyName, e2eKeySecret, pdnsAPIPort, e2eAPIKey, e2eZone)
+  - name: %s
+    keys: [%s, %s]
+`, e2eKeyName, e2eKeySecret, e2eMD5KeyName, e2eMD5KeySecret, pdnsAPIPort, e2eAPIKey, e2eZone, e2eKeyName, e2eMD5KeyName)
 }
 
-// e2eSmokeScript creates the zone, sends a signed update and checks the
-// result in PowerDNS. nsupdate's verdict is reported but does not fail the
-// run: the legacy server does not sign its responses (defect P7).
+// e2eSmokeScript creates the zone, sends signed updates with nsupdate and
+// checks the result in PowerDNS. nsupdate fails unless tsigoat signs its
+// responses.
 func e2eSmokeScript() string {
 	return strings.NewReplacer(
 		"@ZONE@", e2eZone,
 		"@KEY_NAME@", e2eKeyName,
 		"@KEY_SECRET@", e2eKeySecret,
+		"@MD5_KEY_NAME@", e2eMD5KeyName,
+		"@MD5_KEY_SECRET@", e2eMD5KeySecret,
 		"@API_KEY@", e2eAPIKey,
 		"@DNS_PORT@", fmt.Sprint(e2eDNSPort),
 		"@API_PORT@", fmt.Sprint(pdnsAPIPort),
@@ -185,24 +189,50 @@ curl -fsS -X POST -H "X-API-Key: @API_KEY@" -H "Content-Type: application/json" 
 tsigoat_ip=$(getent hosts tsigoat | awk '{ print $1; exit }')
 echo "== tsigoat resolves to $tsigoat_ip"
 
-echo "== send a TSIG-signed update with nsupdate"
-cat > /tmp/update.txt <<UPDATE
+echo "== nsupdate, HMAC-SHA256, explicit zone"
+nsupdate -y "hmac-sha256:@KEY_NAME@:@KEY_SECRET@" <<UPDATE
 server $tsigoat_ip @DNS_PORT@
 zone @ZONE@
 update add _acme-challenge.@ZONE@ 60 TXT "smoke"
 send
 UPDATE
-set +e
-nsupdate -y "hmac-sha256:@KEY_NAME@:@KEY_SECRET@" /tmp/update.txt
-status=$?
-set -e
-echo "== nsupdate exit status: $status"
 
-echo "== check the record through the PowerDNS API"
-content=$(curl -fsS -H "X-API-Key: @API_KEY@" "$api/zones/@ZONE@" \
-  | jq -r '.rrsets[] | select(.name == "_acme-challenge.@ZONE@" and .type == "TXT") | .records[].content')
-echo "TXT content: $content"
-[ "$content" = '"smoke"' ]
+echo "== nsupdate, HMAC-SHA256, zone found with a SOA query, over TCP"
+nsupdate -v -y "hmac-sha256:@KEY_NAME@:@KEY_SECRET@" <<UPDATE
+server $tsigoat_ip @DNS_PORT@
+update add _acme-challenge.www.@ZONE@ 60 TXT "discovered"
+send
+UPDATE
+
+echo "== nsupdate, HMAC-MD5 key"
+nsupdate -y "hmac-md5:@MD5_KEY_NAME@:@MD5_KEY_SECRET@" <<UPDATE
+server $tsigoat_ip @DNS_PORT@
+zone @ZONE@
+update add md5.@ZONE@ 60 TXT "md5"
+send
+UPDATE
+
+echo "== nsupdate, wrong algorithm for the key: must fail"
+if nsupdate -y "hmac-sha512:@KEY_NAME@:@KEY_SECRET@" <<UPDATE
+server $tsigoat_ip @DNS_PORT@
+zone @ZONE@
+update add wrong.@ZONE@ 60 TXT "wrong"
+send
+UPDATE
+then
+  echo "nsupdate accepted an update signed with the wrong algorithm" >&2
+  exit 1
+fi
+
+echo "== check the records through the PowerDNS API"
+records=$(curl -fsS -H "X-API-Key: @API_KEY@" "$api/zones/@ZONE@" \
+  | jq -r '.rrsets[] | select(.type == "TXT") | "\(.name) \(.records[].content)"' | sort)
+echo "$records"
+expected=$(printf '%s\n' \
+  '_acme-challenge.@ZONE@ "smoke"' \
+  '_acme-challenge.www.@ZONE@ "discovered"' \
+  'md5.@ZONE@ "md5"' | sort)
+[ "$records" = "$expected" ]
 
 echo "== check the record over DNS (UDP) on PowerDNS"
 dig +short -p @PDNS_PORT@ @pdns "_acme-challenge.@ZONE@" TXT

@@ -1,0 +1,10 @@
+description: An unsigned SOA query for a zone that accepts unsigned updates gets the SOA.
+refs: ["RFC 1035 4.1.1"]
+zone:
+  unauthenticated: true
+requests:
+  - key: none
+    opcode: query
+expect:
+  authoritative: true
+  answer: ["@ SOA"]

@@ -1,0 +1,13 @@
+description: An update of a name that the policy does not allow is refused.
+refs: ["RFC 2136 3.3"]
+zone:
+  policy:
+    - key: e2e-sha512
+      names: ["_acme-challenge.**"]
+      types: [TXT]
+requests:
+  - key: e2e-sha512
+    updates:
+      - add www 60 IN TXT "should not exist"
+expect:
+  rcode: REFUSED

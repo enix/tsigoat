@@ -1,6 +1,5 @@
 description: A TXT record with escaped quotes survives being read back when another record joins its RRset.
 refs: [A2]
-knownDefect: A2
 requests:
   - updates:
       - 'add quote 60 IN TXT "say \"hi\""'

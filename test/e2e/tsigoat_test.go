@@ -14,8 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"go.yaml.in/yaml/v3"
-
 	"github.com/enix/tsigoat/test/scenario"
 )
 
@@ -58,8 +56,12 @@ func startTsigoat(t *testing.T, env environment, scenarios []scenario.Scenario) 
 		binary = buildTsigoat(t)
 	}
 
+	data, err := scenario.Config(scenarios, parentDomain, scenario.PowerDNS{URL: env.pdnsURL, APIKey: env.pdnsAPIKey})
+	if err != nil {
+		t.Fatal(err)
+	}
 	config := filepath.Join(t.TempDir(), "tsigoat.yaml")
-	if err := os.WriteFile(config, legacyConfig(t, env, scenarios), 0o600); err != nil {
+	if err := os.WriteFile(config, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,84 +100,6 @@ func buildTsigoat(t *testing.T) string {
 		t.Fatalf("building tsigoat: %v\n%s", err, output)
 	}
 	return binary
-}
-
-// legacyConfig renders the configuration of tsigoat for the scenarios, in the
-// configuration format of the legacy code. It is the only code that knows the
-// configuration format: the one place to update when the format changes.
-func legacyConfig(t *testing.T, env environment, scenarios []scenario.Scenario) []byte {
-	t.Helper()
-
-	type tsigKey struct {
-		Name    string `yaml:"name"`
-		Key     string `yaml:"key"`
-		Default bool   `yaml:"default,omitempty"`
-	}
-	type powerdns struct {
-		URL   string `yaml:"url"`
-		VHost string `yaml:"vhost"`
-		Key   string `yaml:"key"`
-	}
-	type handler struct {
-		Name     string   `yaml:"name"`
-		Adapter  string   `yaml:"adapter"`
-		Default  bool     `yaml:"default"`
-		PowerDNS powerdns `yaml:"powerdns"`
-	}
-	type zone struct {
-		Zone     string   `yaml:"zone"`
-		Keys     []string `yaml:"keys,omitempty"`
-		Unsecure bool     `yaml:"unsecure,omitempty"`
-	}
-	type configuration struct {
-		TSIG struct {
-			Keys []tsigKey `yaml:"keys"`
-		} `yaml:"tsig"`
-		Handlers []handler `yaml:"handlers"`
-		Zones    []zone    `yaml:"zones"`
-	}
-
-	var config configuration
-	var allKeys []string
-	for _, key := range scenario.Keyring() {
-		if !key.Configured {
-			continue
-		}
-		config.TSIG.Keys = append(config.TSIG.Keys, tsigKey{
-			Name:    key.ConfigName,
-			Key:     key.Secret(),
-			Default: key.ID == scenario.DefaultKey,
-		})
-		allKeys = append(allKeys, key.ConfigName)
-	}
-	config.Handlers = []handler{{
-		Name:     "pdns",
-		Adapter:  "powerdns",
-		Default:  true,
-		PowerDNS: powerdns{URL: env.pdnsURL, VHost: "localhost", Key: env.pdnsAPIKey},
-	}}
-	for i := range scenarios {
-		s := &scenarios[i]
-		z := zone{Zone: s.ZoneName(parentDomain)}
-		switch {
-		case s.Zone.Unauthenticated:
-			z.Unsecure = true
-		case len(s.Zone.Keys) > 0:
-			for _, id := range s.Zone.Keys {
-				key, _ := scenario.KeyByID(id)
-				z.Keys = append(z.Keys, key.ConfigName)
-			}
-		default:
-			z.Keys = allKeys
-		}
-		config.Zones = append(config.Zones, z)
-	}
-
-	data, err := yaml.Marshal(&config)
-	if err != nil {
-		t.Fatalf("rendering the tsigoat configuration: %v", err)
-	}
-	return data
 }
 
 // freeAddress returns a loopback address whose port is free for both TCP and
