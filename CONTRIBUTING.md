@@ -55,6 +55,7 @@ Single sources of truth:
 | Real DNS clients | `task test:clients` (nsupdate), `task test:acme` (lego and certbot with Pebble) |
 | Webhook example | `task test:webhook`: nsupdate through tsigoat to `examples/webhook/webhook.py` |
 | Scenarios against BIND 9 | `task test:differential`; intended divergences go to `test/differential/divergences.yaml` |
+| Hosted providers, for real | `task test:live`, with your test zones and credentials, see [Live tests](#live-tests) |
 | Helm chart | `task lint:helm`, `task test:helm`; `task doc:helm` after a change to `chart/values.yaml` |
 | cert-manager in Kubernetes | `task test:acceptance`, which installs the chart in k3s inside Dagger; nightly in CI |
 | Fuzzing | `task test:fuzz`, `FUZZTIME=10m` for longer runs; nightly in CI |
@@ -100,6 +101,29 @@ Zones may also carry a `policy`, and requests may be SOA queries
 A scenario that fails because of a known defect carries `knownDefect`: the
 suites report it as skipped while it fails, and fail as soon as it passes, so
 that the marker is removed together with the fix.
+
+### Live tests
+
+The unit tests run the backends of Cloudflare, OVHcloud and Scaleway against
+simulations of their APIs. `task test:live` runs them against the providers
+themselves, with the test zones and the credentials that you bring, for the
+providers that you can test:
+
+1. Copy `test/live/live.example.yaml` to `tmp/live.yaml`, which git ignores:
+   an ordinary configuration of tsigoat. Keep the backends of the providers
+   that you have, and set one test zone for each, with credentials restricted
+   to it.
+2. Run `task test:live`; `TSIGOAT_LIVE_CONFIG` names another configuration
+   file.
+
+For every zone of the configuration, the tests write below
+`tsigoat-test.<zone>` alone: they run the conformance suite of the backends,
+then the challenges of a certificate for `tsigoat-test.<zone>` and its
+wildcard, through tsigoat. They delete what they wrote, and what an
+interrupted run left. The expectations of each provider, such as the cases
+that its backend must turn down, live with its simulation, in
+`internal/backend/*/…test`: a live test that tells otherwise points at a
+simulation to correct, then at the backend.
 
 ### Helm chart
 

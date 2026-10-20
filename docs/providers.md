@@ -83,4 +83,6 @@ The unit tests run each backend against a simulation of the API of its
 provider, with the behaviors that the documentation of the provider and the
 reports of its users tell: the conformance suite of the backends, and every
 scenario of `test/scenario`, whose divergences on each provider are listed
-with their reason.
+with their reason. The live tests run the conformance suite and the challenges
+of a certificate against the providers themselves, with the zones and the
+credentials of a developer: see [CONTRIBUTING.md](../CONTRIBUTING.md#live-tests).

@@ -30,7 +30,7 @@ internal/backend/webhook/   relay to an HTTP endpoint: one signed JSON POST per 
 internal/backend/httpclient/  HTTP clients of the backends: CA bundle, no redirect by default
 internal/backend/hosted/    shared by the hosted providers: RRsets from records, Diff, Limits, API client
 internal/backend/cloudflare/, ovh/, scaleway/  hosted providers, each with a simulated API (*test)
-internal/backend/backendtest/  conformance suite of the backends (memory, PowerDNS, simulations)
+internal/backend/backendtest/  conformance suite of the backends (memory, PowerDNS, simulations, live)
 internal/metrics/      Prometheus collectors: responses, TSIG failures, backend calls
 internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
 chart/                 Helm chart; README.md and values.schema.json generated
@@ -98,6 +98,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | Real clients | `task test:clients` | `dagger call test-clients`: nsupdate in a container |
 | ACME flow | `task test:acme` | `dagger call test-acme`: lego and certbot get certificates from Pebble |
 | BIND differential | `task test:differential` | `dagger call test-differential`: the scenarios against BIND 9, intended divergences in `test/differential/divergences.yaml`; and through tsigoat relaying to BIND, with no divergence |
+| Live providers | `task test:live` | `go test -tags live ./test/live/`: conformance suite and an ACME flow against the zones and credentials of `tmp/live.yaml` (`TSIGOAT_LIVE_CONFIG`); see `test/live/live.example.yaml` |
 | Helm chart | `task test:helm` | `dagger call test-helm`: `test/chart` (build tag `chart`) renders every example and fixture, then promtool and kubeconform; `task lint:helm` too |
 | Chart docs | `task doc:helm` | regenerates `chart/README.md` and `chart/values.schema.json`; `task check:helm-docs` fails when stale |
 | Webhook example | `task test:webhook` | `dagger call test-webhook-example`: nsupdate through tsigoat to `examples/webhook/webhook.py`, each authentication |

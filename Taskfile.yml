@@ -187,6 +187,11 @@ tasks:
     cmds:
       - go test -tags e2e -count=1 ./test/e2e/ {{.CLI_ARGS}}
 
+  test:live:
+    desc: "The backends against real DNS providers, with the test zones and credentials of TSIGOAT_LIVE_CONFIG (tmp/live.yaml by default), see CONTRIBUTING.md"
+    cmds:
+      - TSIGOAT_LIVE_CONFIG="${TSIGOAT_LIVE_CONFIG:-{{.TASKFILE_DIR}}/tmp/live.yaml}" go test -tags live -count=1 -v ./test/live/ {{.CLI_ARGS}}
+
   test:clients:
     desc: "Real DNS clients (nsupdate) against tsigoat and PowerDNS, inside Dagger (PDNS_VERSION=4.9|5.0)"
     cmds:

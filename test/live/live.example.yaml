@@ -1,0 +1,36 @@
+# The configuration of the live tests: copy it to tmp/live.yaml, which git
+# ignores, keep the providers that you can test, and set a zone and the
+# credentials of each. See the section on live tests in CONTRIBUTING.md.
+#
+# The tests write below tsigoat-test.<zone> alone, and delete what they wrote;
+# they sign their updates with a key of their own. Use test zones, and
+# credentials restricted to them.
+keys:
+  - name: live.
+    secret: bGl2ZS10ZXN0cy1rZXktb2YtdGhpcnR5LXR3by1ieXRlcw== # gitleaks:allow (unused by the tests)
+backends:
+  - name: cloudflare
+    type: cloudflare
+    cloudflare:
+      apiTokenFile: /path/to/cloudflare-token
+  - name: ovh
+    type: ovh
+    ovh:
+      endpoint: ovh-eu
+      applicationKey: your-application-key
+      applicationSecretFile: /path/to/ovh-application-secret
+      consumerKeyFile: /path/to/ovh-consumer-key
+  - name: scaleway
+    type: scaleway
+    scaleway:
+      secretKeyFile: /path/to/scaleway-secret-key
+zones:
+  - name: cloudflare-test.example.com.
+    backend: cloudflare
+    keys: [live.]
+  - name: ovh-test.example.net.
+    backend: ovh
+    keys: [live.]
+  - name: scaleway-test.example.org.
+    backend: scaleway
+    keys: [live.]

@@ -140,6 +140,7 @@ those of other zones REFUSED.
 | Backend conformance | The contract of a backend: RRsets replaced and deleted whole, the others left alone, TXT contents and every record type kept intact, atomicity, and what the backend cannot hold turned down without any change | `internal/backend/backendtest`, on the in-memory backend, PowerDNS and the simulated APIs of the hosted providers |
 | Scenarios in process | Each scenario of `test/scenario/scenarios` against tsigoat on the in-memory backend | `internal/app` |
 | Scenarios on the providers | The same scenarios on the simulated APIs of Cloudflare, OVHcloud and Scaleway, with the divergences of each provider listed with their reason | `internal/app` |
+| Live tests | The conformance suite and the challenges of a certificate against the providers themselves, with the test zones and credentials of a developer | `test/live`, `task test:live` |
 | Scenarios end to end | The same scenarios against a tsigoat binary and PowerDNS 4.9 and 5.0; faults injected with toxiproxy | `test/e2e`, `task test:e2e` |
 | Scenarios relayed | The same scenarios through a tsigoat that relays the updates to another tsigoat on the in-memory backend, and through a webhook that applies them with the engine, but those with prerequisites | `internal/app` |
 | Webhook example | nsupdate through tsigoat to `examples/webhook/webhook.py`, with each authentication | `task test:webhook` |
