@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -88,10 +90,21 @@ func StatusOf(err error) int {
 	return 0
 }
 
+// unsentError is the failure of a request that never left whole, which the
+// provider cannot have applied.
+type unsentError struct{ err error }
+
+func (e *unsentError) Error() string { return e.err.Error() }
+func (e *unsentError) Unwrap() error { return e.err }
+
 // Ambiguous reports whether the outcome of a write that failed with err is
 // unknown, as after a timeout, a lost connection or a server error: the
-// provider may have applied it.
+// provider may have applied it. A request that never left whole, or that the
+// provider turned down, applied nothing.
 func Ambiguous(err error) bool {
+	if _, unsent := errors.AsType[*unsentError](err); unsent {
+		return false
+	}
 	status := StatusOf(err)
 	return status == 0 || status >= http.StatusInternalServerError
 }
@@ -169,6 +182,16 @@ type retry struct {
 func (a *API) attempt(ctx context.Context, method, path string, body []byte, out any) (retry, error) {
 	ctx, cancel := context.WithTimeout(ctx, a.Timeout)
 	defer cancel()
+	// sent tells whether the request left whole: the provider may apply it
+	// whatever happens next.
+	var sent atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			if info.Err == nil {
+				sent.Store(true)
+			}
+		},
+	})
 
 	var payload io.Reader
 	if body != nil {
@@ -176,7 +199,7 @@ func (a *API) attempt(ctx context.Context, method, path string, body []byte, out
 	}
 	req, err := http.NewRequestWithContext(ctx, method, a.Base+path, payload)
 	if err != nil {
-		return retry{}, fmt.Errorf("building the request: %w", err)
+		return retry{}, &unsentError{err: fmt.Errorf("building the request: %w", err)}
 	}
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
@@ -186,13 +209,17 @@ func (a *API) attempt(ctx context.Context, method, path string, body []byte, out
 		req.Header.Set("User-Agent", a.UserAgent)
 	}
 	if authErr := a.Authorize(req, body); authErr != nil {
-		return retry{}, authErr
+		return retry{}, &unsentError{err: authErr}
 	}
 
 	resp, err := a.Client.Do(req)
 	if err != nil {
+		err = fmt.Errorf("%s API: %w", a.Provider, err)
+		if !sent.Load() {
+			err = &unsentError{err: err}
+		}
 		// A write may have applied before the failure: only reads go again.
-		return retry{again: method == http.MethodGet && ctx.Err() == nil}, fmt.Errorf("%s API: %w", a.Provider, err)
+		return retry{again: method == http.MethodGet && ctx.Err() == nil}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))

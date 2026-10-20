@@ -172,3 +172,58 @@ func TestDoDeadline(t *testing.T) {
 		t.Errorf("Do() = %v after %d calls and %s, want the 429 at once", err, calls.Load(), time.Since(start))
 	}
 }
+
+// TestAmbiguous checks which failures of a write leave its outcome unknown:
+// those once the request left whole, and the server errors.
+func TestAmbiguous(t *testing.T) {
+	t.Parallel()
+	status := func(code int) http.HandlerFunc {
+		return func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) }
+	}
+	dropped := func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+	}
+	for _, c := range []struct {
+		label     string
+		handler   http.HandlerFunc
+		ambiguous bool
+	}{
+		{label: "answer lost", handler: dropped, ambiguous: true},
+		{label: "server error", handler: status(http.StatusInternalServerError), ambiguous: true},
+		{label: "refused", handler: status(http.StatusBadRequest), ambiguous: false},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			t.Parallel()
+			api := newAPI(t, c.handler)
+			err := api.Do(t.Context(), http.MethodPost, "/records", map[string]string{"name": "www"}, nil)
+			if err == nil || hosted.Ambiguous(err) != c.ambiguous {
+				t.Errorf("Do() = %v, want an error, ambiguous: %t", err, c.ambiguous)
+			}
+		})
+	}
+
+	t.Run("unreachable", func(t *testing.T) {
+		t.Parallel()
+		api := newAPI(t, status(http.StatusNoContent))
+		closed := httptest.NewServer(status(http.StatusNoContent))
+		closed.Close()
+		api.Base = closed.URL
+		err := api.Do(t.Context(), http.MethodPost, "/records", map[string]string{"name": "www"}, nil)
+		if err == nil || hosted.Ambiguous(err) {
+			t.Errorf("Do() to a closed server = %v, want an error that is not ambiguous", err)
+		}
+	})
+
+	t.Run("not authorized", func(t *testing.T) {
+		t.Parallel()
+		api := newAPI(t, status(http.StatusNoContent))
+		api.Authorize = func(*http.Request, []byte) error { return errors.New("no token") }
+		err := api.Do(t.Context(), http.MethodPost, "/records", map[string]string{"name": "www"}, nil)
+		if err == nil || hosted.Ambiguous(err) {
+			t.Errorf("Do() without authorization = %v, want an error that is not ambiguous", err)
+		}
+	})
+}
