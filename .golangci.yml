@@ -132,10 +132,6 @@ linters:
 
   exclusions:
     generated: strict
-    # Legacy code, excluded until it is rewritten. This list may only shrink.
-    paths:
-      - ^pkg/
-      - ^hack/
     rules:
       # Tests read fixtures from variable paths and hold fake credentials.
       - path: _test\.go
@@ -165,8 +161,3 @@ formatters:
         - standard
         - default
         - localmodule
-  exclusions:
-    # Same legacy exclusion as for the linters.
-    paths:
-      - ^pkg/
-      - ^hack/

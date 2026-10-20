@@ -122,8 +122,6 @@ A breaking change takes a `!` after the type and a `BREAKING CHANGE:` footer.
 - `golangci-lint` must pass clean with the repository configuration. When a
   check is wrong for a specific line, prefer `//nolint:<linter> // <reason>`
   over disabling it globally.
-- The legacy `pkg/` and `hack/` trees are excluded from linting until they are
-  rewritten; that exclusion list may only shrink.
 - Tests sit next to the code as `*_test.go`; table-driven tests for parsers and
   anything with many similar cases.
 - Code that consumes untrusted bytes carries `Fuzz*` targets.

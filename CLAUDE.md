@@ -7,16 +7,12 @@ PowerDNS API key.
 
 ## State of the code
 
-The project is being restarted. `pkg/` holds the legacy prototype, which is
-rewritten step by step into `internal/` following the target architecture
-below. Known legacy defects, reproduced by tests as they get written:
-prerequisites are not evaluated, updates are not atomic (each RR hits the
-PowerDNS API immediately), concurrent updates of the same RRset lose data,
-apex protections compare names case-sensitively, responses are not
-TSIG-signed (nsupdate reports "expected a TSIG or SIG(0)"), A/AAAA records are
-sent to PowerDNS as raw bytes, escaped quotes break TXT parsing.
+The project restarted from a prototype, whose core has been rewritten into
+`internal/` along the architecture below; the prototype is gone. What remains
+before a first release: the documentation, the deployment manifests, metrics,
+and end-to-end tests with real ACME clients (lego, certbot, cert-manager).
 
-## Target architecture
+## Architecture
 
 ```text
 cmd/tsigoat/           thin cobra commands: serve, check-config, version
@@ -39,7 +35,17 @@ internal/backend/memory/    in-memory backend for tests and dry runs
 - miekg/dns v1 stays, confined to the DNS-facing packages (depguard checks it).
 - Logging is `log/slog`.
 - TSIG keys declare their algorithm, `hmac-sha256` by default; `hmac-sha1` and
-  `hmac-md5` are legacy opt-ins with startup warnings.
+  `hmac-md5` are legacy opt-ins with startup warnings. A request signed with
+  another algorithm than its key's gets BADKEY.
+- Policy: the `keys` of a zone may update every RRset but the SOA; `policy`
+  rules grant a key some names (`*` is one label, `**` one or more) and types;
+  the SOA needs a rule that names it. Prerequisites are only allowed on names
+  the key may update.
+- Unsigned requests get REFUSED for unknown and forbidden zones alike, so that
+  they cannot enumerate the zones; signed ones get NOTAUTH for unknown zones.
+- Besides updates, the server answers the SOA queries of the zones a client
+  may update (certbot and nsupdate find the zone of a name that way), and
+  NOTIMP to anything else.
 
 ## Build and test workflow
 
@@ -94,8 +100,8 @@ removed with the fix.
 
 - Everything in the repository is in English.
 - Conventional Commits; GoReleaser builds the changelog from them.
-- golangci-lint must pass clean. `pkg/` and `hack/` are excluded as legacy and
-  that list may only shrink. Every `//nolint` names its linter and explains why.
+- golangci-lint must pass clean, without path exclusions. Every `//nolint`
+  names its linter and explains why.
 - Tests sit next to the code; table-driven for parsers; `Fuzz*` targets for
   code that parses untrusted bytes.
 - Single sources of truth: Go version in `go.mod`, Dagger version in
