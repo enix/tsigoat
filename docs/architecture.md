@@ -143,9 +143,10 @@ at a time itself, while the endpoint answers within its timeout.
 Clients find the zone of a name with SOA queries. tsigoat answers those of the
 zones it serves, signed or not: the SOA in the answer section at the apex, in
 the authority section below it. The answers reuse the SOA of a zone for 30
-seconds, a failure to read it for 5, so that queries, which anyone may send,
-do not reach the backend each time. Other queries and opcodes get NOTIMP, and
-those of other zones REFUSED.
+seconds, a failure to read it for 5, from the end of the read, so that
+queries, which anyone may send, do not reach the backend each time; one read
+at a time, which the other queries wait for until their deadline. Other
+queries and opcodes get NOTIMP, and those of other zones REFUSED.
 
 ## Testing
 

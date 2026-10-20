@@ -438,7 +438,7 @@ func TestSOACache(t *testing.T) {
 		"example.test. 3600 IN NS ns1.example.test.",
 	)...)
 	counting := &countingBackend{Backend: inner}
-	z := &servedZone{Zone: Zone{Name: testZone, Backend: counting}, lock: make(chan struct{}, 1)}
+	z := newServedZone(&Zone{Name: testZone, Backend: counting})
 
 	for i := range 3 {
 		soa, fetched, err := z.cachedSOA(t.Context())
@@ -484,7 +484,7 @@ func TestSOACache(t *testing.T) {
 func TestZoneLockHonoursDeadlines(t *testing.T) {
 	t.Parallel()
 
-	z := &servedZone{Zone: Zone{Name: testZone}, lock: make(chan struct{}, 1)}
+	z := newServedZone(&Zone{Name: testZone})
 	if err := z.acquire(t.Context()); err != nil {
 		t.Fatal(err)
 	}

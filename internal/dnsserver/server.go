@@ -118,11 +118,24 @@ type servedZone struct {
 	// the deadline of the request.
 	lock chan struct{}
 
-	// soaMu guards the SOA cache, and serializes its refreshes.
-	soaMu      sync.Mutex
+	// soaLock guards the SOA cache, and serializes its refreshes; a channel
+	// too, so that a query gives up waiting for a slow refresh at its
+	// deadline.
+	soaLock    chan struct{}
 	soa        dns.RR
 	soaErr     error
 	soaExpires time.Time
+	// soaTTL and soaFailureTTL are the times for which the cache keeps the
+	// SOA, and a failure to read it, from the end of the read.
+	soaTTL, soaFailureTTL time.Duration
+}
+
+// newServedZone returns a zone ready to serve.
+func newServedZone(z *Zone) *servedZone {
+	return &servedZone{
+		Zone: *z, lock: make(chan struct{}, 1),
+		soaLock: make(chan struct{}, 1), soaTTL: soaCacheTTL, soaFailureTTL: soaFailureTTL,
+	}
 }
 
 // New returns a server.
@@ -153,7 +166,7 @@ func New(options *Options) (*Server, error) {
 			return nil, fmt.Errorf("zone %s: set a policy, and either a backend or a relay", name)
 		}
 		z.Name = name
-		s.zones[name] = &servedZone{Zone: z, lock: make(chan struct{}, 1)}
+		s.zones[name] = newServedZone(&z)
 		s.served = append(s.served, name)
 	}
 	return s, nil
@@ -336,19 +349,24 @@ func accept(header dns.Header) dns.MsgAcceptAction {
 }
 
 // cachedSOA returns the SOA of the zone, which it reads from the backend at
-// most once per soaCacheTTL, or per soaFailureTTL after a failure. fetched
-// tells whether this call read the backend.
+// most once per soaTTL, or per soaFailureTTL after a failure, counted from
+// the end of the read: a read slower than soaFailureTTL must not leave a
+// failure expired on arrival. A caller waiting for the read of another one
+// gives up when ctx ends. fetched tells whether this call read the backend.
 func (z *servedZone) cachedSOA(ctx context.Context) (soa dns.RR, fetched bool, err error) {
-	z.soaMu.Lock()
-	defer z.soaMu.Unlock()
-	now := time.Now()
-	if !now.Before(z.soaExpires) {
+	select {
+	case z.soaLock <- struct{}{}:
+	case <-ctx.Done():
+		return nil, false, fmt.Errorf("waiting for the SOA of zone %s: %w", z.Name, ctx.Err())
+	}
+	defer func() { <-z.soaLock }()
+	if !time.Now().Before(z.soaExpires) {
 		z.soa, z.soaErr = lookupSOA(ctx, z)
-		ttl := soaCacheTTL
+		ttl := z.soaTTL
 		if z.soaErr != nil {
-			ttl = soaFailureTTL
+			ttl = z.soaFailureTTL
 		}
-		z.soaExpires, fetched = now.Add(ttl), true
+		z.soaExpires, fetched = time.Now().Add(ttl), true
 	}
 	if z.soaErr != nil {
 		return nil, fetched, z.soaErr
