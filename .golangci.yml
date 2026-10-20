@@ -120,6 +120,7 @@ linters:
             - "!**/internal/zone/**"
             - "!**/internal/auth/**"
             - "!**/internal/backend/**"
+            - "!**/internal/config/**"
             - "!**/test/**"
           deny:
             - pkg: github.com/miekg/dns

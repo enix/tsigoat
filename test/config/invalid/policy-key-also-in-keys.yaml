@@ -1,0 +1,15 @@
+keys:
+  - name: e2e.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: pdns
+    type: powerdns
+    powerdns:
+      url: http://pdns:8081
+      apiKeyEnv: TSIGOAT_TEST_API_KEY
+zones:
+  - name: example.test.
+    keys: [e2e.]
+    policy:
+      - key: e2e.
+        names: [example.test.]

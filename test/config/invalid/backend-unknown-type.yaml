@@ -1,0 +1,9 @@
+keys:
+  - name: e2e.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: cloud
+    type: route53
+zones:
+  - name: example.test.
+    keys: [e2e.]

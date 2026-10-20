@@ -1,0 +1,191 @@
+// Package config loads and validates the configuration file of tsigoat.
+//
+// The file is YAML, decoded strictly: unknown fields are errors. Names are
+// canonicalised (lower case, trailing dot), secrets may come from the file,
+// from another file or from an environment variable, and every error names
+// the faulty element with a path such as `zones[0].policy[1].names[0]`.
+package config
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"time"
+
+	"go.yaml.in/yaml/v3"
+)
+
+// DefaultListen is the listen address when the configuration names none.
+const DefaultListen = "[::]:5353"
+
+// Algorithm is a TSIG algorithm.
+type Algorithm string
+
+// Supported TSIG algorithms. HMAC-SHA1 and HMAC-MD5 are legacy algorithms:
+// they must be named explicitly on a key, and draw a warning.
+const (
+	HMACSHA256 Algorithm = "hmac-sha256"
+	HMACSHA384 Algorithm = "hmac-sha384"
+	HMACSHA512 Algorithm = "hmac-sha512"
+	HMACSHA224 Algorithm = "hmac-sha224"
+	HMACSHA1   Algorithm = "hmac-sha1"
+	HMACMD5    Algorithm = "hmac-md5"
+)
+
+// Config is a validated configuration.
+type Config struct {
+	// Listen holds the addresses to listen on, for both UDP and TCP.
+	Listen   []string
+	Keys     []Key
+	Backends []Backend
+	Zones    []Zone
+}
+
+// Key is a TSIG key.
+type Key struct {
+	// Name is the canonical key name.
+	Name      string
+	Algorithm Algorithm
+	Secret    []byte
+}
+
+// Backend is a DNS provider that tsigoat applies the updates to.
+type Backend struct {
+	Name string
+	// Type is "powerdns", the only backend type so far.
+	Type     string
+	PowerDNS *PowerDNS
+}
+
+// PowerDNS holds the settings of a PowerDNS backend.
+type PowerDNS struct {
+	// URL is the base URL of the HTTP API.
+	URL      string
+	ServerID string
+	APIKey   string
+	// Timeout bounds every call to the API.
+	Timeout time.Duration
+	// CAFile is a PEM bundle trusted for the API certificate, on top of the
+	// system roots.
+	CAFile string
+}
+
+// Zone is a zone served by tsigoat.
+type Zone struct {
+	// Name is the canonical zone name.
+	Name string
+	// Backend is the name of the backend holding the zone.
+	Backend string
+	// AllowUnauthenticated accepts unsigned updates of any record.
+	AllowUnauthenticated bool
+	// Keys lists the canonical names of the keys allowed to update any record
+	// of the zone.
+	Keys []string
+	// Policy grants narrower rights to other keys.
+	Policy []Rule
+}
+
+// Rule allows a key to update some names and types of a zone.
+type Rule struct {
+	// Key is the canonical key name.
+	Key string
+	// Names are canonical name patterns: a "*" label matches exactly one
+	// label, a "**" label matches one or more labels.
+	Names []string
+	// Types are upper-case record types; empty allows every type. "ANY"
+	// allows deleting every RRset of a name.
+	Types []string
+}
+
+// Options resolve the secrets referenced by the configuration.
+type Options struct {
+	// LookupEnv reads an environment variable, os.LookupEnv by default.
+	LookupEnv func(string) (string, bool)
+	// ReadFile reads a file, os.ReadFile by default.
+	ReadFile func(string) ([]byte, error)
+}
+
+// Load reads, decodes and validates the configuration file at path. Besides
+// the configuration, it returns warnings about legal but risky settings.
+func Load(path string) (*Config, []string, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // the operator chooses the configuration file
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading the configuration: %w", err)
+	}
+	return Parse(data, Options{})
+}
+
+// Parse decodes and validates a configuration.
+func Parse(data []byte, options Options) (*Config, []string, error) {
+	if options.LookupEnv == nil {
+		options.LookupEnv = os.LookupEnv
+	}
+	if options.ReadFile == nil {
+		options.ReadFile = os.ReadFile
+	}
+
+	var raw file
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&raw); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, nil, errors.New("the configuration is empty")
+		}
+		return nil, nil, fmt.Errorf("decoding the configuration: %w", err)
+	}
+
+	v := &validator{options: options}
+	config := v.config(&raw)
+	if len(v.errs) > 0 {
+		return nil, nil, errors.Join(v.errs...)
+	}
+	return config, v.warnings, nil
+}
+
+// file is the configuration as written.
+type file struct {
+	Listen   []string      `yaml:"listen"`
+	Keys     []fileKey     `yaml:"keys"`
+	Backends []fileBackend `yaml:"backends"`
+	Zones    []fileZone    `yaml:"zones"`
+}
+
+type fileKey struct {
+	Name       string `yaml:"name"`
+	Algorithm  string `yaml:"algorithm"`
+	Secret     string `yaml:"secret"`
+	SecretFile string `yaml:"secretFile"`
+	SecretEnv  string `yaml:"secretEnv"`
+}
+
+type fileBackend struct {
+	Name     string        `yaml:"name"`
+	Type     string        `yaml:"type"`
+	PowerDNS *filePowerDNS `yaml:"powerdns"`
+}
+
+type filePowerDNS struct {
+	URL        string `yaml:"url"`
+	ServerID   string `yaml:"serverId"`
+	APIKey     string `yaml:"apiKey"`
+	APIKeyFile string `yaml:"apiKeyFile"`
+	APIKeyEnv  string `yaml:"apiKeyEnv"`
+	Timeout    string `yaml:"timeout"`
+	CAFile     string `yaml:"caFile"`
+}
+
+type fileZone struct {
+	Name                 string     `yaml:"name"`
+	Backend              string     `yaml:"backend"`
+	AllowUnauthenticated bool       `yaml:"allowUnauthenticated"`
+	Keys                 []string   `yaml:"keys"`
+	Policy               []fileRule `yaml:"policy"`
+}
+
+type fileRule struct {
+	Key   string   `yaml:"key"`
+	Names []string `yaml:"names"`
+	Types []string `yaml:"types"`
+}
