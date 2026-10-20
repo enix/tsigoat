@@ -32,9 +32,12 @@ func (m *Tsigoat) LintMarkdown(ctx context.Context) (string, error) {
 func (m *Tsigoat) LintActions(ctx context.Context) (string, error) {
 	github := m.Source.Directory(".github")
 
+	// actionlint locates the project root through its .git directory; an
+	// empty one is enough and keeps the history out of the container.
 	actionlint, err := dag.Container().
 		From(actionlintImage).
 		WithWorkdir("/src").
+		WithDirectory("/src/.git", dag.Directory()).
 		WithDirectory("/src/.github", github).
 		WithExec([]string{"actionlint", "-color"}).
 		Stdout(ctx)
@@ -47,7 +50,7 @@ func (m *Tsigoat) LintActions(ctx context.Context) (string, error) {
 		WithWorkdir("/src").
 		WithDirectory("/src/.github", github).
 		WithExec(
-			[]string{"--offline", "--no-progress", ".github"},
+			[]string{"--offline", "--no-progress", "--config", ".github/zizmor.yml", ".github"},
 			dagger.ContainerWithExecOpts{UseEntrypoint: true},
 		).
 		Stdout(ctx)

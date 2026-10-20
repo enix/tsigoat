@@ -1,0 +1,7 @@
+# zizmor configuration, read by `task lint:actions`.
+rules:
+  # Suggests a `$/...` self-repository syntax for local actions. Local
+  # composite actions are referenced as `./.github/actions/...` after
+  # checkout, which actionlint and every tool in the chain understand.
+  self-repository:
+    disable: true

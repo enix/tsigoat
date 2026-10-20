@@ -1,0 +1,41 @@
+name: Scorecard
+
+# OpenSSF Scorecard checks security best practices (branch protection, SAST,
+# signed releases, pinned dependencies, dangerous workflow patterns...) and
+# publishes a score. Findings show up in the Security tab.
+#
+# Reference: https://github.com/ossf/scorecard-action
+
+on:
+  schedule:
+    - cron: "32 4 * * 1"
+  push:
+    branches: [main]
+  branch_protection_rule:
+
+permissions: read-all
+
+jobs:
+  analysis:
+    name: Analysis (OpenSSF)
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # upload SARIF to code scanning
+      id-token: write # OIDC token for the signed publication
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          # Optional fine-grained token that unlocks the Branch-Protection and
+          # Webhooks checks; they are skipped without it.
+          repo_token: ${{ secrets.SCORECARD_TOKEN }}
+          publish_results: true
+      - uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
+        with:
+          sarif_file: results.sarif

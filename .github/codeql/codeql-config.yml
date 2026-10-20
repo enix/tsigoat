@@ -1,0 +1,8 @@
+name: tsigoat
+
+# CodeQL configuration, companion to .github/workflows/codeql.yaml. Query
+# filters go here, each with a justification, since a silenced rule no longer
+# fires anywhere in the tree.
+
+queries:
+  - uses: security-extended

@@ -1,0 +1,84 @@
+name: Tests
+
+# Same shape as lint.yaml: scoped by path detection on pull requests, runs
+# everything on main and when called from another workflow (the release).
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      skip-e2e:
+        description: Skip the end-to-end suite.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  DAGGER_NO_NAG: "1"
+  DAGGER_CLOUD_TOKEN: ""
+  DO_NOT_TRACK: "1"
+
+jobs:
+  changes:
+    name: Detect changed paths
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        id: filter
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'test/**'
+              - 'dagger/**'
+
+  unit:
+    name: Unit tests
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: test
+
+  e2e:
+    name: E2E tests (PowerDNS ${{ matrix.pdns }})
+    needs: changes
+    if: |
+      always() &&
+      !inputs.skip-e2e &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        pdns: ["4.9", "5.0"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: test-end-to-end --pdns-version=${{ matrix.pdns }}

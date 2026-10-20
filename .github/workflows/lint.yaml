@@ -1,0 +1,156 @@
+name: Linting
+
+# Run only what is relevant to the change. On a pull request,
+# dorny/paths-filter inspects the diff to decide which linters to fire. On a
+# push to main or when called from another workflow (the release), every
+# linter runs.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      skip-renovate:
+        description: Skip the Renovate config validator.
+        type: boolean
+        default: false
+
+# Read-only: every job only inspects the source tree.
+permissions:
+  contents: read
+
+# Silence Dagger's Cloud upload and analytics paths globally.
+env:
+  DAGGER_NO_NAG: "1"
+  DAGGER_CLOUD_TOKEN: ""
+  DO_NOT_TRACK: "1"
+
+jobs:
+  changes:
+    name: Detect changed paths
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      markdown: ${{ steps.filter.outputs.markdown }}
+      actions: ${{ steps.filter.outputs.actions }}
+      dockerfile: ${{ steps.filter.outputs.dockerfile }}
+      renovate: ${{ steps.filter.outputs.renovate }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        id: filter
+        with:
+          # `dagger/**` is in every filter: a change to the pipeline (image
+          # versions, linter arguments) changes what the linters do.
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.golangci.yml'
+              - 'dagger/**'
+            markdown:
+              - '**/*.md'
+              - '!CLAUDE.md'
+              - '.markdownlint-cli2.jsonc'
+              - 'dagger/**'
+            actions:
+              - '.github/**'
+              - 'dagger/**'
+            dockerfile:
+              - 'build/Dockerfile.*'
+              - 'dagger/**'
+            renovate:
+              - 'renovate.json5'
+              - 'dagger/**'
+
+  go:
+    name: Go
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: lint-go
+      - uses: ./.github/actions/dagger
+        with:
+          args: check-fmt
+      - uses: ./.github/actions/dagger
+        with:
+          args: check-tidy
+
+  markdown:
+    name: Markdown
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.markdown == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: lint-markdown
+
+  actions:
+    name: GitHub Actions
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.actions == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: lint-actions
+
+  dockerfile:
+    name: Dockerfiles
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.dockerfile == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: lint-dockerfile
+
+  renovate:
+    name: Renovate config
+    needs: changes
+    if: |
+      always() &&
+      !inputs.skip-renovate &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.renovate == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: lint-renovate

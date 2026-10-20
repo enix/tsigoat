@@ -1,0 +1,48 @@
+name: CodeQL
+
+# Static analysis with GitHub CodeQL on every push to main, every pull
+# request targeting main, and weekly to pick up new queries against
+# unchanged code. Committed as a workflow rather than GitHub's default setup
+# to get SHA-pinned actions and concurrency cancellation.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * 1"
+
+permissions: {}
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write # upload SARIF
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, go]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        if: matrix.language == 'go'
+        with:
+          go-version-file: go.mod
+      - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
+        with:
+          languages: ${{ matrix.language }}
+          config-file: ./.github/codeql/codeql-config.yml
+      - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
+        with:
+          category: "/language:${{ matrix.language }}"
