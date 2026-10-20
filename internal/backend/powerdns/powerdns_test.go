@@ -47,6 +47,11 @@ type fakeAPI struct {
 	hideDisabled bool
 	// lookups records the queries of the GET requests of the zones.
 	lookups []string
+	// commit makes the PATCH requests change the zones.
+	commit bool
+	// patchAnswer, when set, answers the PATCH requests in place of 204 No
+	// Content, once they changed the zone when commit is set.
+	patchAnswer func(w http.ResponseWriter)
 }
 
 func newFakeAPI(t *testing.T) (*fakeAPI, *httptest.Server) {
@@ -133,10 +138,31 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
+		if a.commit {
+			a.zones[id] = patched(sets, patch.RRsets)
+		}
+		if a.patchAnswer != nil {
+			a.patchAnswer(w)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
 	}
+}
+
+// patched returns the RRsets of a zone once a PATCH applied.
+func patched(sets, patch []rrset) []rrset {
+	for _, change := range patch {
+		sets = slices.DeleteFunc(slices.Clone(sets), func(set rrset) bool {
+			return strings.EqualFold(set.Name, change.Name) && set.Type == change.Type
+		})
+		if change.ChangeType == "REPLACE" {
+			change.ChangeType = ""
+			sets = append(sets, change)
+		}
+	}
+	return sets
 }
 
 func ttl(seconds uint32) *uint32 {
@@ -608,4 +634,85 @@ func TestLegacyLookups(t *testing.T) {
 			t.Errorf("PowerDNS %s: lookup %q, want the filter by name: %t", version, lookups[0], !api.hideDisabled)
 		}
 	}
+}
+
+// TestUnansweredPatch checks the PATCH requests that PowerDNS may have
+// applied without answering: Apply reads their RRsets again, succeeds when
+// they show the update, and tells an unknown outcome otherwise.
+func TestUnansweredPatch(t *testing.T) {
+	t.Parallel()
+	dropped := func(w http.ResponseWriter) {
+		conn, _, err := http.NewResponseController(w).Hijack()
+		if err == nil {
+			_ = conn.Close()
+		}
+	}
+	gateway := func(w http.ResponseWriter) { w.WriteHeader(http.StatusGatewayTimeout) }
+	failed := func(w http.ResponseWriter) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = io.WriteString(w, `{"error": "Database error"}`)
+	}
+	// changes returns the changes of an update, of its own: encoding a record
+	// writes its RDLENGTH.
+	changes := func(t *testing.T) []backend.Change {
+		t.Helper()
+		txt, err := dns.NewRR(`www.example.test. 120 IN TXT "new"`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return []backend.Change{
+			{Op: backend.Replace, RRset: backend.RRset{Name: "www.example.test.", Type: dns.TypeTXT, TTL: 120, Records: []dns.RR{txt}}},
+			{Op: backend.Delete, RRset: backend.RRset{Name: "other.example.test.", Type: dns.TypeA}},
+		}
+	}
+	for _, c := range []struct {
+		label  string
+		commit bool
+		answer func(http.ResponseWriter)
+		// want is "applied", "unknown" or "failed".
+		want string
+	}{
+		{label: "applied, answer lost", commit: true, answer: dropped, want: "applied"},
+		{label: "answer lost", answer: dropped, want: "unknown"},
+		{label: "applied, gateway timeout", commit: true, answer: gateway, want: "applied"},
+		{label: "gateway timeout", answer: gateway, want: "unknown"},
+		{label: "error of PowerDNS", answer: failed, want: "failed"},
+	} {
+		t.Run(c.label, func(t *testing.T) {
+			t.Parallel()
+			api, server := newFakeAPI(t)
+			api.commit, api.patchAnswer = c.commit, c.answer
+			b := newBackend(t, server.URL)
+			if _, err := b.Lookup(t.Context(), "example.test.", "www.example.test."); err != nil {
+				t.Fatal(err)
+			}
+			err := b.Apply(t.Context(), "example.test.", changes(t))
+			var got string
+			switch {
+			case err == nil:
+				got = "applied"
+			case backend.IsIndeterminate(err):
+				got = "unknown"
+			default:
+				got = "failed"
+			}
+			if got != c.want {
+				t.Errorf("Apply() = %v, want an outcome %s", err, c.want)
+			}
+		})
+	}
+
+	t.Run("unreachable", func(t *testing.T) {
+		t.Parallel()
+		_, server := newFakeAPI(t)
+		b := newBackend(t, server.URL)
+		if _, err := b.Lookup(t.Context(), "example.test.", "www.example.test."); err != nil {
+			t.Fatal(err)
+		}
+		server.Close()
+		err := b.Apply(t.Context(), "example.test.", changes(t))
+		if err == nil || backend.IsIndeterminate(err) {
+			t.Errorf("Apply() to a closed server = %v, want a plain error", err)
+		}
+	})
 }

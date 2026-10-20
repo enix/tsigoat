@@ -11,13 +11,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -84,6 +87,14 @@ func (e *APIError) Error() string {
 	}
 	return fmt.Sprintf("PowerDNS API: HTTP %d: %s", e.Status, e.Message)
 }
+
+// unansweredError is the failure of a request that reached PowerDNS whole,
+// which may have applied it: its answer was lost, or a gateway answered in
+// its place.
+type unansweredError struct{ err error }
+
+func (e *unansweredError) Error() string { return e.err.Error() }
+func (e *unansweredError) Unwrap() error { return e.err }
 
 // New returns a PowerDNS backend.
 func New(options *Options) (*Backend, error) {
@@ -225,7 +236,8 @@ func (b *Backend) withDisabled(zone string, set *rrset) {
 //
 // PowerDNS refuses content that it would write differently, telling how it
 // would. When that form is the same RDATA, Apply sends the PATCH again with
-// it: a refused PATCH applies nothing.
+// it: a refused PATCH applies nothing. A PATCH that PowerDNS may have applied
+// without answering is checked by reading its RRsets again.
 func (b *Backend) Apply(ctx context.Context, zone string, changes []backend.Change) error {
 	if len(changes) == 0 {
 		return nil
@@ -247,16 +259,83 @@ func (b *Backend) Apply(ctx context.Context, zone string, changes []backend.Chan
 	}
 	for attempt := 0; ; attempt++ {
 		err := b.do(ctx, http.MethodPatch, zonePath(zone), body, nil)
+		if _, unanswered := errors.AsType[*unansweredError](err); unanswered {
+			return b.verify(ctx, zone, changes, err)
+		}
 		if err == nil || attempt == records || !reformat(err, body.RRsets) {
 			return err
 		}
 	}
 }
 
-// do calls the API, and decodes the response into out when not nil.
+// verify reads the RRsets of the changes again after a PATCH whose outcome is
+// unknown, and returns nil when they show the changes. Otherwise the outcome
+// stays unknown: PowerDNS may not have applied the PATCH, or may apply it
+// still.
+func (b *Backend) verify(ctx context.Context, zone string, changes []backend.Change, cause error) error {
+	ctx, cancel := backend.RecoveryContext(ctx)
+	defer cancel()
+	read := map[string][]backend.RRset{}
+	for _, change := range changes {
+		name := dns.CanonicalName(change.RRset.Name)
+		sets, done := read[name]
+		if !done {
+			var err error
+			if sets, err = b.Lookup(ctx, zone, name); err != nil {
+				return backend.Indeterminate(errors.Join(cause, fmt.Errorf("reading the records again: %w", err)))
+			}
+			read[name] = sets
+		}
+		if !shows(sets, change) {
+			return backend.Indeterminate(fmt.Errorf("%w; the records do not show the update, which may apply still", cause))
+		}
+	}
+	return nil
+}
+
+// shows reports whether the RRsets of a name are as a change wants them.
+func shows(sets []backend.RRset, change backend.Change) bool {
+	i := slices.IndexFunc(sets, func(set backend.RRset) bool { return set.Type == change.RRset.Type })
+	if change.Op == backend.Delete {
+		return i < 0
+	}
+	if i < 0 || sets[i].TTL != change.RRset.TTL {
+		return false
+	}
+	return holds(sets[i].Records, change.RRset.Records) && holds(change.RRset.Records, sets[i].Records)
+}
+
+// holds reports whether every record of b has the same data in a.
+func holds(a, b []dns.RR) bool {
+	return !slices.ContainsFunc(b, func(rr dns.RR) bool {
+		return !slices.ContainsFunc(a, func(other dns.RR) bool { return sameRecord(other, rr) })
+	})
+}
+
+// sameRecord reports whether two records hold the same data, whatever the
+// form of their presentation format.
+func sameRecord(a, b dns.RR) bool {
+	canonicalA, errA := backend.Canonical(a)
+	canonicalB, errB := backend.Canonical(b)
+	return errA == nil && errB == nil && dns.IsDuplicate(canonicalA, canonicalB)
+}
+
+// do calls the API, and decodes the response into out when not nil. A
+// failure once the request left whole, and the 502 and 504 of a gateway, are
+// an *unansweredError.
 func (b *Backend) do(ctx context.Context, method, path string, in, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
+	// sent tells whether the request left whole: PowerDNS may apply it
+	// whatever happens next.
+	var sent atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(info httptrace.WroteRequestInfo) {
+			if info.Err == nil {
+				sent.Store(true)
+			}
+		},
+	})
 
 	var payload io.Reader
 	if in != nil {
@@ -278,20 +357,17 @@ func (b *Backend) do(ctx context.Context, method, path string, in, out any) erro
 
 	resp, err := b.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("PowerDNS API: %w", err)
+		err = fmt.Errorf("PowerDNS API: %w", err)
+		if sent.Load() {
+			return &unansweredError{err: err}
+		}
+		return err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body := io.LimitReader(resp.Body, maxResponseSize)
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		apiErr := &APIError{Status: resp.StatusCode, Message: errorMessage(body)}
-		if location := resp.Header.Get("Location"); location != "" {
-			apiErr.Message = "redirected to " + location + ": set the URL of the backend to the final address"
-		}
-		if resp.StatusCode == http.StatusNotFound {
-			return fmt.Errorf("%w: %w", backend.ErrZoneNotFound, apiErr)
-		}
-		return apiErr
+		return statusError(resp, body)
 	}
 	if out == nil {
 		return nil
@@ -300,6 +376,22 @@ func (b *Backend) do(ctx context.Context, method, path string, in, out any) erro
 		return fmt.Errorf("decoding the response of the PowerDNS API: %w", err)
 	}
 	return nil
+}
+
+// statusError returns the error of a response whose status is not a success.
+func statusError(resp *http.Response, body io.Reader) error {
+	apiErr := &APIError{Status: resp.StatusCode, Message: errorMessage(body)}
+	if location := resp.Header.Get("Location"); location != "" {
+		apiErr.Message = "redirected to " + location + ": set the URL of the backend to the final address"
+	}
+	switch resp.StatusCode {
+	case http.StatusNotFound:
+		return fmt.Errorf("%w: %w", backend.ErrZoneNotFound, apiErr)
+	case http.StatusBadGateway, http.StatusGatewayTimeout:
+		return &unansweredError{err: apiErr}
+	default:
+		return apiErr
+	}
 }
 
 // errorMessage extracts the message of an error response.

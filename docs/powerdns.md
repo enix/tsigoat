@@ -34,8 +34,13 @@ another server.
   with the form that PowerDNS reports, once it checked that both encode the
   same data.
 - **Timeouts**: every call has the timeout of the backend, five seconds by
-  default. An update that fails or times out gets SERVFAIL. A request that
-  times out may still commit afterwards: a remote API cannot tell.
+  default. An update that fails gets SERVFAIL. A PATCH request that left whole
+  but got no answer, or got a 502 or 504 from a gateway in front of PowerDNS,
+  may have applied: tsigoat reads its RRsets again, and answers NOERROR when
+  they show the update. Otherwise the update gets SERVFAIL, and its outcome is
+  unknown, since the request may still apply: the update log tells so, and the
+  [TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates) alert
+  fires.
 - **Lookups by name**: tsigoat reads the RRsets of the names an update
   touches, with the `rrset_name` filter of the API. PowerDNS 4.9 leaves the
   disabled records out of such lookups: tsigoat reads the whole zone there
