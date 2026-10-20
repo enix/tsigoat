@@ -297,6 +297,10 @@ func TestEngine(t *testing.T) {
 			want:    []string{`www 60 IN TXT "a b"`, `www 60 IN TXT "c"`},
 		},
 		{
+			name:    "delete the SOA record is ignored",
+			request: scenario.Request{Updates: []string{"delete @ SOA ns1 hostmaster 10 7200 900 1209600 300"}},
+		},
+		{
 			name:    "delete the last apex NS is ignored",
 			request: scenario.Request{Updates: []string{"delete @ NS ns1"}},
 		},
@@ -336,26 +340,9 @@ func TestEngine(t *testing.T) {
 				t.Errorf("zone content:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 			}
 
-			if countApexNS(t, b) == 0 {
-				t.Error("the apex lost its NS records")
-			}
+			checkInvariants(t, b)
 		})
 	}
-}
-
-func countApexNS(t *testing.T, b *memory.Backend) int {
-	t.Helper()
-	records, err := b.Records(testZone)
-	if err != nil {
-		t.Fatal(err)
-	}
-	count := 0
-	for _, rr := range records {
-		if rr.Header().Rrtype == dns.TypeNS && rr.Header().Name == testZone {
-			count++
-		}
-	}
-	return count
 }
 
 func TestSOASerial(t *testing.T) {
@@ -450,13 +437,18 @@ func TestZoneOf(t *testing.T) {
 func TestParseTooManyRecords(t *testing.T) {
 	t.Parallel()
 
-	updates := make([]string, update.MaxRecords+1)
-	for i := range updates {
-		updates[i] = `add www 60 IN TXT "x"`
-	}
-	b := newBackend(t)
-	if rcode := process(t, b, &scenario.Request{Updates: updates}); rcode != dns.RcodeRefused {
-		t.Errorf("rcode %s, want REFUSED", dns.RcodeToString[rcode])
+	for count, want := range map[int]int{
+		update.MaxRecords:     dns.RcodeSuccess,
+		update.MaxRecords + 1: dns.RcodeRefused,
+	} {
+		updates := make([]string, count)
+		for i := range updates {
+			updates[i] = `add www 60 IN TXT "x"`
+		}
+		b := newBackend(t)
+		if rcode := process(t, b, &scenario.Request{Updates: updates}); rcode != want {
+			t.Errorf("%d records: rcode %s, want %s", count, dns.RcodeToString[rcode], dns.RcodeToString[want])
+		}
 	}
 }
 
