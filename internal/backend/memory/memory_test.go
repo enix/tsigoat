@@ -8,6 +8,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/enix/tsigoat/internal/backend"
+	"github.com/enix/tsigoat/internal/backend/backendtest"
 	"github.com/enix/tsigoat/internal/backend/memory"
 )
 
@@ -213,4 +214,11 @@ func TestSetZoneCopiesRecords(t *testing.T) {
 	if got := dump(t, b); !strings.Contains(got, " 3600 ") {
 		t.Errorf("modifying a record given to SetZone() modified the backend: %s", got)
 	}
+}
+
+// TestConformance runs the conformance suite of the backends.
+func TestConformance(t *testing.T) {
+	t.Parallel()
+	suite := &backendtest.Suite{Backend: newBackend(t), Zone: testZone, Base: "conformance." + testZone}
+	suite.Run(t)
 }

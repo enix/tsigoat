@@ -120,6 +120,7 @@ those of other zones REFUSED.
 | --- | --- | --- |
 | Unit tests | Every package, with `-race` and a shuffled order; coverage floors on `update`, `zone` and `auth` | `go test ./...`, `task test:unit` |
 | Fuzzing | Configuration, engine, whole request handling, name patterns | `Fuzz*` targets, `task test:fuzz`; ten minutes each, nightly |
+| Backend conformance | The contract of a backend: RRsets replaced and deleted whole, the others left alone, TXT contents and every record type kept intact, atomicity, and what the backend cannot hold turned down without any change | `internal/backend/backendtest`, on the in-memory backend and PowerDNS |
 | Scenarios in process | Each scenario of `test/scenario/scenarios` against tsigoat on the in-memory backend | `internal/app` |
 | Scenarios end to end | The same scenarios against a tsigoat binary and PowerDNS 4.9 and 5.0; faults injected with toxiproxy | `test/e2e`, `task test:e2e` |
 | Scenarios relayed | The same scenarios through a tsigoat that relays the updates to another tsigoat on the in-memory backend, and through a webhook that applies them with the engine, but those with prerequisites | `internal/app` |
