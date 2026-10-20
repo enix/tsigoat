@@ -45,6 +45,9 @@ jobs:
               - 'go.sum'
               - 'test/**'
               - 'dagger/**'
+              - 'dagger.json'
+              - '.github/actions/dagger/**'
+              - '.github/workflows/test.yaml'
             helm:
               - 'chart/**'
               - 'examples/helm/**'
