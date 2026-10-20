@@ -242,11 +242,18 @@ func (v *validator) secret(path, field, inline, fromFile, fromEnv string) (strin
 			v.errorf(path+"."+field+"File", "%v", err)
 			return "", false
 		}
-		return strings.TrimSpace(string(data)), true
+		// A secret that a setting names must exist: an empty one would turn
+		// off what it configures, such as an authentication.
+		secret := strings.TrimSpace(string(data))
+		if secret == "" {
+			v.errorf(path+"."+field+"File", "%s holds no %s: the file is empty, or blank", fromFile, field)
+			return "", false
+		}
+		return secret, true
 	case fromEnv != "":
 		value, ok := v.options.LookupEnv(fromEnv)
-		if !ok || value == "" {
-			v.errorf(path+"."+field+"Env", "environment variable %s is not set", fromEnv)
+		if !ok || strings.TrimSpace(value) == "" {
+			v.errorf(path+"."+field+"Env", "environment variable %s is not set, or blank", fromEnv)
 			return "", false
 		}
 		return strings.TrimSpace(value), true

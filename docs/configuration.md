@@ -67,8 +67,10 @@ tsig-keygen -a hmac-sha256 cert-manager.
 ```
 
 Files and environment variables keep the secrets out of the configuration, so
-that it can live in a ConfigMap or a repository. Surrounding whitespace is
-ignored.
+that it can live in a ConfigMap or a repository, for every secret of the
+configuration. Surrounding whitespace is ignored, and a file or a variable
+that holds nothing else is an error: a missing secret must not turn off the
+authentication that it configures.
 
 ## Backends
 
