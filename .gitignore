@@ -9,5 +9,6 @@
 /tmp
 /sandbox
 /dist
+/.direnv
 .keyring
 .ropeproject
