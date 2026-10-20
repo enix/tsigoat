@@ -68,7 +68,8 @@ func truncationCases(output, shortest int) []truncationCase {
 // TestTruncatedMACs checks the rules of RFC 8945 5.2.2.1 for every algorithm:
 // a MAC truncated to the larger of 10 octets and half the output verifies,
 // and CheckTruncation turns it down; shorter or longer, the size is out of
-// bounds; a truncated MAC that does not match is a bad signature.
+// bounds; a truncated MAC that does not match is a bad signature. MACSize
+// gives the full output, which the server reserves room for in its responses.
 func TestTruncatedMACs(t *testing.T) {
 	t.Parallel()
 	for _, tt := range []struct {
@@ -87,6 +88,12 @@ func TestTruncatedMACs(t *testing.T) {
 		t.Run(string(tt.algorithm), func(t *testing.T) {
 			t.Parallel()
 			ring := newKeyring(t, config.Key{Name: "key.example.", Algorithm: tt.algorithm, Secret: secret})
+			for name, want := range map[string]int{"key.example.": tt.output, "unknown.example.": 0} {
+				tsig := &dns.TSIG{Hdr: dns.RR_Header{Name: name}, Algorithm: tt.tsigName}
+				if got := ring.MACSize(tsig); got != want {
+					t.Errorf("MACSize(%s) = %d, want %d", name, got, want)
+				}
+			}
 			data := signed(t, ring, "key.example.", tt.tsigName, time.Now())
 			for _, c := range truncationCases(tt.output, tt.shortest) {
 				message := withMAC(t, bytes.Clone(data), c.mac)

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/miekg/dns"
@@ -20,8 +22,9 @@ const (
 	// fudge is the clock error, in seconds, that the signature of a response
 	// tolerates.
 	fudge = 300
-	// ednsUDPSize is the UDP payload size advertised to EDNS clients, as
-	// recommended by the DNS flag day 2020.
+	// ednsUDPSize is the UDP payload size advertised to EDNS clients, and the
+	// largest response sent over UDP, as recommended by the DNS flag day 2020
+	// against IP fragmentation.
 	ednsUDPSize = 1232
 )
 
@@ -50,6 +53,9 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 		ex.logger = ex.logger.With("remote", addr.String())
 	}
 	resp := s.handle(ctx, ex)
+	if _, tcp := w.RemoteAddr().(*net.TCPAddr); !tcp {
+		s.fit(resp, udpSize(req))
+	}
 	if err := w.WriteMsg(resp); err != nil {
 		ex.logger.WarnContext(ctx, "writing the response failed", "error", err)
 	}
@@ -162,6 +168,57 @@ func (ex *exchange) reply(rcode int) *dns.Msg {
 		resp.SetTsig(ex.tsig.Hdr.Name, ex.tsig.Algorithm, fudge, time.Now().Unix())
 	}
 	return resp
+}
+
+// udpSize returns the size of the largest response to a request over UDP:
+// 512 octets without EDNS (RFC 1035 4.2.1), the payload size that the
+// requester advertises with EDNS, from 512 octets up to ednsUDPSize
+// (RFC 6891 6.2.3, 6.2.5).
+func udpSize(req *dns.Msg) int {
+	opt := req.IsEdns0()
+	if opt == nil {
+		return dns.MinMsgSize
+	}
+	return min(max(int(opt.UDPSize()), dns.MinMsgSize), ednsUDPSize)
+}
+
+// fit makes a response over UDP fit in size octets, the TSIG record that
+// WriteMsg signs included: it compresses the response if need be, then keeps
+// only its question and its OPT and TSIG records, with TC set for the client
+// to retry over TCP (RFC 2181 9), as RFC 8945 5.3 truncates a signed
+// response. Only the answers to SOA queries hold other records: a response
+// that still does not fit answers a request about as large.
+func (s *Server) fit(resp *dns.Msg, size int) {
+	if tsig := resp.IsTsig(); tsig != nil {
+		// WriteMsg packs the response without its TSIG record, then appends
+		// the record signed.
+		size -= s.signedLen(tsig)
+		resp.Extra = resp.Extra[:len(resp.Extra)-1]
+		defer func() { resp.Extra = append(resp.Extra, tsig) }()
+	}
+	if resp.Len() <= size {
+		return
+	}
+	resp.Compress = true
+	if resp.Len() <= size {
+		return
+	}
+	opt := resp.IsEdns0()
+	resp.Answer, resp.Ns, resp.Extra = nil, nil, nil
+	if opt != nil {
+		resp.Extra = []dns.RR{opt}
+	}
+	resp.Truncated = true
+}
+
+// signedLen returns the length of a TSIG record once WriteMsg signs it, with
+// the full MAC of its key; it signs neither BADKEY nor BADSIG.
+func (s *Server) signedLen(tsig *dns.TSIG) int {
+	signed := *tsig
+	if tsig.Error != dns.RcodeBadKey && tsig.Error != dns.RcodeBadSig {
+		signed.MAC = strings.Repeat("00", s.keyring.MACSize(tsig))
+	}
+	return dns.Len(&signed)
 }
 
 // tsigFailure answers a request whose signature does not verify: NOTAUTH

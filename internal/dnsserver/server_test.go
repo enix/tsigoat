@@ -137,8 +137,18 @@ func (f *fixture) exchange(t *testing.T, network string, m *dns.Msg, signedAt ti
 	return in, err
 }
 
-// exchangeRaw sends packed bytes over UDP and returns the raw response.
+// exchangeRaw sends packed bytes over UDP and returns the response.
 func (f *fixture) exchangeRaw(t *testing.T, data []byte) *dns.Msg {
+	t.Helper()
+	resp := new(dns.Msg)
+	if err := resp.Unpack(f.exchangeBytes(t, data)); err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
+// exchangeBytes sends packed bytes over UDP and returns the raw response.
+func (f *fixture) exchangeBytes(t *testing.T, data []byte) []byte {
 	t.Helper()
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(t.Context(), "udp", f.addr)
@@ -157,11 +167,7 @@ func (f *fixture) exchangeRaw(t *testing.T, data []byte) *dns.Msg {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp := new(dns.Msg)
-	if err := resp.Unpack(buf[:n]); err != nil {
-		t.Fatal(err)
-	}
-	return resp
+	return buf[:n]
 }
 
 func TestUpdateOverUDPAndTCP(t *testing.T) {

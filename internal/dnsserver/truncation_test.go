@@ -3,35 +3,11 @@ package dnsserver
 import (
 	"bytes"
 	"encoding/hex"
-	"net"
 	"testing"
 	"time"
 
 	"github.com/miekg/dns"
 )
-
-// exchangeBytes sends packed bytes over UDP and returns the raw response.
-func (f *fixture) exchangeBytes(t *testing.T, data []byte) []byte {
-	t.Helper()
-	var dialer net.Dialer
-	conn, err := dialer.DialContext(t.Context(), "udp", f.addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = conn.Close() }()
-	if deadlineErr := conn.SetDeadline(time.Now().Add(2 * time.Second)); deadlineErr != nil {
-		t.Fatal(deadlineErr)
-	}
-	if _, writeErr := conn.Write(data); writeErr != nil {
-		t.Fatal(writeErr)
-	}
-	buf := make([]byte, dns.MaxMsgSize)
-	n, err := conn.Read(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return buf[:n]
-}
 
 // truncatedUpdate returns an update signed at signedAt, whose MAC is cut to
 // size octets, or replaced by change when set, and the MAC that it carries.

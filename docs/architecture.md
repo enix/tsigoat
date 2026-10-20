@@ -148,6 +148,11 @@ queries, which anyone may send, do not reach the backend each time; one read
 at a time, which the other queries wait for until their deadline. Other
 queries and opcodes get NOTIMP, and those of other zones REFUSED.
 
+Over UDP, a response fits in 512 octets, or in the payload size that the
+client advertises with EDNS, up to 1232: compressed if need be, then cut down
+to its question and its OPT and TSIG records, with TC set, for the client to
+retry over TCP. Only the SOA of a zone with long names takes that much room.
+
 ## Testing
 
 | Layer | What it checks | Where |

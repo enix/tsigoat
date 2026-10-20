@@ -153,6 +153,17 @@ func (r *Keyring) CheckTruncation(t *dns.TSIG) error {
 	return nil
 }
 
+// MACSize returns the size of the MACs that Generate makes for a TSIG record,
+// the full output of the algorithm of its key; 0 for a record that names an
+// unknown key or another algorithm.
+func (r *Keyring) MACSize(t *dns.TSIG) int {
+	k, err := r.key(t)
+	if err != nil {
+		return 0
+	}
+	return k.newHash().Size()
+}
+
 // key returns the key of a TSIG record, provided the record names the
 // algorithm of the key.
 func (r *Keyring) key(t *dns.TSIG) (*key, error) {

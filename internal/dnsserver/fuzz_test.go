@@ -158,8 +158,21 @@ func FuzzServeDNS(f *testing.F) {
 		if w.written == nil {
 			t.Fatal("no response")
 		}
-		if _, err := w.written.Pack(); err != nil {
+		// Signed as WriteMsg signs it, the response packs, and fits the UDP
+		// payload size of the request unless only its question is left.
+		resp := w.written.Copy()
+		var packed []byte
+		var err error
+		if resp.IsTsig() != nil {
+			packed, _, err = dns.TsigGenerateWithProvider(resp, keyring, "", false)
+		} else {
+			packed, err = resp.Pack()
+		}
+		if err != nil {
 			t.Fatalf("the response does not pack: %v\n%v", err, w.written)
+		}
+		if size := udpSize(req); len(packed) > size && len(resp.Answer)+len(resp.Ns) > 0 {
+			t.Fatalf("a response of %d octets over UDP, for %d\n%v", len(packed), size, w.written)
 		}
 		for _, zone := range []string{testZone, openZone} {
 			records, err := b.Records(zone)
