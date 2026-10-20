@@ -467,6 +467,8 @@ func FuzzEngine(f *testing.F) {
 		{Updates: []string{`add www 60 IN TXT "x"`}},
 		{Prerequisites: []string{"nxdomain www", "yxrrset @ NS"}, Updates: []string{"delete @", "delete www A 192.0.2.1"}},
 		{Updates: []string{"add @ 3600 IN SOA ns1 hostmaster 11 7200 900 1209600 300", "add www 60 IN CNAME x."}},
+		{Updates: []string{"add www 60 IN CNAME x.", "add www 60 IN A 192.0.2.1", "add www 60 IN CNAME y.", "delete www CNAME"}},
+		{Updates: []string{"add www 60 IN A 192.0.2.1", "add www 60 IN CNAME x.", "delete www A", "add www 60 IN CNAME x."}},
 	} {
 		messages, err := request.Messages(testZone)
 		if err != nil {
@@ -503,8 +505,44 @@ func FuzzEngine(f *testing.F) {
 		if err := b.Apply(t.Context(), zoneName, view.Changes()); err != nil {
 			return
 		}
-		if countApexNS(t, b) == 0 {
-			t.Fatal("the apex lost its NS records")
-		}
+		checkInvariants(t, b)
 	})
+}
+
+// checkInvariants checks what every update must preserve: one SOA, the apex
+// NS records, and CNAME records alone at their name, but for DNSSEC records.
+func checkInvariants(t *testing.T, b *memory.Backend) {
+	t.Helper()
+	records, err := b.Records(testZone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := map[string]map[uint16]bool{}
+	soa := 0
+	for _, rr := range records {
+		h := rr.Header()
+		if types[h.Name] == nil {
+			types[h.Name] = map[uint16]bool{}
+		}
+		types[h.Name][h.Rrtype] = true
+		if h.Rrtype == dns.TypeSOA {
+			soa++
+		}
+	}
+	if soa != 1 {
+		t.Fatalf("the zone has %d SOA records", soa)
+	}
+	if !types[testZone][dns.TypeNS] {
+		t.Fatal("the apex lost its NS records")
+	}
+	for name, set := range types {
+		if !set[dns.TypeCNAME] {
+			continue
+		}
+		for rrtype := range set {
+			if rrtype != dns.TypeCNAME && rrtype != dns.TypeRRSIG && rrtype != dns.TypeNSEC {
+				t.Fatalf("%s owns a CNAME and a %s record", name, dns.Type(rrtype))
+			}
+		}
+	}
 }
