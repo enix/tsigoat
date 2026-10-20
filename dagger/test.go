@@ -89,11 +89,16 @@ done
 func (m *Tsigoat) Mutation(ctx context.Context) (string, error) {
 	return goBase(m.Source).
 		WithExec([]string{"go", "install", "github.com/go-gremlins/gremlins/cmd/gremlins@" + gremlinsModule}).
+		// The report goes through a file rather than a pipe, so that the status
+		// of gremlins survives grep, which keeps the alterations left alive.
 		WithExec([]string{"sh", "-euc", `
+status=0
 for pkg in ./internal/update ./internal/zone ./internal/auth; do
   echo "== $pkg"
-  gremlins unleash --workers 4 --timeout-coefficient 10 "$pkg" | grep -Ev '^ +KILLED '
+  gremlins unleash --workers 4 --timeout-coefficient 10 "$pkg" >/tmp/gremlins.txt || status=$?
+  grep -Ev '^ +KILLED ' /tmp/gremlins.txt || true
 done
+exit "$status"
 `}).
 		Stdout(ctx)
 }
