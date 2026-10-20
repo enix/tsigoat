@@ -102,7 +102,9 @@ Service accounts need one of the endpoints `ovh-eu`, `ovh-ca` and `ovh-us`.
   their quotes and backslashes: tsigoat turns down the TXT strings that hold
   any, the empty ones, and those that hold bytes outside printable ASCII. The
   SPF, DKIM and DMARC records of the control panel read as the TXT records
-  that the name servers serve.
+  that the name servers serve. The strings of NAPTR and CAA records follow the
+  same rules until a live test shows that OVHcloud keeps their quotes and
+  backslashes.
 - **TTL**: from 60 seconds to one day. A TTL of 0, the default TTL of the
   zone at OVHcloud, reads as that default TTL, which tsigoat reads from the
   SOA of the zone.

@@ -61,19 +61,27 @@ func newLimits() *hosted.Limits {
 }
 
 // content returns why Cloudflare cannot hold a record, "" when it can: it
-// neither stores nor serves an empty TXT record, and tsigoat keeps the TXT
-// strings to printable ASCII, whose escapes it knows to come back intact.
+// neither stores nor serves an empty TXT record, and tsigoat keeps the
+// strings of the records to printable ASCII, whose escapes it knows to come
+// back intact.
 func content(rr dns.RR) string {
-	txt, ok := rr.(*dns.TXT)
-	if !ok {
-		return ""
+	var strs []string
+	switch record := rr.(type) {
+	case *dns.TXT:
+		if len(record.Txt) == 1 && record.Txt[0] == "" {
+			return "it serves no empty TXT record"
+		}
+		strs = record.Txt
+	case *dns.NAPTR:
+		strs = []string{record.Flags, record.Service, record.Regexp}
+	case *dns.CAA:
+		strs = []string{record.Value}
+	case *dns.URI:
+		strs = []string{record.Target}
 	}
-	if len(txt.Txt) == 1 && txt.Txt[0] == "" {
-		return "it serves no empty TXT record"
-	}
-	for _, s := range txt.Txt {
+	for _, s := range strs {
 		if !hosted.Printable(s) {
-			return "tsigoat keeps TXT strings to printable ASCII"
+			return "tsigoat keeps the strings of the records to printable ASCII"
 		}
 	}
 	return ""
@@ -284,9 +292,11 @@ func dataOf(rr dns.RR) (data any, priority *uint16, err error) {
 	case *dns.SRV:
 		return srvData{Priority: record.Priority, Weight: record.Weight, Port: record.Port, Target: relative(record.Target)}, nil, nil
 	case *dns.URI:
-		return uriData{Weight: record.Weight, Target: record.Target}, new(record.Priority), nil
+		target, err := hosted.Unescape(record.Target)
+		return uriData{Weight: record.Weight, Target: target}, new(record.Priority), err
 	case *dns.CAA:
-		return caaData{Flags: record.Flag, Tag: record.Tag, Value: record.Value}, nil, nil
+		value, err := hosted.Unescape(record.Value)
+		return caaData{Flags: record.Flag, Tag: record.Tag, Value: value}, nil, err
 	case *dns.DS:
 		return dsData{KeyTag: record.KeyTag, Algorithm: record.Algorithm, DigestType: record.DigestType, Digest: record.Digest}, nil, nil
 	case *dns.SVCB:
@@ -294,10 +304,8 @@ func dataOf(rr dns.RR) (data any, priority *uint16, err error) {
 	case *dns.HTTPS:
 		return svcbOf(&record.SVCB), nil, nil
 	case *dns.NAPTR:
-		return naptrData{
-			Order: record.Order, Preference: record.Preference, Flags: record.Flags,
-			Service: record.Service, Regex: record.Regexp, Replacement: record.Replacement,
-		}, nil, nil
+		naptr, err := naptrOf(record)
+		return naptr, nil, err
 	case *dns.SSHFP:
 		return sshfpData{Algorithm: record.Algorithm, Type: record.Type, Fingerprint: record.FingerPrint}, nil, nil
 	case *dns.TLSA:
@@ -312,14 +320,32 @@ func dataOf(rr dns.RR) (data any, priority *uint16, err error) {
 	}
 }
 
+// naptrOf returns the fields of a NAPTR record: its strings go raw, without
+// the escapes of the presentation format, which miekg/dns keeps.
+func naptrOf(record *dns.NAPTR) (naptrData, error) {
+	var strs [3]string
+	for i, s := range []string{record.Flags, record.Service, record.Regexp} {
+		raw, err := hosted.Unescape(s)
+		if err != nil {
+			return naptrData{}, err
+		}
+		strs[i] = raw
+	}
+	return naptrData{
+		Order: record.Order, Preference: record.Preference, Flags: strs[0],
+		Service: strs[1], Regex: strs[2], Replacement: record.Replacement,
+	}, nil
+}
+
 // svcbOf returns the fields of an SVCB or HTTPS record: its parameters go in
-// a string, as their presentation format writes them.
+// a string, in presentation format, which miekg/dns writes for each value
+// with its escapes.
 func svcbOf(record *dns.SVCB) svcbData {
 	params := make([]string, 0, len(record.Value))
 	for _, pair := range record.Value {
 		param := pair.Key().String()
 		if value := pair.String(); value != "" {
-			param += "=" + quote(value)
+			param += `="` + value + `"`
 		}
 		params = append(params, param)
 	}

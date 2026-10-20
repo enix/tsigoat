@@ -110,3 +110,37 @@ func TestDiff(t *testing.T) {
 		t.Errorf("Diff() of a new RRset = %s, want the record created with the TTL of the RRset", describe(&steps))
 	}
 }
+
+func TestEscapes(t *testing.T) {
+	t.Parallel()
+	for escaped, raw := range map[string]string{
+		`plain`:            "plain",
+		`say \"hi\"`:       `say "hi"`,
+		`back\\slash`:      `back\slash`,
+		`caf\195\169`:      "caf\xc3\xa9",
+		`h2\;foo`:          "h2;foo",
+		`!^.*$!sip:\\1@x!`: `!^.*$!sip:\1@x!`,
+		`\0010`:            "\x010",
+		`end\\`:            `end\`,
+	} {
+		got, err := hosted.Unescape(escaped)
+		if err != nil || got != raw {
+			t.Errorf("Unescape(%q) = %q, %v, want %q", escaped, got, err, raw)
+		}
+		if back, _ := hosted.Unescape(hosted.Escape(raw)); back != raw {
+			t.Errorf("Unescape(Escape(%q)) = %q", raw, back)
+		}
+	}
+	for _, invalid := range []string{`trailing\`, `\256`} {
+		if _, err := hosted.Unescape(invalid); err == nil {
+			t.Errorf("Unescape(%q) succeeded", invalid)
+		}
+	}
+	for s, printable := range map[string]bool{
+		`plain`: true, `say \"hi\"`: true, `\\1`: true, `\1@`: true, `caf\195\169`: false, `\000`: false,
+	} {
+		if got := hosted.Printable(s); got != printable {
+			t.Errorf("Printable(%q) = %t, want %t", s, got, printable)
+		}
+	}
+}

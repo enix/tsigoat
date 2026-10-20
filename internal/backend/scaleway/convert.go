@@ -74,9 +74,9 @@ func content(rr dns.RR) string {
 	case *dns.TXT:
 		return txtContent(record.Txt)
 	case *dns.CAA:
-		if strings.ContainsAny(record.Value, `"\`) || !hosted.Printable(record.Value) {
-			return "it does not keep quotes and backslashes intact"
-		}
+		return plainContent(record.Value)
+	case *dns.NAPTR:
+		return plainContent(record.Flags, record.Service, record.Regexp)
 	case *dns.SVCB:
 		return svcbContent(record)
 	case *dns.HTTPS:
@@ -89,22 +89,38 @@ func content(rr dns.RR) string {
 	return ""
 }
 
+// plainContent returns why Scaleway may not keep strings intact, "" when it
+// keeps them: tsigoat did not check that it keeps quotes, backslashes, or
+// bytes outside printable ASCII.
+func plainContent(strs ...string) string {
+	for _, s := range strs {
+		if strings.ContainsAny(s, `"\`) || !hosted.Printable(s) {
+			return "it keeps printable ASCII alone intact, without quotes and backslashes"
+		}
+	}
+	return ""
+}
+
 // txtContent returns why Scaleway cannot hold the strings of a TXT record, ""
 // when it can. It stores a TXT record as a single string, which it serves in
 // strings of 255 bytes; it mangles the quotes, the backslashes and the spaces
-// at the ends of the string, and holds no empty string.
+// at the ends of the string. An empty string would vanish from the joined
+// string, so that every string must hold something, and all but the last 255
+// bytes.
 func txtContent(strs []string) string {
+	if reason := plainContent(strs...); reason != "" {
+		return reason
+	}
 	for i, s := range strs {
 		switch {
-		case strings.ContainsAny(s, `"\`) || !hosted.Printable(s):
-			return "it keeps printable ASCII alone intact, without quotes and backslashes"
+		case s == "":
+			return "it holds no empty TXT string"
 		case i < len(strs)-1 && len(s) != maxString:
 			return "it holds a TXT record as a single string, which it splits every 255 bytes"
 		}
 	}
-	text := strings.Join(strs, "")
-	if text == "" || text[0] == ' ' || text[len(text)-1] == ' ' {
-		return "it holds no empty TXT record, nor spaces at its ends"
+	if text := strings.Join(strs, ""); text[0] == ' ' || text[len(text)-1] == ' ' {
+		return "it trims the spaces at the ends of a TXT record"
 	}
 	return ""
 }

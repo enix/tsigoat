@@ -66,6 +66,12 @@ func content(rr dns.RR) string {
 		}
 	case *dns.CAA:
 		return plain(record.Value)
+	case *dns.NAPTR:
+		for _, s := range []string{record.Flags, record.Service, record.Regexp} {
+			if reason := plain(s); reason != "" {
+				return reason
+			}
+		}
 	}
 	return ""
 }

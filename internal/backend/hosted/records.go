@@ -10,6 +10,7 @@ import (
 	"cmp"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/miekg/dns"
@@ -48,7 +49,7 @@ func Locked(current []Record) string {
 func Printable(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\\' {
-			if i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '9' {
+			if i+3 < len(s) && isDigits(s[i+1:i+4]) {
 				return false
 			}
 			i++
@@ -68,7 +69,7 @@ func TXTStrings(text string) []string {
 	strs := make([]string, 0, len(text)/maxString+1)
 	for {
 		chunk := text[:min(len(text), maxString)]
-		strs = append(strs, escape(chunk))
+		strs = append(strs, Escape(chunk))
 		text = text[len(chunk):]
 		if text == "" {
 			return strs
@@ -76,9 +77,10 @@ func TXTStrings(text string) []string {
 	}
 }
 
-// escape escapes the quotes, the backslashes and the bytes outside printable
-// ASCII of a character-string, as miekg/dns holds them.
-func escape(s string) string {
+// Escape escapes the quotes, the backslashes and the bytes outside printable
+// ASCII of a raw character-string, as miekg/dns holds them and as the
+// presentation format writes them within quotes.
+func Escape(s string) string {
 	var b strings.Builder
 	for i := range len(s) {
 		switch c := s[i]; {
@@ -92,6 +94,38 @@ func escape(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// Unescape returns the raw bytes of a character-string as miekg/dns holds it,
+// with the escapes of the presentation format: \DDD for a byte, \X for a
+// character X.
+func Unescape(s string) (string, error) {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' {
+			b.WriteByte(s[i])
+			continue
+		}
+		switch {
+		case i+3 < len(s) && isDigits(s[i+1:i+4]):
+			n, err := strconv.ParseUint(s[i+1:i+4], 10, 8)
+			if err != nil {
+				return "", fmt.Errorf("invalid escape \\%s in %q", s[i+1:i+4], s)
+			}
+			b.WriteByte(byte(n))
+			i += 3
+		case i+1 < len(s):
+			b.WriteByte(s[i+1])
+			i++
+		default:
+			return "", fmt.Errorf("unfinished escape in %q", s)
+		}
+	}
+	return b.String(), nil
+}
+
+func isDigits(s string) bool {
+	return strings.IndexFunc(s, func(r rune) bool { return r < '0' || r > '9' }) < 0
 }
 
 // RRsets groups records of one name into RRsets, sorted by type. An RRset

@@ -66,6 +66,7 @@ func typeCases() []recordsCase {
 		{label: "HTTPS", name: "https.types", records: []string{`HTTPS 1 . alpn="h2,h3"`}},
 		{label: "SVCB", name: "svcb.types", records: []string{"SVCB 1 svc.example.net. port=8443"}},
 		{label: "NAPTR", name: "naptr.types", records: []string{`NAPTR 100 10 "U" "E2U+sip" "!^.*$!sip:info@example.net!" .`}},
+		{label: "NAPTR-backreference", name: "backreference.naptr.types", records: []string{`NAPTR 100 10 "U" "E2U+sip" "!^.*$!sip:\\1@example.net!" .`}},
 		{label: "LOC", name: "loc.types", records: []string{"LOC 52 22 23.000 N 4 53 32.000 E -2.00m 0.00m 10000m 10m"}},
 		{label: "URI", name: "_http._tcp.uri.types", records: []string{`URI 10 1 "https://example.net/"`}},
 		{label: "HINFO", name: "hinfo.types", records: []string{`HINFO "PC" "Linux"`}},

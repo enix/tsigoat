@@ -54,8 +54,10 @@ A new key or policy may take two minutes to apply.
   in strings of 255 bytes, trims its spaces at its ends, and mangles its
   quotes and backslashes. tsigoat writes the strings of a record joined, and
   turns down the records whose strings would move: all but the last string
-  must be 255 bytes long. It turns down the empty records too, and those
-  whose strings hold quotes, backslashes or bytes outside printable ASCII.
+  must be 255 bytes long, and none may be empty. It turns down those whose
+  strings hold quotes, backslashes or bytes outside printable ASCII, and the
+  NAPTR and CAA records whose strings do, until a live test shows that
+  Scaleway keeps them.
 - **SVCB and HTTPS**: Scaleway takes the values of their parameters
   unquoted: tsigoat turns down the values with spaces or quotes.
 - **NS**: Scaleway gives the NS records a TTL of 1800 seconds at least:

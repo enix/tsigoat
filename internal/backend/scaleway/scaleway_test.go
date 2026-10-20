@@ -175,3 +175,42 @@ func TestErrors(t *testing.T) {
 		t.Error("New() without a secret key succeeded")
 	}
 }
+
+// TestTXTStrings checks which TXT records Scaleway holds intact: it joins
+// their strings, which it splits again every 255 bytes.
+func TestTXTStrings(t *testing.T) {
+	t.Parallel()
+	b, _ := newBackend(t)
+	full := strings.Repeat("a", 255)
+	for _, c := range []struct {
+		label   string
+		strs    []string
+		refused bool
+	}{
+		{label: "254 bytes", strs: []string{strings.Repeat("a", 254)}},
+		{label: "255 bytes", strs: []string{full}},
+		{label: "256 bytes in two strings", strs: []string{full, "b"}},
+		{label: "two full strings", strs: []string{full, full}},
+		{label: "three strings", strs: []string{full, full, "c"}},
+		{label: "short first string", strs: []string{"a", "b"}, refused: true},
+		{label: "empty last string", strs: []string{full, ""}, refused: true},
+		{label: "empty string", strs: []string{""}, refused: true},
+		{label: "space at the end", strs: []string{"a "}, refused: true},
+	} {
+		name := strings.ReplaceAll(c.label, " ", "-") + "." + testZone
+		record := &dns.TXT{Hdr: dns.RR_Header{Name: name, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 300}, Txt: c.strs}
+		change := backend.Change{Op: backend.Replace, RRset: backend.RRset{Name: name, Type: dns.TypeTXT, TTL: 300, Records: []dns.RR{record}}}
+		err := b.Apply(t.Context(), testZone, []backend.Change{change})
+		if _, rejected := errors.AsType[*backend.RejectionError](err); rejected != c.refused || (err != nil && !rejected) {
+			t.Errorf("%s: Apply() = %v, want refused: %t", c.label, err, c.refused)
+			continue
+		}
+		if c.refused {
+			continue
+		}
+		sets, err := b.Lookup(t.Context(), testZone, name)
+		if err != nil || len(sets) != 1 || !dns.IsDuplicate(sets[0].Records[0], record) {
+			t.Errorf("%s: Lookup() = %v, %v, want %s", c.label, sets, err, record)
+		}
+	}
+}

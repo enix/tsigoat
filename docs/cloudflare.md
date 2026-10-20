@@ -63,6 +63,10 @@ tsigoat takes no other credential: the Global API Key opens the whole account.
 - **TXT**: tsigoat writes the strings in quotes, with their escapes, which
   Cloudflare keeps. Empty TXT records, which Cloudflare neither stores nor
   serves, and bytes outside printable ASCII get REFUSED.
+- **Strings of the records with fields**, such as the regular expression of
+  a NAPTR record or the value of a CAA record: tsigoat sends them raw, as the
+  API takes them, and reads them back from the content that Cloudflare renders
+  in presentation format; bytes outside printable ASCII get REFUSED.
 - **TTL**: from 60 seconds to one day. The automatic TTL of Cloudflare reads
   as 300 seconds, the TTL that its name servers serve.
 - **Proxied records**: Cloudflare serves its own addresses for the A, AAAA

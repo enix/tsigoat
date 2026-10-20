@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/enix/tsigoat/internal/backend/cloudflare"
+	"github.com/enix/tsigoat/internal/backend/hosted"
 )
 
 // render checks a new record as Cloudflare does, and returns it as
@@ -104,7 +105,7 @@ func renderData(rec *cloudflare.APIRecord) (cloudflare.APIRecord, error) {
 		if rec.Priority == nil {
 			return *rec, fail(http.StatusBadRequest, 9104, "priority must be an integer between 0 and 65535.")
 		}
-		rec.Content = fmt.Sprintf("%v %q", number(d["weight"]), d[targetField])
+		rec.Content = fmt.Sprintf("%v %s", number(d["weight"]), quoted(d[targetField]))
 	default:
 		rec.Content = renderFields(rec.Type, d)
 	}
@@ -121,7 +122,7 @@ func renderFields(rrtype string, d map[string]any) string {
 	upper := func(field string) string { return strings.ToUpper(fmt.Sprint(d[field])) }
 	switch rrtype {
 	case "CAA":
-		return fmt.Sprintf("%v %s %q", number(d["flags"]), d["tag"], d["value"])
+		return fmt.Sprintf("%v %s %s", number(d["flags"]), d["tag"], quoted(d["value"]))
 	case "DS":
 		return fmt.Sprintf("%v %v %v %s", number(d["key_tag"]), number(d["algorithm"]), number(d["digest_type"]), upper("digest"))
 	case "SSHFP":
@@ -131,8 +132,8 @@ func renderFields(rrtype string, d map[string]any) string {
 	case "HTTPS", "SVCB":
 		return strings.TrimSpace(fmt.Sprintf("%v %s %s", number(d["priority"]), d[targetField], d["value"]))
 	case "NAPTR":
-		return fmt.Sprintf("%v %v %q %q %q %s", number(d["order"]), number(d["preference"]),
-			d["flags"], d["service"], d["regex"], d["replacement"])
+		return fmt.Sprintf("%v %v %s %s %s %s", number(d["order"]), number(d["preference"]),
+			quoted(d["flags"]), quoted(d["service"]), quoted(d["regex"]), d["replacement"])
 	default: // LOC
 		return fmt.Sprintf("%v %v %.3f %s %v %v %.3f %s %.2f %.2f %.2f %.2f",
 			number(d["lat_degrees"]), number(d["lat_minutes"]), number(d["lat_seconds"]), d["lat_direction"],
@@ -169,6 +170,13 @@ func dataFields(rrtype string) ([]string, bool) {
 	default:
 		return nil, false
 	}
+}
+
+// quoted renders a raw string of decoded JSON as the presentation format
+// writes a character-string: in quotes, with its escapes.
+func quoted(value any) string {
+	s, _ := value.(string)
+	return `"` + hosted.Escape(s) + `"`
 }
 
 // number returns a number of decoded JSON.

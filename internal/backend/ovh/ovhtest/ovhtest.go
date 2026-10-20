@@ -447,17 +447,18 @@ func normalize(created *Record, zone string) (rec Record, message string) {
 // OVHcloud itself.
 func Rejected() map[string]string {
 	return map[string]string{
-		"types/DS":      "OVHcloud holds no DS record",
-		"types/HINFO":   "OVHcloud holds no HINFO record",
-		"types/URI":     "OVHcloud holds no URI record",
-		"txt/padded":    "OVHcloud trims the spaces at the ends of TXT strings",
-		"txt/quote":     "OVHcloud mangles the quotes of TXT strings",
-		"txt/backslash": "OVHcloud mangles the backslashes of TXT strings",
-		"txt/utf8":      "tsigoat keeps TXT strings to printable ASCII",
-		"txt/empty":     "OVHcloud holds no empty TXT string",
-		"ttl/zero":      "OVHcloud holds no TTL below 60",
-		"apex/soa":      "OVHcloud manages the SOA record",
-		"apex/ns":       "OVHcloud manages the NS records of the apex",
+		"types/DS":                  "OVHcloud holds no DS record",
+		"types/HINFO":               "OVHcloud holds no HINFO record",
+		"types/URI":                 "OVHcloud holds no URI record",
+		"txt/padded":                "OVHcloud trims the spaces at the ends of TXT strings",
+		"txt/quote":                 "OVHcloud mangles the quotes of TXT strings",
+		"txt/backslash":             "OVHcloud mangles the backslashes of TXT strings",
+		"types/NAPTR-backreference": "tsigoat did not check that OVHcloud keeps the backslashes of NAPTR records intact",
+		"txt/utf8":                  "tsigoat keeps TXT strings to printable ASCII",
+		"txt/empty":                 "OVHcloud holds no empty TXT string",
+		"ttl/zero":                  "OVHcloud holds no TTL below 60",
+		"apex/soa":                  "OVHcloud manages the SOA record",
+		"apex/ns":                   "OVHcloud manages the NS records of the apex",
 	}
 }
 
