@@ -347,13 +347,16 @@ func TestSOACache(t *testing.T) {
 	counting := &countingBackend{Backend: inner}
 	z := &servedZone{Zone: Zone{Name: testZone, Backend: counting}, lock: make(chan struct{}, 1)}
 
-	for range 3 {
-		soa, err := z.cachedSOA(t.Context())
+	for i := range 3 {
+		soa, fetched, err := z.cachedSOA(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if soa.Header().Rrtype != dns.TypeSOA || soa.Header().Name != testZone {
 			t.Errorf("cachedSOA() = %v", soa)
+		}
+		if fetched != (i == 0) {
+			t.Errorf("query %d: fetched = %v", i, fetched)
 		}
 	}
 	if counting.lookups != 1 {
@@ -362,23 +365,26 @@ func TestSOACache(t *testing.T) {
 
 	// Once expired, the SOA is read again.
 	z.soaExpires = time.Now().Add(-time.Second)
-	if _, err := z.cachedSOA(t.Context()); err != nil {
+	if _, _, err := z.cachedSOA(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if counting.lookups != 2 {
 		t.Errorf("%d lookups after the expiry, want 2", counting.lookups)
 	}
 
-	// Failures are not cached.
+	// Failures are cached too, for less time.
 	inner.DeleteZone(testZone)
 	z.soaExpires = time.Now().Add(-time.Second)
-	for range 2 {
-		if _, err := z.cachedSOA(t.Context()); err == nil {
-			t.Error("cachedSOA() succeeded on a missing zone")
+	for i := range 2 {
+		if _, fetched, err := z.cachedSOA(t.Context()); err == nil || fetched != (i == 0) {
+			t.Errorf("query %d on a missing zone: fetched = %v, error %v", i, fetched, err)
 		}
 	}
-	if counting.lookups != 4 {
-		t.Errorf("%d lookups after two failures, want 4", counting.lookups)
+	if counting.lookups != 3 {
+		t.Errorf("%d lookups after two failures, want 3", counting.lookups)
+	}
+	if left := time.Until(z.soaExpires); left > soaFailureTTL || left < soaFailureTTL-time.Second {
+		t.Errorf("a failure is cached for %s, want %s", left, soaFailureTTL)
 	}
 }
 

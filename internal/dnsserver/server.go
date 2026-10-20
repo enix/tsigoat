@@ -95,9 +95,13 @@ type Server struct {
 	errs chan error
 }
 
-// soaCacheTTL is how long the answers to the SOA queries of a zone reuse its
-// SOA: since anyone may send them, they must not reach the backend each time.
-const soaCacheTTL = 30 * time.Second
+// The answers to the SOA queries of a zone reuse its SOA, or the failure to
+// read it, for a while: since anyone may send them, they must not reach the
+// backend each time.
+const (
+	soaCacheTTL   = 30 * time.Second
+	soaFailureTTL = 5 * time.Second
+)
 
 // servedZone is a zone with the lock that serializes its updates.
 type servedZone struct {
@@ -109,6 +113,7 @@ type servedZone struct {
 	// soaMu guards the SOA cache, and serializes its refreshes.
 	soaMu      sync.Mutex
 	soa        dns.RR
+	soaErr     error
 	soaExpires time.Time
 }
 
@@ -315,19 +320,24 @@ func accept(header dns.Header) dns.MsgAcceptAction {
 }
 
 // cachedSOA returns the SOA of the zone, which it reads from the backend at
-// most once per soaCacheTTL, failures aside.
-func (z *servedZone) cachedSOA(ctx context.Context) (dns.RR, error) {
+// most once per soaCacheTTL, or per soaFailureTTL after a failure. fetched
+// tells whether this call read the backend.
+func (z *servedZone) cachedSOA(ctx context.Context) (soa dns.RR, fetched bool, err error) {
 	z.soaMu.Lock()
 	defer z.soaMu.Unlock()
 	now := time.Now()
-	if z.soa == nil || !now.Before(z.soaExpires) {
-		soa, err := lookupSOA(ctx, z)
-		if err != nil {
-			return nil, err
+	if !now.Before(z.soaExpires) {
+		z.soa, z.soaErr = lookupSOA(ctx, z)
+		ttl := soaCacheTTL
+		if z.soaErr != nil {
+			ttl = soaFailureTTL
 		}
-		z.soa, z.soaExpires = soa, now.Add(soaCacheTTL)
+		z.soaExpires, fetched = now.Add(ttl), true
 	}
-	return dns.Copy(z.soa), nil
+	if z.soaErr != nil {
+		return nil, fetched, z.soaErr
+	}
+	return dns.Copy(z.soa), fetched, nil
 }
 
 // acquire takes the lock of the zone, unless ctx ends first.

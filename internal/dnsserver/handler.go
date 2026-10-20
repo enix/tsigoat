@@ -363,9 +363,14 @@ func (s *Server) query(ctx context.Context, ex *exchange) *dns.Msg {
 		return ex.reply(dns.RcodeNotImplemented)
 	}
 
-	soa, err := z.cachedSOA(ctx)
+	soa, fetched, err := z.cachedSOA(ctx)
 	if err != nil {
-		ex.logger.ErrorContext(ctx, "reading the SOA failed", "zone", zoneName, "error", err)
+		// Log the failure once per read of the backend, not once per query.
+		level := slog.LevelDebug
+		if fetched {
+			level = slog.LevelError
+		}
+		ex.logger.Log(ctx, level, "reading the SOA failed", "zone", zoneName, "error", err)
 		return ex.reply(dns.RcodeServerFailure)
 	}
 	resp := ex.reply(dns.RcodeSuccess)
