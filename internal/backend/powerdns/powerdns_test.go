@@ -235,8 +235,8 @@ func TestErrors(t *testing.T) {
 		_, server := newFakeAPI(t)
 		b := newBackend(t, server.URL)
 		_, err := b.Lookup(t.Context(), "nowhere.test.", "nowhere.test.")
-		var apiErr *APIError
-		if !errors.Is(err, backend.ErrZoneNotFound) || !errors.As(err, &apiErr) || apiErr.Status != http.StatusNotFound {
+		apiErr, ok := errors.AsType[*APIError](err)
+		if !errors.Is(err, backend.ErrZoneNotFound) || !ok || apiErr.Status != http.StatusNotFound {
 			t.Errorf("error %v, want ErrZoneNotFound and an APIError", err)
 		}
 		if !strings.Contains(err.Error(), "Could not find domain") {
@@ -252,8 +252,8 @@ func TestErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = b.Lookup(t.Context(), "example.test.", "example.test.")
-		var apiErr *APIError
-		if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized || apiErr.Message != "Unauthorized" {
+		apiErr, ok := errors.AsType[*APIError](err)
+		if !ok || apiErr.Status != http.StatusUnauthorized || apiErr.Message != "Unauthorized" {
 			t.Errorf("error %v, want HTTP 401 Unauthorized", err)
 		}
 	})

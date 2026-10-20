@@ -69,8 +69,8 @@ func process(t *testing.T, b *memory.Backend, request *scenario.Request, served 
 // rcodeOf returns the rcode of a rejection, and fails on other errors.
 func rcodeOf(t *testing.T, err error) int {
 	t.Helper()
-	var rejected *update.Error
-	if !errors.As(err, &rejected) {
+	rejected, ok := errors.AsType[*update.Error](err)
+	if !ok {
 		t.Fatal(err)
 	}
 	if rejected.Reason == "" {

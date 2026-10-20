@@ -121,16 +121,16 @@ func match(pattern, name []string) bool {
 	// name[j:].
 	next := make([]bool, len(name)+1)
 	next[len(name)] = true
-	for i := len(pattern) - 1; i >= 0; i-- {
+	for _, patternLabel := range slices.Backward(pattern) {
 		current := make([]bool, len(name)+1)
-		for j := len(name) - 1; j >= 0; j-- {
-			switch pattern[i] {
+		for j, nameLabel := range slices.Backward(name) {
+			switch patternLabel {
 			case "**":
 				current[j] = next[j+1] || current[j+1]
 			case "*":
 				current[j] = next[j+1]
 			default:
-				current[j] = next[j+1] && pattern[i] == name[j]
+				current[j] = next[j+1] && patternLabel == nameLabel
 			}
 		}
 		next = current

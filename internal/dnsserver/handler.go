@@ -173,8 +173,7 @@ func (o *outcome) refuse(reason string) {
 
 // reject records an error of the update engine.
 func (o *outcome) reject(err error) {
-	var rejection *update.Error
-	if errors.As(err, &rejection) {
+	if rejection, ok := errors.AsType[*update.Error](err); ok {
 		o.rcode, o.reason = rejection.Rcode, rejection.Reason
 		return
 	}
