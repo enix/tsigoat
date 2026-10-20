@@ -1,0 +1,20 @@
+// markdownlint-cli2 configuration, used by `task lint:markdown` (Dagger) and
+// by editor integrations.
+// Reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+{
+  "config": {
+    "default": true,
+    // Line length is not enforced.
+    "MD013": false,
+    // Duplicate headings are fine in different sections.
+    "MD024": { "siblings_only": true },
+  },
+  "ignores": [
+    // Vendored or out-of-tree.
+    "node_modules/",
+    ".git/",
+    // AI assistant notes.
+    "CLAUDE.md",
+    "AGENTS.md",
+  ],
+}
