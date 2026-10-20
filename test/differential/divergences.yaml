@@ -26,3 +26,6 @@ protocol/notify-opcode: NOTIFY is not implemented
 policy/allowed: policy rules are not translated for BIND
 policy/delete-record: policy rules are not translated for BIND
 policy/soa-rule: policy rules are not translated for BIND
+policy/acme-values: policy rules are not translated for BIND
+policy/acme-wildcard: policy rules are not translated for BIND
+policy/acme-renewal: policy rules are not translated for BIND

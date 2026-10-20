@@ -140,11 +140,19 @@ func TestParseFull(t *testing.T) {
 	if zone.Name != "example.test." || zone.Backend != "pdns" || !slices.Equal(zone.Keys, []string{"admin."}) {
 		t.Errorf("zone = %+v", zone)
 	}
-	rule := zone.Policy[0]
-	if rule.Key != "cert-manager." ||
-		!slices.Equal(rule.Names, []string{"_acme-challenge.example.test.", "_acme-challenge.**.example.test."}) ||
-		!slices.Equal(rule.Types, []string{"TXT"}) {
-		t.Errorf("rule = %+v", rule)
+	acme := zone.Policy[0]
+	if acme.Key != "cert-manager." ||
+		!slices.Equal(acme.Names, []string{"_acme-challenge.example.test.", "_acme-challenge.**.example.test."}) ||
+		!slices.Equal(acme.Types, []string{"TXT"}) ||
+		acme.Content != config.ACMEContent || acme.MaxTTL != 300 || acme.MaxRecords != 10 {
+		t.Errorf("acme rule = %+v", acme)
+	}
+	if dhcp := zone.Policy[1]; dhcp.MaxTTL != 3600 || dhcp.MaxRecords != 4 || dhcp.Content != config.AnyContent {
+		t.Errorf("rule with bounds = %+v", dhcp)
+	}
+	if content := zone.Policy[2]; !slices.Equal(content.Types, []string{"TXT"}) || content.Content != config.ACMEContent ||
+		content.MaxTTL != 0 || content.MaxRecords != 0 {
+		t.Errorf("rule with ACME content = %+v", content)
 	}
 	if !c.Zones[1].AllowUnauthenticated {
 		t.Error("open.test. should accept unauthenticated updates")

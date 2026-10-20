@@ -130,7 +130,7 @@ func apiClient(pdns *dagger.Service) *dagger.Container {
 }
 
 // acmeConfig renders the configuration of tsigoat for the ACME clients, each
-// restricted to the challenges of the zone.
+// restricted to the challenges of its certificate.
 func acmeConfig() string {
 	return fmt.Sprintf(`keys:
   - name: %[1]s
@@ -147,11 +147,9 @@ zones:
   - name: %[7]s
     policy:
       - key: %[1]s
-        names: ["_acme-challenge.**.%[7]s"]
-        types: [TXT]
+        acme: [lego.%[7]s]
       - key: %[3]s
-        names: ["_acme-challenge.**.%[7]s"]
-        types: [TXT]
+        acme: [certbot.%[7]s]
 `, acmeLegoKey, acmeLegoSecret, acmeCertbotKey, acmeCertbotSecret, pdnsAPIPort, e2eAPIKey, acmeZone)
 }
 

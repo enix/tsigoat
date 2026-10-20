@@ -1,0 +1,16 @@
+description: A rule may bound the records that one update adds under it.
+refs: ["RFC 2136 3.3"]
+zone:
+  policy:
+    - key: e2e-sha512
+      names: ["_acme-challenge"]
+      types: [TXT]
+      maxRecords: 2
+requests:
+  - key: e2e-sha512
+    updates:
+      - add _acme-challenge 60 IN TXT "pwv1DlMc4agXVh8vXVtmRdToBr7PWMzF6M9rgEWgkKg"
+      - add _acme-challenge 60 IN TXT "SeK7fqtUzwm0Cf-v0_qKipVaYOuXL6rK777T29MgcTI"
+      - add _acme-challenge 60 IN TXT "third"
+expect:
+  rcode: REFUSED

@@ -1,0 +1,2 @@
+# Substrings the error must contain, anchored on the configuration path.
+zones[0].policy[0].acme[0]: name pattern "_acme-challenge.example.org." is not inside zone "example.test."

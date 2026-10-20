@@ -1,0 +1,18 @@
+description: >-
+  An acme rule lets a client replace the TXT records of a challenge name with
+  the value of its challenge, whatever they hold, as lego does.
+refs: ["RFC 2136 2.5.2", "RFC 2136 3.3"]
+zone:
+  records:
+    - _acme-challenge 60 IN TXT "stale"
+  policy:
+    - key: e2e-sha512
+      acme: ["@"]
+requests:
+  - key: e2e-sha512
+    updates:
+      - delete _acme-challenge TXT
+      - add _acme-challenge 60 IN TXT "pwv1DlMc4agXVh8vXVtmRdToBr7PWMzF6M9rgEWgkKg"
+expect:
+  records:
+    - _acme-challenge 60 IN TXT "pwv1DlMc4agXVh8vXVtmRdToBr7PWMzF6M9rgEWgkKg"

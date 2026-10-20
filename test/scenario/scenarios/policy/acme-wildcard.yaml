@@ -1,0 +1,15 @@
+description: >-
+  The challenge of a wildcard certificate lies at the name below the wildcard,
+  which an acme rule for the wildcard allows.
+refs: ["RFC 8555 7.1.3", "RFC 8555 8.4"]
+zone:
+  policy:
+    - key: e2e-sha512
+      acme: ["*.www"]
+requests:
+  - key: e2e-sha512
+    updates:
+      - add _acme-challenge.www 60 IN TXT "pwv1DlMc4agXVh8vXVtmRdToBr7PWMzF6M9rgEWgkKg"
+expect:
+  records:
+    - _acme-challenge.www 60 IN TXT "pwv1DlMc4agXVh8vXVtmRdToBr7PWMzF6M9rgEWgkKg"

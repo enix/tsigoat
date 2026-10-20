@@ -41,11 +41,16 @@ zones:
     keys: [admin]
     policy:
       - key: cert-manager.
-        names: [_acme-challenge.example.test., "_acme-challenge.**.example.test."]
-        types: [txt]
+        acme: [example.test., "*.Example.Test", "**.example.test."]
       - key: legacy-dhcp.
         names: ["*.dhcp.example.test."]
         types: [A, AAAA, PTR, ANY]
+        maxTTL: 3600
+        maxRecords: 4
+      - key: legacy-dhcp.
+        names: ["_acme-challenge.dhcp.example.test."]
+        types: [txt]
+        content: acme
   - name: open.test.
     backend: other
     allowUnauthenticated: true

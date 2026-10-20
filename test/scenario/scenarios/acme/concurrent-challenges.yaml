@@ -1,4 +1,4 @@
-description: Concurrent DNS-01 tokens on the same name are all kept, as for a wildcard and apex certificate.
+description: Concurrent values of DNS-01 challenges on the same name are all kept, as for a wildcard and apex certificate.
 refs: ["RFC 8555 8.4", P4]
 parallel: true
 requests:

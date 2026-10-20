@@ -28,8 +28,7 @@ zones:
   - name: example.com.
     policy:
       - key: cert-manager.
-        names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
-        types: [TXT]
+        acme: ["example.com.", "**.example.com."]
 ```
 
 ## Listen addresses
@@ -116,26 +115,36 @@ gets NOTZONE.
 
 ## Policy rules
 
-A rule grants a key some names and some record types:
+A rule grants a key some names and some record types, and may constrain the
+records that an update adds:
 
 ```yaml
 policy:
-  - key: cert-manager.
-    names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
-    types: [TXT]
   - key: dhcp.
     names: ["*.dhcp.example.com."]
     types: [A, AAAA, ANY]
+    maxTTL: 3600
 ```
 
+| Setting | Meaning |
+| --- | --- |
+| `key` | The key that the rule grants rights to |
+| `names` | Name patterns inside the zone |
+| `types` | Record types; every type but SOA when absent |
+| `maxTTL` | Highest TTL of the records that an update adds, in seconds |
+| `content` | `acme` allows only the values of ACME challenges, in TXT records |
+| `maxRecords` | Most records that one update adds under the rule |
+
 - **Names** are patterns inside the zone. A `*` label matches exactly one
-  label, a `**` label matches one or more:
-  `_acme-challenge.**.example.com.` matches
+  label, a `**` label matches one or more: `*.dhcp.example.com.` matches
+  `host.dhcp.example.com.`, `_acme-challenge.**.example.com.` matches
   `_acme-challenge.www.example.com.` and `_acme-challenge.a.b.example.com.`,
-  but not `_acme-challenge.example.com.`, which the rule above lists on its
-  own.
-- **Types** restrict the record types; a rule without types allows every type
-  but SOA. `ANY` allows deleting every RRset of a name at once.
+  but not `_acme-challenge.example.com.`.
+- **Types** restrict the record types. `ANY` allows deleting every RRset of a
+  name at once.
+- **The constraints** apply to the records that an update adds, not to the
+  deletions. An update adds a record under the first rule of the key that
+  allows it, constraints included.
 - **The SOA** belongs to the backend, which maintains its serial: no key may
   update it unless a rule names the `SOA` type.
 - **A request is refused as a whole**, with REFUSED, when one of its records
@@ -145,3 +154,38 @@ policy:
 
 A key listed in `keys` cannot have rules in the same zone: it already holds
 every right but the SOA.
+
+### ACME challenges
+
+An `acme` rule lists the names of the certificates whose DNS-01 challenges a
+key may answer, and allows nothing else:
+
+```yaml
+policy:
+  - key: cert-manager.
+    acme: ["example.com.", "*.example.com.", "**.example.com."]
+```
+
+| Certificate name | Challenge record |
+| --- | --- |
+| `example.com.` | `_acme-challenge.example.com.` |
+| `*.example.com.`, a wildcard certificate | `_acme-challenge.example.com.`, the same |
+| `**.example.com.`, every name below `example.com.` | `_acme-challenge.**.example.com.` |
+
+The rule allows TXT records with `content: acme`, `maxTTL: 300` and
+`maxRecords: 10`; `maxTTL` and `maxRecords` may change these bounds.
+
+The value of a DNS-01 challenge, which the client publishes in the TXT record,
+is one string: the base64url encoding of the SHA-256 digest of the key
+authorization, the token of the certificate authority joined to the
+thumbprint of the account key (RFC 8555 8.4). `content: acme` checks this
+form, so that the key cannot write other TXT records; tsigoat knows neither
+the token nor the account key, so that it cannot tell a value of a pending
+challenge from another one.
+
+The rule allows the deletion of any TXT record of its names, since some
+clients delete the TXT RRset of a challenge before adding their value.
+
+When the challenges are delegated with CNAME records to another zone that
+tsigoat serves, a rule with `names`, `types: [TXT]` and `content: acme`
+allows the challenge values at the targets.

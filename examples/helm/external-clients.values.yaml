@@ -27,8 +27,7 @@ config:
     - name: example.com.
       policy:
         - key: acme.
-          names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
-          types: [TXT]
+          acme: ["example.com.", "**.example.com."]
     - name: lan.example.com.
       policy:
         - key: dhcp.

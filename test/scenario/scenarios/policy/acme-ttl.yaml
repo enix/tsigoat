@@ -1,0 +1,12 @@
+description: An acme rule bounds the TTL of the challenge values, to 300 seconds unless it says otherwise.
+refs: ["RFC 2136 3.3"]
+zone:
+  policy:
+    - key: e2e-sha512
+      acme: ["@"]
+requests:
+  - key: e2e-sha512
+    updates:
+      - add _acme-challenge 3600 IN TXT "pwv1DlMc4agXVh8vXVtmRdToBr7PWMzF6M9rgEWgkKg"
+expect:
+  rcode: REFUSED

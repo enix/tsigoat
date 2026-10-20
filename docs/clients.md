@@ -3,7 +3,10 @@
 Clients send their updates to tsigoat, as to any RFC 2136 server, then check
 the propagation of their records on the public DNS, as usual. Give each client
 its own key, restricted by a [policy rule](configuration.md#policy-rules) to
-the records it manages.
+the records it manages: for an ACME client, an [acme
+rule](configuration.md#acme-challenges) that lists its certificates. Such a
+rule bounds the TTL of the challenge values to 300 seconds, which
+cert-manager, lego and certbot keep within by default.
 
 Most clients default to a legacy algorithm, which tsigoat refuses unless the
 key declares it: set the algorithm explicitly.

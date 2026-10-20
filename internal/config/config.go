@@ -102,7 +102,8 @@ type Zone struct {
 	Policy []Rule
 }
 
-// Rule allows a key to update some names and types of a zone.
+// Rule allows a key to update some names and types of a zone. Its
+// constraints apply to the records that an update adds.
 type Rule struct {
 	// Key is the canonical key name.
 	Key string
@@ -112,7 +113,29 @@ type Rule struct {
 	// Types are upper-case record types; empty allows every type. "ANY"
 	// allows deleting every RRset of a name.
 	Types []string
+	// MaxTTL bounds the TTL of the records that the rule lets an update add;
+	// no bound when zero.
+	MaxTTL uint32
+	// Content restricts the content of the records that the rule lets an
+	// update add.
+	Content Content
+	// MaxRecords bounds the records that an update may add under the rule;
+	// no bound when zero.
+	MaxRecords int
 }
+
+// Content restricts the content of records.
+type Content string
+
+// Contents.
+const (
+	// AnyContent allows any content.
+	AnyContent Content = ""
+	// ACMEContent allows the values of ACME DNS-01 challenges alone, in TXT
+	// records: one string, the base64url encoding of the SHA-256 digest of a
+	// key authorization, as RFC 8555 8.4 defines it.
+	ACMEContent Content = "acme"
+)
 
 // Options resolve the secrets referenced by the configuration.
 type Options struct {
@@ -212,7 +235,11 @@ type fileZone struct {
 }
 
 type fileRule struct {
-	Key   string   `yaml:"key"`
-	Names []string `yaml:"names"`
-	Types []string `yaml:"types"`
+	Key        string   `yaml:"key"`
+	Names      []string `yaml:"names"`
+	Types      []string `yaml:"types"`
+	ACME       []string `yaml:"acme"`
+	MaxTTL     *int64   `yaml:"maxTTL"`
+	Content    string   `yaml:"content"`
+	MaxRecords *int     `yaml:"maxRecords"`
 }

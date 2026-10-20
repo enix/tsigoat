@@ -50,7 +50,12 @@ chart/                 Helm chart; README.md and values.schema.json generated
 - Policy: the `keys` of a zone may update every RRset but the SOA; `policy`
   rules grant a key some names (`*` is one label, `**` one or more) and types;
   the SOA needs a rule that names it. Prerequisites are only allowed on names
-  the key may update.
+  the key may update. Rules may bound what an update adds (`maxTTL`,
+  `content: acme`, `maxRecords`); an `acme` rule compiles certificate names
+  into `_acme-challenge` names, TXT, ACME challenge values, TTL ≤ 300, 10 per
+  update.
+  `auth.Policy.Authorize` checks a whole request, before the engine or the
+  relay.
 - Unsigned updates get REFUSED for unknown and forbidden zones alike; signed
   ones get NOTAUTH for unknown zones.
 - Besides updates, the server answers the SOA queries of the zones it serves,

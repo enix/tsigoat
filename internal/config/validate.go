@@ -22,6 +22,18 @@ const (
 	maxBackendTimeout     = time.Minute
 )
 
+// Bounds of the policy rules.
+const (
+	// maxTTL is the largest TTL, 2^31 - 1 seconds (RFC 2181 8).
+	maxTTL = 1<<31 - 1
+	// ACME rules bound the records to what the clients need: a TTL of a few
+	// minutes, a few challenge values per update.
+	defaultACMEMaxTTL     = 300
+	defaultACMEMaxRecords = 10
+	// txtType is the type of the records of ACME challenges.
+	txtType = "TXT"
+)
+
 // keyHolder tells who shares a TSIG key with tsigoat, for the advice of the
 // warnings about legacy algorithms.
 type keyHolder int
@@ -426,26 +438,96 @@ func (v *validator) policy(path string, raw []fileRule, zone string, zoneKeys []
 			}
 		}
 
-		if len(r.Names) == 0 {
-			v.errorf(rulePath+".names", "missing names")
+		if len(r.ACME) > 0 {
+			v.acmeRule(rulePath, r, zone, &rule)
+		} else {
+			v.namesAndTypes(rulePath, r, zone, &rule)
 		}
-		for j, pattern := range r.Names {
-			if canonical, ok := v.namePattern(fmt.Sprintf("%s.names[%d]", rulePath, j), pattern, zone); ok {
-				rule.Names = append(rule.Names, canonical)
-			}
-		}
-
-		for j, name := range r.Types {
-			upper := strings.ToUpper(name)
-			if _, ok := dns.StringToType[upper]; !ok {
-				v.errorf(fmt.Sprintf("%s.types[%d]", rulePath, j), "unknown record type %q", name)
-				continue
-			}
-			rule.Types = append(rule.Types, upper)
-		}
+		v.ruleBounds(rulePath, r, &rule)
 		rules = append(rules, rule)
 	}
 	return rules
+}
+
+// namesAndTypes validates the names, the types and the content of a rule.
+func (v *validator) namesAndTypes(path string, r *fileRule, zone string, rule *Rule) {
+	if len(r.Names) == 0 {
+		v.errorf(path+".names", "missing names, or acme for the challenges of ACME certificates")
+	}
+	for j, pattern := range r.Names {
+		if canonical, ok := v.namePattern(fmt.Sprintf("%s.names[%d]", path, j), pattern, zone); ok {
+			rule.Names = append(rule.Names, canonical)
+		}
+	}
+
+	for j, name := range r.Types {
+		upper := strings.ToUpper(name)
+		if _, ok := dns.StringToType[upper]; !ok {
+			v.errorf(fmt.Sprintf("%s.types[%d]", path, j), "unknown record type %q", name)
+			continue
+		}
+		rule.Types = append(rule.Types, upper)
+	}
+
+	switch Content(r.Content) {
+	case AnyContent:
+	case ACMEContent:
+		rule.Content = ACMEContent
+		if len(r.Types) == 0 {
+			rule.Types = []string{txtType}
+		} else if !slices.Equal(rule.Types, []string{txtType}) {
+			v.errorf(path+".types", "content acme only fits TXT records")
+		}
+	default:
+		v.errorf(path+".content", "unknown content %q (expected acme)", r.Content)
+	}
+}
+
+// acmeRule turns the certificate names of an acme rule into the names of
+// their DNS-01 challenges (RFC 8555 8.4): _acme-challenge.example.com. for
+// example.com. and for its wildcard *.example.com., and
+// _acme-challenge.**.example.com. for every name below example.com. The rule
+// allows the values of the challenges, and nothing else.
+func (v *validator) acmeRule(path string, r *fileRule, zone string, rule *Rule) {
+	if len(r.Names) > 0 || len(r.Types) > 0 || r.Content != "" {
+		v.errorf(path, "acme sets the names, the types and the content of the rule: remove names, types and content")
+	}
+	rule.Types, rule.Content = []string{txtType}, ACMEContent
+	for j, certificate := range r.ACME {
+		entryPath := fmt.Sprintf("%s.acme[%d]", path, j)
+		domain := strings.TrimPrefix(canonicalName(certificate), "*.")
+		if certificate == "" || strings.Contains(strings.TrimPrefix(domain, "**."), "*") {
+			v.errorf(entryPath, "invalid certificate name %q: expected a domain name, its wildcard *.domain, "+
+				"or **.domain for every name below the domain", certificate)
+			continue
+		}
+		challenge, ok := v.namePattern(entryPath, "_acme-challenge."+domain, zone)
+		if ok && !slices.Contains(rule.Names, challenge) {
+			rule.Names = append(rule.Names, challenge)
+		}
+	}
+}
+
+// ruleBounds validates the bounds of a rule on the records that an update
+// adds: their TTL and their number. ACME rules have bounds by default.
+func (v *validator) ruleBounds(path string, r *fileRule, rule *Rule) {
+	acme := len(r.ACME) > 0
+	switch {
+	case r.MaxTTL != nil && (*r.MaxTTL < 1 || *r.MaxTTL > maxTTL):
+		v.errorf(path+".maxTTL", "%d is out of range [1, %d]", *r.MaxTTL, maxTTL)
+	case r.MaxTTL != nil:
+		rule.MaxTTL = uint32(*r.MaxTTL) //nolint:gosec // G115: within [1, maxTTL], checked above
+	case acme:
+		rule.MaxTTL = defaultACMEMaxTTL
+	}
+	switch {
+	case r.MaxRecords != nil && *r.MaxRecords < 1:
+		v.errorf(path+".maxRecords", "%d is below 1", *r.MaxRecords)
+	case r.MaxRecords != nil:
+		rule.MaxRecords = *r.MaxRecords
+	case acme:
+		rule.MaxRecords = defaultACMEMaxRecords
+	}
 }
 
 // namePattern validates a policy name pattern, which must lie inside the zone.

@@ -277,7 +277,7 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		out.reject(err)
 		return
 	}
-	if reason := authorize(z.Policy, ex.identity, req); reason != "" {
+	if reason := z.Policy.Authorize(ex.identity, req.Class, req.Prerequisites, req.Updates); reason != "" {
 		out.refuse(reason)
 		return
 	}
@@ -346,29 +346,6 @@ func (s *Server) admit(identity, zoneName string, class uint16) (z *servedZone, 
 	default:
 		return z, dns.RcodeSuccess, ""
 	}
-}
-
-// authorize returns why the policy refuses a request, or "".
-func authorize(policy *auth.Policy, identity string, req *update.Request) string {
-	for _, rr := range req.Updates {
-		h := rr.Header()
-		name := dns.CanonicalName(h.Name)
-		allowed := policy.AllowsUpdate(identity, name, h.Rrtype)
-		if h.Rrtype == dns.TypeSOA && h.Class != req.Class {
-			// The engine ignores the deletion of the SOA, which needs no
-			// right on the SOA itself.
-			allowed = policy.AllowsName(identity, name)
-		}
-		if !allowed {
-			return "the policy does not allow update " + update.Describe(rr)
-		}
-	}
-	for _, rr := range req.Prerequisites {
-		if !policy.AllowsName(identity, dns.CanonicalName(rr.Header().Name)) {
-			return "the policy does not allow prerequisite " + update.Describe(rr)
-		}
-	}
-	return ""
 }
 
 // query answers the SOA queries that clients send to find the zone of a

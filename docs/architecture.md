@@ -37,9 +37,10 @@ with depguard rules.
 4. **Structure**: the prerequisite section and the prescan of the update
    section (RFC 2136 3.2, 3.4.1): FORMERR or NOTZONE, or REFUSED beyond 256
    records.
-5. **Policy**: every record of the update section must be allowed, and every
-   name of the prerequisite section updatable by the key, or REFUSED. The
-   update of a zone on an `rfc2136` backend then goes to its relay, which
+5. **Policy**: every record of the update section must be allowed, those
+   that it adds within the bounds of their rule (TTL, content, number), and
+   every name of the prerequisite section updatable by the key, or REFUSED.
+   The update of a zone on an `rfc2136` backend then goes to its relay, which
    returns the answer of the name server: the steps below are the job of that
    server, see [RFC 2136 servers](rfc2136.md).
 6. **Lock** of the zone, which honours the deadline of the request: the

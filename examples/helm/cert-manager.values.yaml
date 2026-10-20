@@ -28,8 +28,7 @@ config:
     - name: example.com.
       policy:
         - key: cert-manager.
-          names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
-          types: [TXT]
+          acme: ["example.com.", "**.example.com."]
 
 secret:
   existingSecret: tsigoat-secrets

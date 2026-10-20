@@ -39,8 +39,10 @@ To move a client off a legacy algorithm:
 
 ## Policy
 
-- Give each client its own key, restricted to the records it manages: the
-  ACME challenges for an ACME client.
+- Give each client its own key, restricted to the records it manages: an
+  `acme` rule for an ACME client, which then writes the values of the
+  challenges of its certificates alone, with a short TTL, and cannot touch the
+  other TXT records, such as SPF, DKIM or DMARC.
 - Keep `keys`, which grants a whole zone, for the clients that need it.
 - The SOA can only change through a rule that names it.
 - A request is refused as a whole when one of its records breaks the policy,

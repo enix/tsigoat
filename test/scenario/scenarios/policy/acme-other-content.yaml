@@ -1,0 +1,14 @@
+description: >-
+  An acme rule only allows the values of ACME challenges: one base64url
+  SHA-256 digest per TXT record.
+refs: ["RFC 8555 8.4", "RFC 2136 3.3"]
+zone:
+  policy:
+    - key: e2e-sha512
+      acme: ["@"]
+requests:
+  - key: e2e-sha512
+    updates:
+      - add _acme-challenge 60 IN TXT "v=spf1 -all"
+expect:
+  rcode: REFUSED

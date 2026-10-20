@@ -176,11 +176,9 @@ config:
     - name: secure.test.
       policy:
         - key: sha256.
-          names: ["_acme-challenge.secure.test.", "_acme-challenge.**.secure.test."]
-          types: [TXT]
+          acme: [secure.test., "*.secure.test."]
         - key: md5.
-          names: ["_acme-challenge.**.secure.test."]
-          types: [TXT]
+          acme: [md5.secure.test.]
     - name: open.test.
       allowUnauthenticated: true
 secret:

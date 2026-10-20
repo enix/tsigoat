@@ -1,4 +1,4 @@
-description: An ACME client publishes a DNS-01 token, then removes it, as cert-manager does.
+description: An ACME client publishes the value of a DNS-01 challenge, then removes it, as cert-manager does.
 refs: ["RFC 8555 8.4"]
 requests:
   - updates:

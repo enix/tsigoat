@@ -1,0 +1,12 @@
+description: An acme rule does not allow the challenges of the names it does not list.
+refs: ["RFC 2136 3.3"]
+zone:
+  policy:
+    - key: e2e-sha512
+      acme: ["*.www"]
+requests:
+  - key: e2e-sha512
+    updates:
+      - add _acme-challenge.api 60 IN TXT "pwv1DlMc4agXVh8vXVtmRdToBr7PWMzF6M9rgEWgkKg"
+expect:
+  rcode: REFUSED

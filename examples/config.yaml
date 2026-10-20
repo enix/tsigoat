@@ -69,17 +69,25 @@ zones:
     backend: pdns
     # Keys allowed to update every record of the zone, but the SOA.
     keys: [admin.]
-    # Narrower rights. In name patterns, "*" stands for one label and "**"
+    # Narrower rights. An acme rule lists the certificates whose DNS-01
+    # challenges a key may answer: example.com. and its wildcard
+    # *.example.com. share _acme-challenge.example.com., and **.example.com.
+    # stands for every name below. The key may then write the values of the
+    # challenges alone, with a TTL of 300 seconds at most and 10 values per
+    # update; maxTTL and maxRecords change these bounds.
+    #
+    # Other rules list name patterns, where "*" stands for one label and "**"
     # for one or more. Types restrict the record types, every type but SOA
     # when absent; ANY allows deleting every record of a name, and SOA must
-    # be listed to allow SOA updates.
+    # be listed to allow SOA updates. maxTTL, maxRecords and content: acme
+    # constrain the records that an update adds.
     policy:
       - key: cert-manager.
-        names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
-        types: [TXT]
+        acme: ["example.com.", "*.example.com.", "**.example.com."]
       - key: legacy-dhcp.
         names: ["*.dhcp.example.com."]
         types: [A, AAAA, ANY]
+        maxTTL: 3600
 
   # A zone open to unsigned updates from anyone who can reach tsigoat. It
   # draws a warning: prefer keys.
@@ -92,5 +100,4 @@ zones:
     backend: bind
     policy:
       - key: cert-manager.
-        names: ["_acme-challenge.example.net.", "_acme-challenge.**.example.net."]
-        types: [TXT]
+        acme: ["example.net.", "**.example.net."]

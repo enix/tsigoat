@@ -65,9 +65,13 @@ type (
 		RFC2136  *rfc2136Entry  `yaml:"rfc2136,omitempty"`
 	}
 	ruleEntry struct {
-		Key   string   `yaml:"key"`
-		Names []string `yaml:"names"`
-		Types []string `yaml:"types,omitempty"`
+		Key        string   `yaml:"key"`
+		Names      []string `yaml:"names,omitempty"`
+		Types      []string `yaml:"types,omitempty"`
+		ACME       []string `yaml:"acme,omitempty"`
+		MaxTTL     int      `yaml:"maxTTL,omitempty"`
+		Content    string   `yaml:"content,omitempty"`
+		MaxRecords int      `yaml:"maxRecords,omitempty"`
 	}
 	zoneEntry struct {
 		Name                 string      `yaml:"name"`
@@ -104,9 +108,15 @@ func Config(scenarios []Scenario, parent string, b Backend) ([]byte, error) {
 			z.Keys = append(z.Keys, configName(id))
 		}
 		for _, r := range s.Zone.Policy {
-			compiled := ruleEntry{Key: configName(r.Key), Types: r.Types}
+			compiled := ruleEntry{
+				Key: configName(r.Key), Types: r.Types,
+				MaxTTL: r.MaxTTL, Content: r.Content, MaxRecords: r.MaxRecords,
+			}
 			for _, pattern := range r.Names {
 				compiled.Names = append(compiled.Names, absolute(pattern, name))
+			}
+			for _, certificate := range r.ACME {
+				compiled.ACME = append(compiled.ACME, absolute(certificate, name))
 			}
 			z.Policy = append(z.Policy, compiled)
 		}

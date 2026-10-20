@@ -1,0 +1,2 @@
+# Substrings the error must contain, anchored on the configuration path.
+zones[0].policy[0].maxTTL: 0 is out of range [1, 2147483647]

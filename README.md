@@ -34,8 +34,9 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
   that opt into them. Responses are signed; signature failures get the BADKEY,
   BADSIG and BADTIME errors of RFC 8945.
 - **Policy per zone**: keys that may update the whole zone, and rules that
-  restrict other keys to some names and record types, such as the
-  `_acme-challenge` TXT records.
+  restrict other keys to some names and record types, with bounds on the TTL
+  and the number of the records. An `acme` rule lets a key write the values of
+  the DNS-01 challenges of its certificates, and nothing else.
 - **Relay to RFC 2136 servers**: in front of BIND or another name server,
   tsigoat checks the keys and the policy, then relays the updates signed with
   its own key, and the server applies them.
@@ -68,8 +69,7 @@ zones:
   - name: example.com.
     policy:
       - key: cert-manager.
-        names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
-        types: [TXT]
+        acme: ["example.com.", "**.example.com."]
 ```
 
 Check it, then serve it, here on port 5353 over UDP and TCP:

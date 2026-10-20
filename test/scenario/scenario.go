@@ -74,6 +74,14 @@ type Rule struct {
 	Names []string `yaml:"names"`
 	// Types are record types; every type but SOA when empty.
 	Types []string `yaml:"types"`
+	// ACME lists certificate names relative to the zone, whose DNS-01
+	// challenges the key may answer, in place of names and types.
+	ACME []string `yaml:"acme"`
+	// MaxTTL, Content and MaxRecords constrain the records that an update
+	// adds, as in the configuration of tsigoat.
+	MaxTTL     int    `yaml:"maxTTL"`
+	Content    string `yaml:"content"`
+	MaxRecords int    `yaml:"maxRecords"`
 }
 
 // Expect is the expected outcome of a scenario.
@@ -179,7 +187,7 @@ func (z *Zone) validate() []error {
 		if _, ok := KeyByID(rule.Key); !ok {
 			errs = append(errs, fmt.Errorf("policy rule %d: unknown key %q", i, rule.Key))
 		}
-		if len(rule.Names) == 0 {
+		if len(rule.Names) == 0 && len(rule.ACME) == 0 {
 			errs = append(errs, fmt.Errorf("policy rule %d: no name", i))
 		}
 	}

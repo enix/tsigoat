@@ -68,8 +68,8 @@ Every update ends with one entry, `msg=update`:
 | `rcode` | Response code |
 | `reason` | Why the update was rejected, for REFUSED, FORMERR, NOTZONE and failed prerequisites |
 | `error` | Why it failed, for SERVFAIL |
-| `changes` | RRset changes applied, such as `replace _acme-challenge.www.example.com. TXT 60 ["token"]` |
-| `updates` | Updates relayed to an `rfc2136` backend, as requested, such as `add _acme-challenge.www.example.com. 60 TXT "token"` |
+| `changes` | RRset changes applied, such as `replace _acme-challenge.www.example.com. TXT 60 ["challenge-value"]` |
+| `updates` | Updates relayed to an `rfc2136` backend, as requested, such as `add _acme-challenge.www.example.com. 60 TXT "challenge-value"` |
 | `duration` | Time to process the update |
 
 The level tells the outcome: `INFO` for applied updates and failed

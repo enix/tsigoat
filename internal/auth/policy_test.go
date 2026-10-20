@@ -191,3 +191,136 @@ func TestNewPolicyUnknownType(t *testing.T) {
 		t.Error("NewPolicy() accepted an unknown type")
 	}
 }
+
+// Values of ACME DNS-01 challenges: base64url SHA-256 digests.
+const (
+	valueA = "pwv1DlMc4agXVh8vXVtmRdToBr7PWMzF6M9rgEWgkKg" // gitleaks:allow (fixture)
+	valueB = "SeK7fqtUzwm0Cf-v0_qKipVaYOuXL6rK777T29MgcTI" // gitleaks:allow (fixture)
+)
+
+func mustRRs(t *testing.T, texts ...string) []dns.RR {
+	t.Helper()
+	rrs := make([]dns.RR, 0, len(texts))
+	for _, text := range texts {
+		rr, err := dns.NewRR(text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rrs = append(rrs, rr)
+	}
+	return rrs
+}
+
+// deletion returns a record without RDATA, as updates delete RRsets.
+func deletion(name string, rrtype uint16) dns.RR {
+	return &dns.ANY{Hdr: dns.RR_Header{Name: name, Rrtype: rrtype, Class: dns.ClassANY}}
+}
+
+func TestAuthorize(t *testing.T) {
+	t.Parallel()
+
+	policy, err := NewPolicy(&config.Zone{
+		Name: "example.test.",
+		Keys: []string{"admin."},
+		Policy: []config.Rule{
+			// What an acme rule for example.test. and **.example.test. becomes.
+			{
+				Key: "acme.", Names: []string{"_acme-challenge.example.test.", "_acme-challenge.**.example.test."},
+				Types: []string{"TXT"}, Content: config.ACMEContent, MaxTTL: 300, MaxRecords: 2,
+			},
+			{Key: "dhcp.", Names: []string{"*.dhcp.example.test."}, Types: []string{"A", "TXT"}, MaxTTL: 3600},
+			// A second rule of the same key, without constraints.
+			{Key: "dhcp.", Names: []string{"*.dhcp.example.test."}, Types: []string{"TXT"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name                   string
+		identity               string
+		prerequisites, updates []dns.RR
+		// want is a part of the refusal; "" when the policy allows the
+		// request.
+		want string
+	}{
+		{"challenge value", "acme.", nil, mustRRs(t, `_acme-challenge.www.example.test. 60 IN TXT "`+valueA+`"`), ""},
+		{"two values", "acme.", nil, mustRRs(t,
+			`_acme-challenge.example.test. 60 IN TXT "`+valueA+`"`,
+			`_acme-challenge.example.test. 60 IN TXT "`+valueB+`"`), ""},
+		{
+			"three values", "acme.", nil, mustRRs(t,
+				`_acme-challenge.example.test. 60 IN TXT "`+valueA+`"`,
+				`_acme-challenge.example.test. 60 IN TXT "`+valueB+`"`,
+				`_acme-challenge.www.example.test. 60 IN TXT "`+valueA+`"`),
+			"the update adds 3 records under a rule of key acme., more than the 2 that it allows",
+		},
+		{
+			"other content", "acme.", nil, mustRRs(t, `_acme-challenge.example.test. 60 IN TXT "v=spf1 -all"`),
+			"update _acme-challenge.example.test. IN TXT: not the value of an ACME challenge",
+		},
+		{
+			"TTL", "acme.", nil, mustRRs(t, `_acme-challenge.example.test. 3600 IN TXT "`+valueA+`"`),
+			"update _acme-challenge.example.test. IN TXT: TTL 3600 is above 300",
+		},
+		{
+			"other name", "acme.", nil, mustRRs(t, `www.example.test. 60 IN TXT "`+valueA+`"`),
+			"the policy does not allow update www.example.test. IN TXT",
+		},
+		{"deletion of the RRset", "acme.", nil, []dns.RR{deletion("_acme-challenge.www.example.test.", dns.TypeTXT)}, ""},
+		{"deletion of any content", "acme.", nil, mustRRs(t, `_acme-challenge.www.example.test. 0 NONE TXT "stale"`), ""},
+		{
+			"deletion of the name", "acme.", nil,
+			[]dns.RR{deletion("_acme-challenge.www.example.test.", dns.TypeANY)},
+			"the policy does not allow update _acme-challenge.www.example.test. CLASS255 ANY",
+		},
+		{"TTL of a rule, no content", "dhcp.", nil, mustRRs(t, "host.dhcp.example.test. 600 IN A 192.0.2.1"), ""},
+		{
+			"TTL above the rule", "dhcp.", nil, mustRRs(t, "host.dhcp.example.test. 7200 IN A 192.0.2.1"),
+			"TTL 7200 is above 3600",
+		},
+		{"second rule", "dhcp.", nil, mustRRs(t, `host.dhcp.example.test. 7200 IN TXT "any"`), ""},
+		{"zone key", "admin.", nil, mustRRs(t, `www.example.test. 86400 IN TXT "anything"`), ""},
+		{
+			"prerequisite", "acme.",
+			[]dns.RR{deletion("www.example.test.", dns.TypeA)},
+			nil,
+			"the policy does not allow prerequisite www.example.test.",
+		},
+	}
+	for _, tt := range tests {
+		got := policy.Authorize(tt.identity, dns.ClassINET, tt.prerequisites, tt.updates)
+		switch {
+		case tt.want == "" && got != "":
+			t.Errorf("%s: Authorize() = %q, want the request allowed", tt.name, got)
+		case tt.want != "" && !strings.Contains(got, tt.want):
+			t.Errorf("%s: Authorize() = %q, want a refusal about %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestIsACMEChallengeValue(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		rr   string
+		want bool
+	}{
+		{`a. 60 IN TXT "` + valueA + `"`, true},
+		{`a. 60 IN TXT "` + valueA + `="`, false},
+		{`a. 60 IN TXT "` + valueA[:42] + `"`, false},
+		{`a. 60 IN TXT "` + valueA + `A"`, false},
+		{`a. 60 IN TXT "+` + valueA[1:] + `"`, false},
+		// The last character carries two bits of padding, which must be zero.
+		{`a. 60 IN TXT "` + valueA[:42] + `l"`, false},
+		{`a. 60 IN TXT "` + valueA + `" "` + valueB + `"`, false},
+		{`a. 60 IN TXT "` + valueA[:20] + `" "` + valueA[20:] + `"`, false},
+		{`a. 60 IN SPF "` + valueA + `"`, false},
+	}
+	for _, tt := range tests {
+		if got := isACMEChallengeValue(mustRRs(t, tt.rr)[0]); got != tt.want {
+			t.Errorf("isACMEChallengeValue(%s) = %v, want %v", tt.rr, got, tt.want)
+		}
+	}
+}
