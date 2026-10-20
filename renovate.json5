@@ -66,6 +66,16 @@
       datasourceTemplate: "go",
     },
     {
+      // The cert-manager chart of the acceptance test.
+      customType: "regex",
+      managerFilePatterns: ["/^dagger/base\\.go$/"],
+      matchStrings: [
+        "certManagerChart\\s*=\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "quay.io/jetstack/charts/cert-manager",
+      datasourceTemplate: "docker",
+    },
+    {
       // dagger.json is the single source of truth for the Dagger version.
       customType: "regex",
       managerFilePatterns: ["/^dagger\\.json$/"],
