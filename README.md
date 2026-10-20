@@ -204,7 +204,9 @@ set that metadata on the other zones.
 An update becomes a single PATCH request, which PowerDNS applies in one
 transaction. tsigoat reads the records of PowerDNS-specific types, such as
 ALIAS and LUA, but never writes them. Disabled records are invisible to
-tsigoat, and an update that rewrites their RRset drops them.
+clients, as PowerDNS does not serve them, and an update that rewrites their
+RRset keeps them, with PowerDNS 5.0: version 4.9 leaves them out of the
+lookups of a name, so that such an update drops them there.
 
 ## Monitoring
 

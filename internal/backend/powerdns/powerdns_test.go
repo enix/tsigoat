@@ -257,6 +257,78 @@ func TestApply(t *testing.T) {
 	}
 }
 
+func TestApplyKeepsDisabledRecords(t *testing.T) {
+	t.Parallel()
+
+	a := func(addresses ...string) backend.Change {
+		set := backend.RRset{Name: "www.example.test.", Type: dns.TypeA, TTL: 300}
+		for _, address := range addresses {
+			rr, err := dns.NewRR("www.example.test. 300 IN A " + address)
+			if err != nil {
+				t.Fatal(err)
+			}
+			set.Records = append(set.Records, rr)
+		}
+		return backend.Change{Op: backend.Replace, RRset: set}
+	}
+
+	tests := []struct {
+		name   string
+		change backend.Change
+		want   string
+	}{
+		{
+			name:   "kept beside a new record",
+			change: a("192.0.2.1", "192.0.2.5"),
+			want: `"records":[{"content":"192.0.2.1","disabled":false},{"content":"192.0.2.5","disabled":false},` +
+				`{"content":"192.0.2.9","disabled":true}]`,
+		},
+		{
+			name:   "enabled again by the update",
+			change: a("192.0.2.9"),
+			want:   `"records":[{"content":"192.0.2.9","disabled":false}]`,
+		},
+		{
+			name:   "gone with the RRset",
+			change: backend.Change{Op: backend.Delete, RRset: backend.RRset{Name: "www.example.test.", Type: dns.TypeA}},
+			want:   `"changetype":"DELETE","records":null`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			api, server := newFakeAPI(t)
+			b := newBackend(t, server.URL)
+			if _, err := b.Lookup(t.Context(), "example.test.", "www.example.test."); err != nil {
+				t.Fatal(err)
+			}
+			if err := b.Apply(t.Context(), "example.test.", []backend.Change{tt.change}); err != nil {
+				t.Fatal(err)
+			}
+			if len(api.patches) != 1 || !strings.Contains(api.patches[0], tt.want) {
+				t.Errorf("PATCH body %q, want %s", api.patches, tt.want)
+			}
+		})
+	}
+
+	// A lookup that finds no disabled record forgets the former ones.
+	api, server := newFakeAPI(t)
+	b := newBackend(t, server.URL)
+	if _, err := b.Lookup(t.Context(), "example.test.", "www.example.test."); err != nil {
+		t.Fatal(err)
+	}
+	api.zones["example.test."][3].Records = []record{{Content: "192.0.2.1"}}
+	if _, err := b.Lookup(t.Context(), "example.test.", "www.example.test."); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Apply(t.Context(), "example.test.", []backend.Change{a("192.0.2.1", "192.0.2.5")}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(api.patches[0], "192.0.2.9") {
+		t.Errorf("a disabled record that is gone came back: %s", api.patches[0])
+	}
+}
+
 func TestApplyReformats(t *testing.T) {
 	t.Parallel()
 

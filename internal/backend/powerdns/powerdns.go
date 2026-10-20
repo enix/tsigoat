@@ -19,7 +19,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/miekg/dns"
@@ -55,6 +57,14 @@ type Backend struct {
 	apiKey  string
 	timeout time.Duration
 	client  *http.Client
+
+	// disabled holds the disabled records that the last lookup of a name
+	// found, by zone and name, then by type. PowerDNS replaces whole RRsets,
+	// and tsigoat does not see disabled records: Apply puts them back into
+	// the RRsets it replaces. Only the RRsets with disabled records have an
+	// entry.
+	disabledMu sync.Mutex
+	disabled   map[string]map[string][]record
 }
 
 var _ backend.Backend = (*Backend)(nil)
@@ -101,9 +111,10 @@ func New(options *Options) (*Backend, error) {
 	}
 
 	return &Backend{
-		server:  base.String() + "/api/v1/servers/" + url.PathEscape(serverID),
-		apiKey:  options.APIKey,
-		timeout: timeout,
+		server:   base.String() + "/api/v1/servers/" + url.PathEscape(serverID),
+		apiKey:   options.APIKey,
+		timeout:  timeout,
+		disabled: map[string]map[string][]record{},
 		client: &http.Client{
 			Transport: transport,
 			// A redirect turns a PATCH into a GET, which would succeed without
@@ -160,6 +171,7 @@ func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRse
 	}
 
 	var sets []backend.RRset
+	disabled := map[string][]record{}
 	for i := range content.RRsets {
 		set := &content.RRsets[i]
 		// Versions that ignore rrset_name return the whole zone.
@@ -173,8 +185,42 @@ func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRse
 		if len(converted.Records) > 0 {
 			sets = append(sets, converted)
 		}
+		for _, r := range set.Records {
+			if r.Disabled {
+				disabled[typeName(converted.Type)] = append(disabled[typeName(converted.Type)], r)
+			}
+		}
 	}
+	b.keepDisabled(zone, name, disabled)
 	return sets, nil
+}
+
+// keepDisabled records the disabled records of a name.
+func (b *Backend) keepDisabled(zone, name string, disabled map[string][]record) {
+	key := dns.CanonicalName(zone) + " " + name
+	b.disabledMu.Lock()
+	defer b.disabledMu.Unlock()
+	if len(disabled) == 0 {
+		delete(b.disabled, key)
+		return
+	}
+	b.disabled[key] = disabled
+}
+
+// withDisabled adds to an RRset to replace the disabled records that the last
+// lookup of its name found, but those that the RRset enables again.
+func (b *Backend) withDisabled(zone string, set *rrset) {
+	b.disabledMu.Lock()
+	kept := b.disabled[dns.CanonicalName(zone)+" "+set.Name][set.Type]
+	b.disabledMu.Unlock()
+	for _, candidate := range kept {
+		enabled := slices.ContainsFunc(set.Records, func(r record) bool {
+			return !r.Disabled && sameContent(set.Name, set.Type, r.Content, candidate.Content)
+		})
+		if !enabled {
+			set.Records = append(set.Records, candidate)
+		}
+	}
 }
 
 // Apply implements backend.Backend with a single PATCH request.
@@ -194,6 +240,9 @@ func (b *Backend) Apply(ctx context.Context, zone string, changes []backend.Chan
 		set, err := toAPI(change)
 		if err != nil {
 			return fmt.Errorf("%s: %w", change, err)
+		}
+		if change.Op == backend.Replace {
+			b.withDisabled(zone, &set)
 		}
 		body.RRsets = append(body.RRsets, set)
 		records += len(set.Records)
