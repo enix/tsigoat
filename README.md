@@ -38,47 +38,23 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
 
 ## Getting started
 
-Write a configuration (see [Configuration](#configuration)), check it, and
-run tsigoat:
+Make a TSIG secret, and write a configuration that lets one key write the ACME
+challenges of a zone held by PowerDNS:
 
 ```sh
-tsigoat check-config --config config.yaml
-tsigoat serve --config config.yaml
+openssl rand -base64 32 > cert-manager.key
 ```
-
-The container images run `serve` with `/etc/tsigoat/config.yaml`, listen on
-port 5353 over UDP and TCP, and serve the administration endpoints on 9153 when
-the configuration enables them:
-
-```sh
-docker run --rm -p 53:5353/udp -p 53:5353/tcp \
-  -v "$PWD/config.yaml:/etc/tsigoat/config.yaml:ro" ghcr.io/enix/tsigoat
-```
-
-[examples/kubernetes](examples/kubernetes) deploys tsigoat for cert-manager.
-
-TSIG secrets are random bytes, base64-encoded:
-
-```sh
-openssl rand -base64 32
-tsig-keygen -a hmac-sha256 cert-manager.   # the same, as a BIND key block
-```
-
-## Configuration
-
-[examples/config.yaml](examples/config.yaml) shows every setting, with
-comments. A minimal configuration for cert-manager:
 
 ```yaml
 keys:
   - name: cert-manager.
-    secretFile: /run/secrets/tsigoat/cert-manager
+    secretFile: cert-manager.key
 backends:
   - name: pdns
     type: powerdns
     powerdns:
       url: http://pdns:8081
-      apiKeyFile: /run/secrets/tsigoat/powerdns-api-key
+      apiKeyEnv: PDNS_API_KEY
 zones:
   - name: example.com.
     policy:
@@ -87,174 +63,28 @@ zones:
         types: [TXT]
 ```
 
-| Setting | Meaning |
-| --- | --- |
-| `listen` | DNS addresses, for UDP and TCP; `["[::]:5353"]` by default |
-| `admin.listen` | Address of the administration HTTP server; disabled by default |
-| `keys[].name` | Key name, as clients send it; a trailing dot is implied |
-| `keys[].algorithm` | `hmac-sha256` (default), `hmac-sha224`, `hmac-sha384`, `hmac-sha512`, or the legacy `hmac-sha1` and `hmac-md5` |
-| `keys[].secret`, `secretFile`, `secretEnv` | The base64 secret, inline, in a file, or in an environment variable: exactly one |
-| `backends[].type` | `powerdns` |
-| `backends[].powerdns.url` | Base URL of the PowerDNS HTTP API |
-| `backends[].powerdns.serverId` | Server of the API; `localhost` by default |
-| `backends[].powerdns.apiKey`, `apiKeyFile`, `apiKeyEnv` | The API key: exactly one |
-| `backends[].powerdns.timeout` | Timeout of every API call; `5s` by default |
-| `backends[].powerdns.caFile` | PEM bundle trusted for the API, on top of the system roots |
-| `zones[].name` | The zone, which must exist in its backend |
-| `zones[].backend` | Backend of the zone; optional with a single backend |
-| `zones[].keys` | Keys allowed to update every record of the zone but the SOA |
-| `zones[].policy[]` | Rules: a `key`, name patterns in `names`, record `types` |
-| `zones[].allowUnauthenticated` | Accept unsigned updates from anyone; draws a warning |
-
-Policy rules match names with patterns where `*` stands for exactly one label
-and `**` for one or more: `_acme-challenge.**.example.com.` matches
-`_acme-challenge.www.example.com.` but not `_acme-challenge.example.com.`.
-Without `types`, a rule allows every type but SOA; `ANY` allows deleting every
-record of a name, and SOA updates need a rule that lists `SOA`, since the
-backend maintains the serial. A request is refused as a whole when one of its
-records breaks the policy, and its prerequisites may only test names that the
-key may update.
-
-The configuration is strict: unknown settings are errors, and every error
-names its place, such as `zones[0].policy[1].names[0]`.
-
-## Command line
-
-| Command | Purpose |
-| --- | --- |
-| `tsigoat serve` | Serve DNS updates until SIGINT or SIGTERM, then finish the updates in progress |
-| `tsigoat check-config` | Validate the configuration and print its warnings; `--backends` also reads every zone through its backend; exit code 1 when a check fails |
-| `tsigoat version` | Print the version; `--short` for the number only |
-
-`serve` and `check-config` read `--config`, `/etc/tsigoat/config.yaml` by
-default. `serve` also takes `--listen` (repeatable) and `--admin-listen`,
-which replace the addresses of the configuration, `--log-format` (`text` or
-`json`), `--log-level` (`debug`, `info`, `warn` or `error`), and
-`--auto-gomemlimit`, on by default, which sets the Go memory limit from the
-cgroup.
-
-## Clients
-
-Clients send their updates to tsigoat, and check the propagation of their
-records on the public DNS, as usual.
-
-### cert-manager
-
-```yaml
-solvers:
-  - dns01:
-      rfc2136:
-        nameserver: tsigoat.tsigoat.svc.cluster.local:53
-        tsigKeyName: cert-manager.
-        tsigAlgorithm: HMACSHA256
-        tsigSecretSecretRef:
-          name: tsigoat-tsig-key
-          key: secret
-```
-
-Set `tsigAlgorithm`: cert-manager defaults to `HMACMD5`, which tsigoat only
-accepts on a key declared with `algorithm: hmac-md5`.
-[examples/kubernetes/cert-manager-issuer.yaml](examples/kubernetes/cert-manager-issuer.yaml)
-holds a complete ClusterIssuer.
-
-### lego and Traefik
+Check it, then serve it, here on port 5353 over UDP and TCP:
 
 ```sh
-RFC2136_NAMESERVER=tsigoat.example.com:53 \
-RFC2136_TSIG_KEY=lego. \
-RFC2136_TSIG_ALGORITHM=hmac-sha256. \
-RFC2136_TSIG_SECRET=... \
-lego --dns rfc2136 --domains www.example.com --email admin@example.com run
+tsigoat check-config --config config.yaml --backends
+tsigoat serve --config config.yaml
 ```
 
-lego, and Traefik which builds on it, default to `hmac-sha1.`: set
-`RFC2136_TSIG_ALGORITHM`.
+The container images run `serve` with `/etc/tsigoat/config.yaml`, and
+[examples/kubernetes](examples/kubernetes) deploys tsigoat for cert-manager.
 
-### certbot
+## Documentation
 
-```ini
-# certbot certonly --dns-rfc2136 --dns-rfc2136-credentials tsigoat.ini
-dns_rfc2136_server = 192.0.2.53
-dns_rfc2136_port = 53
-dns_rfc2136_name = certbot.
-dns_rfc2136_secret = ...
-dns_rfc2136_algorithm = HMAC-SHA256
-```
-
-The server must be an IP address.
-
-### nsupdate
-
-```sh
-nsupdate -y "hmac-sha256:admin.:$SECRET" <<EOF
-server tsigoat.example.com 53
-update add www.example.com. 300 A 192.0.2.1
-send
-EOF
-```
-
-## PowerDNS
-
-tsigoat is tested with PowerDNS Authoritative 4.9 and 5.0. It needs the HTTP
-API (`api=yes`, `api-key`, and the webserver reachable from tsigoat), and the
-zones must exist. tsigoat leaves the SOA serial to PowerDNS: the zones created
-through the API bump it on every change (`SOA-EDIT-API` set to `DEFAULT`);
-set that metadata on the other zones.
-
-An update becomes a single PATCH request, which PowerDNS applies in one
-transaction. tsigoat reads the records of PowerDNS-specific types, such as
-ALIAS and LUA, but never writes them. Disabled records are invisible to
-clients, as PowerDNS does not serve them, and an update that rewrites their
-RRset keeps them, with PowerDNS 5.0: version 4.9 leaves them out of the
-lookups of a name, so that such an update drops them there.
-
-## Monitoring
-
-With `admin.listen` set, tsigoat serves `/healthz`, `/readyz` (200 while it
-serves DNS, 503 once it shuts down) and `/metrics`:
-
-| Metric | Labels |
+| Document | For |
 | --- | --- |
-| `tsigoat_dns_responses_total` | `opcode`, `rcode`, `zone`, `key`, `algorithm` |
-| `tsigoat_dns_response_duration_seconds` | `opcode` |
-| `tsigoat_tsig_failures_total` | `error`: BADKEY, BADSIG or BADTIME |
-| `tsigoat_backend_calls_total` | `backend`, `operation` (lookup or apply), `result` |
-| `tsigoat_backend_call_duration_seconds` | `backend`, `operation` |
-| `tsigoat_build_info` | `version`, `revision`, `goversion` |
+| [Configuration](docs/configuration.md) | Every setting of the configuration file, and the update policy |
+| [Clients](docs/clients.md) | Setting up cert-manager, lego and Traefik, certbot and nsupdate |
+| [PowerDNS](docs/powerdns.md) | What tsigoat needs from PowerDNS, and how it writes to it |
+| [Operations](docs/operations.md) | Command line, images, Kubernetes, logs, metrics and alerts |
+| [Security](docs/security.md) | What tsigoat protects, its limits, and how to harden a deployment |
+| [Architecture](docs/architecture.md) | How a request flows through tsigoat, and how it is tested |
 
-The `zone` and `key` labels only take configured names, empty otherwise, so
-that clients cannot grow the series. `algorithm` tracks the remaining use of
-HMAC-MD5 and HMAC-SHA1.
-[examples/kubernetes/prometheus-rules.yaml](examples/kubernetes/prometheus-rules.yaml)
-alerts on backend errors, failing updates, TSIG failures and legacy
-algorithms.
-
-Every update ends with one log entry, `msg=update`, with the key, the zone,
-the rcode, the reason of a rejection or the error of a failure, and the
-changes applied.
-
-## Security
-
-- TSIG authenticates the requests; it does not encrypt them. RFC 8945 forbids
-  HMAC-MD5 and recommends against HMAC-SHA1: tsigoat accepts them only on the
-  keys that name them, logs a warning at startup, and counts their use. Move
-  their clients to `hmac-sha256`, then the keys.
-- Give each client its own key, restricted by policy rules to what it updates.
-- An unsigned update gets REFUSED both for the zones that tsigoat does not
-  serve and for those that require a key. tsigoat answers SOA queries for the
-  zones it serves, signed or not, since lego and certbot send them unsigned:
-  whoever reaches tsigoat can tell which zones it serves.
-- `allowUnauthenticated` lets anyone who reaches tsigoat change the zone:
-  keep such zones on private networks.
-- tsigoat serializes the updates of a zone within its process: run a single
-  instance. Other writers of the same zones, through the PowerDNS API, race
-  with it.
-- tsigoat does not detect replayed requests: within the validity of its
-  signature, five minutes for most clients, a captured update can be sent
-  again. Updates are mostly idempotent, and clients resend the very same
-  message when a UDP answer is lost, which a replay check would refuse.
-
-See [SECURITY.md](SECURITY.md) to report a vulnerability.
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Development
 

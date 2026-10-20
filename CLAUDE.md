@@ -103,9 +103,18 @@ because of a known defect carries `knownDefect: <id>`: its failure is reported
 as skipped, and the suite fails when it starts passing, so the marker must be
 removed with the fix.
 
+## Documentation
+
+`README.md` presents tsigoat and links to `docs/`: `configuration.md`,
+`clients.md`, `powerdns.md`, `operations.md`, `security.md`, and
+`architecture.md` for contributors. A change of behavior updates the page that
+describes it. `docs/local/` is ignored by git: it holds the French working
+notes of the restart (analysis with the P*/A* defect identifiers, restart plan
+with the D* decisions, tooling), which must never be committed.
+
 ## Conventions
 
-- Everything in the repository is in English.
+- Everything in the repository is in English, but `docs/local/`.
 - Conventional Commits; GoReleaser builds the changelog from them.
 - golangci-lint must pass clean, without path exclusions. Every `//nolint`
   names its linter and explains why.

@@ -34,7 +34,7 @@ gh attestation verify tsigoat-v<version>-linux-amd64.tar.gz --owner enix
 
 ## Security model
 
-The [Security section of the README](README.md#security) describes what
-tsigoat protects and what it does not: TSIG authenticates the updates without
-encrypting them, keys are restricted by policy, and HMAC-MD5 and HMAC-SHA1
-remain available only to the keys that opt into them.
+[docs/security.md](docs/security.md) describes what tsigoat protects and what
+it does not: TSIG authenticates the updates without encrypting them, keys are
+restricted by policy, and HMAC-MD5 and HMAC-SHA1 remain available only to the
+keys that opt into them. It ends with advice to harden a deployment.

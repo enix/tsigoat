@@ -1,0 +1,106 @@
+# Architecture
+
+This document is for contributors: how a request flows through tsigoat, and
+how the code is tested. [CONTRIBUTING.md](../CONTRIBUTING.md) covers the
+development workflow.
+
+## Packages
+
+| Package | Role |
+| --- | --- |
+| `cmd/tsigoat` | Command line: `serve`, `check-config`, `version` |
+| `internal/config` | Strict YAML decoding, canonical names, path-anchored validation errors |
+| `internal/app` | Assembly: configuration → keyring, backends, policies, DNS server, administration server |
+| `internal/dnsserver` | UDP and TCP listeners, request handling, response signing, shutdown |
+| `internal/auth` | TSIG keyring, one algorithm per key; update policy |
+| `internal/update` | The RFC 2136 engine: parsing, prerequisites, update section |
+| `internal/zone` | Working view of a zone: lazy reads, changes in memory, diff |
+| `internal/backend` | Backend contract; `memory` for the tests, `powerdns` for production |
+| `internal/metrics`, `internal/admin` | Prometheus collectors; `/healthz`, `/readyz` and `/metrics` |
+| `internal/logging` | `log/slog` setup |
+
+miekg/dns, the DNS library, stays within the DNS-facing packages, and the
+engine performs no I/O but the reads of its view: golangci-lint checks both
+with depguard rules.
+
+## Life of an update
+
+1. **TSIG.** miekg/dns reads the message and verifies its signature with the
+   keyring. A failure gets NOTAUTH with BADKEY, BADSIG or BADTIME. A TSIG or
+   OPT record out of place gets FORMERR, an EDNS version other than 0 BADVERS.
+2. **Zone section**: exactly one entry, of type SOA, of a data class, or
+   FORMERR.
+3. **Admission**: the zone must be served, and the key, or the absence of
+   one, admitted to it. A signed request for an unknown zone gets NOTAUTH;
+   anything else REFUSED, so that unsigned requests cannot tell an unknown
+   zone from a forbidden one.
+4. **Structure**: the prerequisite section and the prescan of the update
+   section (RFC 2136 3.2, 3.4.1): FORMERR or NOTZONE, or REFUSED beyond 256
+   records.
+5. **Policy**: every record of the update section must be allowed, and every
+   name of the prerequisite section updatable by the key, or REFUSED.
+6. **Lock** of the zone, which honours the deadline of the request: the
+   updates of a zone run one at a time.
+7. **Prerequisites**, evaluated on a view of the zone: NXDOMAIN, YXDOMAIN,
+   NXRRSET or YXRRSET when one fails.
+8. **Update section**, applied to the view by the rules of RFC 2136 3.4.2:
+   CNAME exclusivity, SOA serial ordering, apex SOA and NS protection, one TTL
+   per RRset.
+9. **One call to the backend** with the RRset changes of the view; a failure
+   gets SERVFAIL, and nothing is applied.
+10. **Response**, signed with the key of the request; one log entry; metrics.
+
+## The engine and the view
+
+`zone.View` reads the RRsets of a name from the backend the first time the
+update touches it, and keeps every change in memory. Records are compared in
+their wire form, since miekg/dns may hold the same RDATA differently when
+parsed from text. `View.Changes` returns RRset-level changes: deletions first,
+then replacements, for the backends that check each change against the state
+left by the previous ones.
+
+`update` holds the RFC 2136 logic on top of the view, and returns an
+`*update.Error` with the rcode and the reason of a rejection, which the server
+logs.
+
+## The backend contract
+
+```go
+type Backend interface {
+    // Lookup returns every RRset of the zone owned by the canonical name.
+    Lookup(ctx context.Context, zone, name string) ([]RRset, error)
+    // Apply applies the changes to the zone, all or nothing.
+    Apply(ctx context.Context, zone string, changes []Change) error
+}
+```
+
+A change replaces a whole RRset, or deletes one. A backend must apply the
+changes of a call atomically, or not at all; `ErrZoneNotFound` reports a
+missing zone. The PowerDNS backend sends one PATCH request, which PowerDNS
+applies in one transaction.
+
+## Queries
+
+Clients find the zone of a name with SOA queries. tsigoat answers those of the
+zones it serves, signed or not: the SOA in the answer section at the apex, in
+the authority section below it. The answers reuse the SOA of a zone for 30
+seconds, a failure to read it for 5, so that queries, which anyone may send,
+do not reach the backend each time. Other queries and opcodes get NOTIMP, and
+those of other zones REFUSED.
+
+## Testing
+
+| Layer | What it checks | Where |
+| --- | --- | --- |
+| Unit tests | Every package, with `-race` and a shuffled order; coverage floors on `update`, `zone` and `auth` | `go test ./...`, `task test:unit` |
+| Fuzzing | Configuration, engine, whole request handling, name patterns | `Fuzz*` targets, `task test:fuzz`; ten minutes each, nightly |
+| Scenarios in process | Each scenario of `test/scenario/scenarios` against tsigoat on the in-memory backend | `internal/app` |
+| Scenarios end to end | The same scenarios against a tsigoat binary and PowerDNS 4.9 and 5.0; faults injected with toxiproxy | `test/e2e`, `task test:e2e` |
+| Differential | The same scenarios against BIND 9, the reference implementation; the intended divergences are listed with their reason | `test/differential`, `task test:differential` |
+| Real clients | nsupdate; lego and certbot getting certificates from Pebble | `task test:clients`, `task test:acme` |
+| Acceptance | cert-manager in a k3s cluster, with explicit, legacy and unsigned setups | `task test:acceptance`, nightly |
+| Mutation | Mutants of `update`, `zone` and `auth` that the tests miss | `task test:mutation`, nightly |
+
+A scenario describes a zone, requests in the syntax of nsupdate, and the
+expected outcome. [CONTRIBUTING.md](../CONTRIBUTING.md#test-scenarios) shows
+how to write one.

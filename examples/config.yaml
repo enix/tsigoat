@@ -1,4 +1,5 @@
-# tsigoat configuration, with every setting.
+# tsigoat configuration, with every setting; docs/configuration.md describes
+# them.
 #
 # `tsigoat check-config --config config.yaml` validates it and prints the
 # warnings about risky settings.

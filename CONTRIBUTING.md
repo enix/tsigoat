@@ -131,6 +131,13 @@ A breaking change takes a `!` after the type and a `BREAKING CHANGE:` footer.
 - Code that consumes untrusted bytes carries `Fuzz*` targets.
 - Comments explain why, not what.
 
+### Documentation
+
+The README presents tsigoat and links to `docs/`, which holds the user
+documentation, by subject, and the architecture for contributors: a change of
+behavior updates the page that describes it. `docs/local/` is ignored by git,
+for working notes that stay on one machine.
+
 ## Releases
 
 A maintainer pushes a `vX.Y.Z` tag. The release workflow runs the quality
