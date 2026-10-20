@@ -71,5 +71,12 @@ func (c Change) String() string {
 
 // RData returns the RDATA of a record in presentation format.
 func RData(rr dns.RR) string {
-	return strings.TrimPrefix(rr.String(), rr.Header().String())
+	// The text of a record starts with four tab-terminated fields: name,
+	// TTL, class and type. Comparing with the text of the header would not
+	// do, as the records of unknown types write their class differently.
+	fields := strings.SplitN(rr.String(), "\t", 5)
+	if len(fields) < 5 {
+		return ""
+	}
+	return fields[4]
 }
