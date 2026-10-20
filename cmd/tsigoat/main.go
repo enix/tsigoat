@@ -6,6 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
+	// Embedded TLS roots, used when the system has none, as in the scratch
+	// container image.
+	_ "golang.org/x/crypto/x509roots/fallback"
+
 	"github.com/enix/tsigoat/pkg/cmd"
 )
 

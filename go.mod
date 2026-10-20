@@ -14,6 +14,7 @@ require (
 	github.com/spf13/viper v1.21.0
 	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/zap v1.28.0
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261016151342-0ae6809b7559
 )
 
 require (

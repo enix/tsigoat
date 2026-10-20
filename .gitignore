@@ -8,5 +8,6 @@
 /vendor
 /tmp
 /sandbox
+/dist
 .keyring
 .ropeproject

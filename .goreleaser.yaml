@@ -1,0 +1,216 @@
+# GoReleaser drives every build of tsigoat: binaries, archives, checksums,
+# multi-arch container images (scratch by default, busybox as an
+# alternative with a shell), cosign keyless signatures and the GitHub
+# Release with its changelog.
+#
+# Releases start from a vX.Y.Z tag pushed by a maintainer; the release
+# workflow runs GoReleaser and leaves a draft release to review.
+#
+# IMAGE_NAME is the only overridable knob (default: tsigoat).
+#
+# Reference: https://goreleaser.com/customization/
+
+version: 2
+
+project_name: tsigoat
+
+before:
+  hooks:
+    - go mod verify
+
+# ─── Binaries ────────────────────────────────────────────────────────────────
+# GORELEASER_LOCAL_PLATFORM=1 swaps the full matrix for a Linux-only build,
+# used by `task build:image:host` for fast iterations.
+builds:
+  - id: tsigoat
+    skip: '{{ if eq (envOrDefault "GORELEASER_LOCAL_PLATFORM" "") "1" }}true{{ end }}'
+    main: &build-main ./cmd/tsigoat
+    binary: &build-binary tsigoat
+    env: &build-env
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - freebsd
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - riscv64
+    ignore:
+      - { goos: darwin, goarch: riscv64 }
+      - { goos: windows, goarch: riscv64 }
+    flags: &build-flags
+      - -tags=netgo,osusergo
+      - -trimpath
+    ldflags: &build-ldflags
+      - -s -w
+      - -X github.com/enix/tsigoat/internal/product.version={{ .Version }}
+      - -X github.com/enix/tsigoat/internal/product.buildTime={{ .Date }}
+      - -X github.com/enix/tsigoat/internal/product.gitCommit={{ .FullCommit }}
+      - -X github.com/enix/tsigoat/internal/product.gitTreeState={{ if .IsGitDirty }}dirty{{ else }}clean{{ end }}
+
+  - id: tsigoat-local
+    skip: '{{ if eq (envOrDefault "GORELEASER_LOCAL_PLATFORM" "") "1" }}{{ else }}true{{ end }}'
+    main: *build-main
+    binary: *build-binary
+    env: *build-env
+    goos: [linux]
+    goarch: [amd64, arm64, riscv64]
+    flags: *build-flags
+    ldflags: *build-ldflags
+
+# ─── Archives and checksums ──────────────────────────────────────────────────
+archives:
+  - id: default
+    ids: [tsigoat, tsigoat-local]
+    name_template: "tsigoat-{{ .Tag }}-{{ .Os }}-{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# Signing the checksums file rather than every archive is the usual
+# SLSA-friendly pattern. Verify with:
+#   cosign verify-blob --bundle checksums.txt.sigstore.json checksums.txt
+signs:
+  - id: checksum-cosign
+    cmd: cosign
+    artifacts: checksum
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - --yes
+      - --bundle=${signature}
+      - ${artifact}
+    output: true
+
+# ─── Container images ────────────────────────────────────────────────────────
+dockers_v2:
+  - id: scratch
+    disable: '{{ if eq (envOrDefault "GORELEASER_LOCAL_PLATFORM" "") "1" }}true{{ end }}'
+    ids: [tsigoat]
+    dockerfile: build/Dockerfile.scratch
+    platforms: &release-platforms
+      - linux/amd64
+      - linux/arm64
+      - linux/riscv64
+    images: &images
+      - 'ghcr.io/enix/{{ envOrDefault "IMAGE_NAME" "tsigoat" }}'
+      - 'quay.io/enix/{{ envOrDefault "IMAGE_NAME" "tsigoat" }}'
+      - 'docker.io/enix/{{ envOrDefault "IMAGE_NAME" "tsigoat" }}'
+    tags: &scratch-tags
+      - "{{ .Version }}"
+      - '{{ if and (not .IsSnapshot) (eq .Prerelease "") }}latest{{ end }}'
+    sbom: false
+    labels: &scratch-labels
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "RFC 2136 dynamic update proxy authenticated with TSIG"
+      org.opencontainers.image.url: "https://github.com/enix/tsigoat"
+      org.opencontainers.image.source: "https://github.com/enix/tsigoat"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.licenses: "MIT"
+
+  - id: scratch-local
+    disable: '{{ if eq (envOrDefault "GORELEASER_LOCAL_PLATFORM" "") "1" }}{{ else }}true{{ end }}'
+    ids: [tsigoat-local]
+    dockerfile: build/Dockerfile.scratch
+    platforms: &local-platforms
+      - "linux/{{ .Runtime.Goarch }}"
+    images: *images
+    tags: *scratch-tags
+    sbom: false
+    labels: *scratch-labels
+
+  - id: busybox
+    disable: '{{ if eq (envOrDefault "GORELEASER_LOCAL_PLATFORM" "") "1" }}true{{ end }}'
+    ids: [tsigoat]
+    dockerfile: build/Dockerfile.busybox
+    platforms: *release-platforms
+    images: *images
+    tags: &busybox-tags
+      - "{{ .Version }}-busybox"
+      - '{{ if and (not .IsSnapshot) (eq .Prerelease "") }}busybox{{ end }}'
+    sbom: false
+    labels: &busybox-labels
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "RFC 2136 dynamic update proxy authenticated with TSIG (busybox variant)"
+      org.opencontainers.image.url: "https://github.com/enix/tsigoat"
+      org.opencontainers.image.source: "https://github.com/enix/tsigoat"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.licenses: "MIT"
+      org.opencontainers.image.base.name: "{{ .BaseImage }}"
+      org.opencontainers.image.base.digest: "{{ .BaseImageDigest }}"
+
+  - id: busybox-local
+    disable: '{{ if eq (envOrDefault "GORELEASER_LOCAL_PLATFORM" "") "1" }}{{ else }}true{{ end }}'
+    ids: [tsigoat-local]
+    dockerfile: build/Dockerfile.busybox
+    platforms: *local-platforms
+    images: *images
+    tags: *busybox-tags
+    sbom: false
+    labels: *busybox-labels
+
+docker_signs:
+  - id: image-cosign
+    cmd: cosign
+    artifacts: images
+    args:
+      - sign
+      - --yes
+      - "${artifact}@${digest}"
+    output: true
+
+# ─── Release and changelog ───────────────────────────────────────────────────
+release:
+  github:
+    owner: enix
+    name: tsigoat
+  prerelease: auto
+  draft: true
+
+# Sections mirror the Conventional Commit types; maintenance types stay out
+# of the public changelog.
+changelog:
+  use: github
+  sort: desc
+  filters:
+    exclude:
+      - "^ci[(:!]"
+      - "^chores?[(:!]"
+      - "^refactor[(:!]"
+      - "^tests?[(:!]"
+      - "^build[(:!]"
+      - "^Merge "
+  groups:
+    - title: "Security Updates"
+      regexp: "^security[(:!]"
+      order: 0
+    - title: "Features"
+      regexp: "^feat[(:!]"
+      order: 1
+    - title: "Bug Fixes"
+      regexp: "^fix[(:!]"
+      order: 2
+    - title: "Performance"
+      regexp: "^perf[(:!]"
+      order: 3
+    - title: "Dependencies"
+      regexp: "^deps[(:!]"
+      order: 4
+    - title: "Documentation"
+      regexp: "^docs[(:!]"
+      order: 5
+    - title: "Other Changes"
+      order: 999
