@@ -2,11 +2,12 @@ version: "2"
 
 run:
   timeout: 5m
-  # Lint the end-to-end and differential tests too.
+  # Lint the end-to-end, differential, chart and live tests too.
   build-tags:
     - e2e
     - differential
     - chart
+    - live
 
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused

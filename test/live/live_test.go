@@ -38,6 +38,8 @@ const (
 // TestProviders runs, on every zone of the configuration, the conformance
 // suite of the backends below tsigoat-test.<zone>, then the challenges of a
 // certificate for that name and its wildcard, through tsigoat.
+//
+//nolint:paralleltest // one test at a time keeps within the rate limits of the providers
 func TestProviders(t *testing.T) {
 	path := os.Getenv("TSIGOAT_LIVE_CONFIG")
 	if path == "" {
@@ -114,6 +116,8 @@ func cnameBesideData(name string) backend.Change {
 // acme runs the challenges of a certificate for tsigoat-test.<zone> and its
 // wildcard through tsigoat, as an ACME client does: two values at once,
 // then the cleanup of each.
+//
+//nolint:thelper // the body of a subtest, whose failures point into it
 func acme(t *testing.T, c *config.Config, zone string, b backend.Backend) {
 	secret := make([]byte, 32)
 	_, _ = rand.Read(secret)
@@ -145,6 +149,18 @@ func acme(t *testing.T, c *config.Config, zone string, b backend.Backend) {
 	})
 	addr := a.Server.Addrs()[0]
 	name := "_acme-challenge." + certificate
+	// A failed run may leave values behind, which the next one would find:
+	// the name is cleared before the first update, and once the test is over.
+	if err := clearChallenges(t.Context(), b, zone, name); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(t.Context()), time.Minute)
+		defer cancel()
+		if err := clearChallenges(ctx, b, zone, name); err != nil {
+			t.Errorf("cleaning up: %v", err)
+		}
+	})
 	first, second := challengeValue(), challengeValue()
 
 	update(t, addr, zone, secret, func(m *dns.Msg) { m.Insert([]dns.RR{txt(t, name, first)}) })
@@ -155,6 +171,15 @@ func acme(t *testing.T, c *config.Config, zone string, b backend.Backend) {
 	expectValues(t, b, zone, name, second)
 	update(t, addr, zone, secret, func(m *dns.Msg) { m.Remove([]dns.RR{txt(t, name, second)}) })
 	expectValues(t, b, zone, name)
+}
+
+// clearChallenges deletes the TXT RRset of name.
+func clearChallenges(ctx context.Context, b backend.Backend, zone, name string) error {
+	change := backend.Change{Op: backend.Delete, RRset: backend.RRset{Name: name, Type: dns.TypeTXT}}
+	if err := b.Apply(ctx, zone, []backend.Change{change}); err != nil {
+		return fmt.Errorf("clearing %s: %w", name, err)
+	}
+	return nil
 }
 
 // challengeValue returns a random value of an ACME challenge: the base64url
