@@ -166,6 +166,11 @@ tasks:
     cmds:
       - "{{.DAGGER}} call test-clients --pdns-version={{.PDNS_VERSION | default \"5.0\"}}"
 
+  test:fuzz:
+    desc: "Every fuzz target in turn, inside Dagger (FUZZTIME=1m per target)"
+    cmds:
+      - "{{.DAGGER}} call fuzz --fuzztime={{.FUZZTIME | default \"1m\"}}"
+
   test:acme:
     desc: "ACME DNS-01 flow: lego and certbot get certificates from Pebble through tsigoat, inside Dagger (PDNS_VERSION=4.9|5.0)"
     cmds:

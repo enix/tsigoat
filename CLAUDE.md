@@ -62,6 +62,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | E2E scenarios | `task test:e2e` | `dagger call test-end-to-end --pdns-version=5.0`; `task test:e2e:dev` against `task dev` |
 | Real clients | `task test:clients` | `dagger call test-clients`: nsupdate in a container |
 | ACME flow | `task test:acme` | `dagger call test-acme`: lego and certbot get certificates from Pebble |
+| Fuzzing | `task test:fuzz` | `dagger call fuzz --fuzztime=1m`: every `Fuzz*` target; 10 minutes each in the nightly workflow |
 | Security | `task security` | gitleaks, govulncheck, Trivy |
 | Dev backend | `task dev` + `task dev:run` | PowerDNS on :8081 (API) and :5300 (DNS); tsigoat on 127.0.0.1:10053 |
 

@@ -1,0 +1,30 @@
+name: Nightly
+
+# Long checks that do not fit in a pull request: every fuzz target runs for
+# ten minutes.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DAGGER_NO_NAG: "1"
+  DAGGER_CLOUD_TOKEN: ""
+  DO_NOT_TRACK: "1"
+
+jobs:
+  fuzz:
+    name: Fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: fuzz --fuzztime=10m
