@@ -15,7 +15,7 @@ keywords:
   - cert-manager
   - powerdns
 home: https://github.com/enix/tsigoat
-icon: https://raw.githubusercontent.com/enix/tsigoat/main/docs/assets/icon-light.svg
+icon: https://raw.githubusercontent.com/enix/tsigoat/main/docs/assets/app-dark.svg
 sources:
   - https://github.com/enix/tsigoat
 maintainers:
