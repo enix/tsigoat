@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/miekg/dns"
@@ -31,12 +32,15 @@ type exchange struct {
 	// identity is the key that signed the request, or auth.Unauthenticated.
 	identity string
 	// tsig is the TSIG record of a signed request whose signature is valid.
-	tsig   *dns.TSIG
+	tsig *dns.TSIG
+	// zone is the served zone that the request names, once known.
+	zone   string
 	logger *slog.Logger
 }
 
 // ServeDNS implements dns.Handler.
 func (s *Server) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
+	start := time.Now()
 	// A request runs to completion even when the server shuts down.
 	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 	defer cancel()
@@ -49,6 +53,30 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if err := w.WriteMsg(resp); err != nil {
 		ex.logger.WarnContext(ctx, "writing the response failed", "error", err)
 	}
+	if s.observer != nil {
+		s.observer.Observe(ex.answer(resp, time.Since(start)))
+	}
+}
+
+// answer describes the response to the request, for the observer.
+func (ex *exchange) answer(resp *dns.Msg, elapsed time.Duration) *Answer {
+	a := &Answer{
+		Opcode:   dns.OpcodeToString[ex.req.Opcode],
+		Rcode:    dns.RcodeToString[resp.Rcode],
+		Zone:     ex.zone,
+		Key:      ex.identity,
+		Duration: elapsed,
+	}
+	if a.Opcode == "" {
+		a.Opcode = "OPCODE" + strconv.Itoa(ex.req.Opcode)
+	}
+	if ex.tsig != nil {
+		a.Algorithm = dns.CanonicalName(ex.tsig.Algorithm)
+	}
+	if tsig := resp.IsTsig(); tsig != nil && tsig.Error != dns.RcodeSuccess {
+		a.TSIGError = dns.RcodeToString[int(tsig.Error)]
+	}
+	return a
 }
 
 func (s *Server) handle(ctx context.Context, ex *exchange) *dns.Msg {
@@ -225,6 +253,9 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		return
 	}
 	out.zone = zoneName
+	if _, served := s.zones[zoneName]; served {
+		ex.zone = zoneName
+	}
 	z, rcode, reason := s.admit(ex.identity, zoneName, class)
 	if z == nil {
 		out.rcode, out.reason = rcode, reason
@@ -322,6 +353,9 @@ func (s *Server) query(ctx context.Context, ex *exchange) *dns.Msg {
 	name := dns.CanonicalName(q.Name)
 	zoneName := update.ZoneOf(name, s.served)
 	z := s.zones[zoneName]
+	if z != nil {
+		ex.zone = zoneName
+	}
 	if z == nil || q.Qclass != dns.ClassINET || !z.Policy.Admits(ex.identity) {
 		ex.logger.DebugContext(ctx, "query refused", "name", name, "type", dns.Type(q.Qtype).String())
 		return ex.reply(dns.RcodeRefused)

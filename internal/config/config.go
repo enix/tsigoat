@@ -37,10 +37,13 @@ const (
 // Config is a validated configuration.
 type Config struct {
 	// Listen holds the addresses to listen on, for both UDP and TCP.
-	Listen   []string
-	Keys     []Key
-	Backends []Backend
-	Zones    []Zone
+	Listen []string
+	// AdminListen is the address of the administration HTTP server, which
+	// serves the health checks and the metrics; disabled when empty.
+	AdminListen string
+	Keys        []Key
+	Backends    []Backend
+	Zones       []Zone
 }
 
 // Key is a TSIG key.
@@ -147,9 +150,14 @@ func Parse(data []byte, options Options) (*Config, []string, error) {
 // file is the configuration as written.
 type file struct {
 	Listen   []string      `yaml:"listen"`
+	Admin    *fileAdmin    `yaml:"admin"`
 	Keys     []fileKey     `yaml:"keys"`
 	Backends []fileBackend `yaml:"backends"`
 	Zones    []fileZone    `yaml:"zones"`
+}
+
+type fileAdmin struct {
+	Listen string `yaml:"listen"`
 }
 
 type fileKey struct {

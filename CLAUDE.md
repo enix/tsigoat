@@ -25,6 +25,8 @@ internal/auth/         TSIG keyring (one key = one algorithm), update policy
 internal/backend/      Backend interface: Lookup(name) and atomic Apply(changes)
 internal/backend/powerdns/  in-house HTTP client, generic presentation-format conversion
 internal/backend/memory/    in-memory backend for tests and dry runs
+internal/metrics/      Prometheus collectors: responses, TSIG failures, backend calls
+internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
 ```
 
 - The engine computes RRset-level `Replace`/`Delete` changes on an in-memory

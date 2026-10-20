@@ -42,8 +42,24 @@ func (v *validator) config(raw *file) *Config {
 		Keys:     v.keys(raw.Keys),
 		Backends: v.backends(raw.Backends),
 	}
+	if raw.Admin != nil {
+		c.AdminListen = v.adminListen(raw.Admin.Listen, c.Listen)
+	}
 	c.Zones = v.zones(raw.Zones, c)
 	return c
+}
+
+// adminListen validates the address of the administration server, which
+// cannot share a TCP address with the DNS listeners.
+func (v *validator) adminListen(address string, dnsListen []string) string {
+	const path = "admin.listen"
+	if !v.hostPort(path, address) {
+		return ""
+	}
+	if slices.Contains(dnsListen, address) {
+		v.errorf(path, "address %q is also a DNS listen address", address)
+	}
+	return address
 }
 
 func (v *validator) listen(addresses []string) []string {
@@ -53,13 +69,8 @@ func (v *validator) listen(addresses []string) []string {
 	seen := map[string]bool{}
 	for i, address := range addresses {
 		path := fmt.Sprintf("listen[%d]", i)
-		_, port, err := net.SplitHostPort(address)
-		if err != nil {
-			v.errorf(path, "invalid address %q: expected host:port", address)
+		if !v.hostPort(path, address) {
 			continue
-		}
-		if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
-			v.errorf(path, "invalid port %q", port)
 		}
 		if seen[address] {
 			v.errorf(path, "duplicate address %q", address)
@@ -67,6 +78,20 @@ func (v *validator) listen(addresses []string) []string {
 		seen[address] = true
 	}
 	return addresses
+}
+
+// hostPort validates a host:port address with a non-zero port.
+func (v *validator) hostPort(path, address string) bool {
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		v.errorf(path, "invalid address %q: expected host:port", address)
+		return false
+	}
+	if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
+		v.errorf(path, "invalid port %q", port)
+		return false
+	}
+	return true
 }
 
 func (v *validator) keys(raw []fileKey) []Key {

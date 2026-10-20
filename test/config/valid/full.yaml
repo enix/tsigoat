@@ -2,6 +2,8 @@
 listen:
   - "[::]:5353"
   - "127.0.0.1:10053"
+admin:
+  listen: "[::]:9153"
 keys:
   - name: Cert-Manager          # canonicalised to cert-manager.
     algorithm: HMAC-SHA512

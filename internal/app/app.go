@@ -1,22 +1,32 @@
 // Package app assembles tsigoat from its configuration: the keyring, the
-// backends, the zones with their policy, and the DNS server.
+// backends, the zones with their policy, the DNS server, and the
+// administration server with the metrics.
 package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
+	"github.com/enix/tsigoat/internal/admin"
 	"github.com/enix/tsigoat/internal/auth"
 	"github.com/enix/tsigoat/internal/backend"
 	"github.com/enix/tsigoat/internal/backend/powerdns"
 	"github.com/enix/tsigoat/internal/config"
 	"github.com/enix/tsigoat/internal/dnsserver"
+	"github.com/enix/tsigoat/internal/metrics"
+	"github.com/enix/tsigoat/internal/product"
 )
 
-// checkTimeout bounds the check of every zone at startup.
-const checkTimeout = 10 * time.Second
+const (
+	// checkTimeout bounds the check of every zone at startup.
+	checkTimeout = 10 * time.Second
+	// adminShutdownTimeout bounds the shutdown of the administration server.
+	adminShutdownTimeout = 5 * time.Second
+)
 
 // BackendFactory builds the backend of a configuration entry.
 type BackendFactory func(*config.Backend) (backend.Backend, error)
@@ -24,7 +34,11 @@ type BackendFactory func(*config.Backend) (backend.Backend, error)
 // App is tsigoat, assembled.
 type App struct {
 	Server *dnsserver.Server
+	// admin is the administration server, nil when disabled.
+	admin  *admin.Server
 	logger *slog.Logger
+	// stopping turns true when the app starts shutting down.
+	stopping atomic.Bool
 }
 
 // New assembles tsigoat. newBackend builds the backends; NewBackend when
@@ -38,16 +52,26 @@ func New(c *config.Config, logger *slog.Logger, newBackend BackendFactory) (*App
 		return nil, fmt.Errorf("loading the keys: %w", err)
 	}
 
+	a := &App{logger: logger}
+	var m *metrics.Metrics
+	if c.AdminListen != "" {
+		info := product.BuildInfo()
+		m = metrics.New(&info)
+		a.admin = admin.New(c.AdminListen, m.Gatherer(), a.ready)
+	}
+
 	backends := make(map[string]backend.Backend, len(c.Backends))
 	for i := range c.Backends {
 		b, backendErr := newBackend(&c.Backends[i])
 		if backendErr != nil {
 			return nil, fmt.Errorf("backend %s: %w", c.Backends[i].Name, backendErr)
 		}
+		if m != nil {
+			b = m.Backend(c.Backends[i].Name, b)
+		}
 		backends[c.Backends[i].Name] = b
 	}
 
-	a := &App{logger: logger}
 	zones := make([]dnsserver.Zone, 0, len(c.Zones))
 	for i := range c.Zones {
 		z := &c.Zones[i]
@@ -62,12 +86,16 @@ func New(c *config.Config, logger *slog.Logger, newBackend BackendFactory) (*App
 		zones = append(zones, dnsserver.Zone{Name: z.Name, Backend: b, BackendName: z.Backend, Policy: policy})
 	}
 
-	a.Server, err = dnsserver.New(&dnsserver.Options{
+	options := &dnsserver.Options{
 		Listen:  c.Listen,
 		Keyring: keyring,
 		Zones:   zones,
 		Logger:  logger,
-	})
+	}
+	if m != nil {
+		options.Observer = m
+	}
+	a.Server, err = dnsserver.New(options)
 	if err != nil {
 		return nil, fmt.Errorf("creating the DNS server: %w", err)
 	}
@@ -94,8 +122,23 @@ func NewBackend(b *config.Backend) (backend.Backend, error) {
 	}
 }
 
-// Run checks the zones, then serves until ctx is done. A zone that fails the
-// check only draws a warning: its backend may come back later.
+// ready tells whether tsigoat serves DNS, for the readiness probe.
+func (a *App) ready() bool {
+	return len(a.Server.Addrs()) > 0 && !a.stopping.Load()
+}
+
+// AdminAddr returns the address of the administration server, once started;
+// "" when it is disabled.
+func (a *App) AdminAddr() string {
+	if a.admin == nil {
+		return ""
+	}
+	return a.admin.Addr()
+}
+
+// Run checks the zones, then serves until ctx is done or a server fails. A
+// zone that fails the check only draws a warning: its backend may come back
+// later.
 func (a *App) Run(ctx context.Context) error {
 	checkCtx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
@@ -103,7 +146,41 @@ func (a *App) Run(ctx context.Context) error {
 		a.logger.WarnContext(ctx, "zone check failed", "error", err)
 	}
 
-	if err := a.Server.Run(ctx); err != nil {
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		a.stopping.Store(true)
+	}()
+
+	var adminDone <-chan error
+	if a.admin != nil {
+		if err := a.admin.Start(ctx); err != nil {
+			return err
+		}
+		a.logger.InfoContext(ctx, "administration server listening", "address", a.admin.Addr())
+		adminDone = a.admin.Done()
+	}
+
+	served := make(chan error, 1)
+	go func() { served <- a.Server.Run(ctx) }()
+
+	var err error
+	select {
+	case err = <-served:
+	case err = <-adminDone:
+		if err == nil {
+			err = errors.New("the administration server stopped")
+		}
+		stop()
+		err = errors.Join(err, <-served)
+	}
+	if a.admin != nil {
+		shutdownCtx, cancelShutdown := context.WithTimeout(context.WithoutCancel(ctx), adminShutdownTimeout)
+		defer cancelShutdown()
+		err = errors.Join(err, a.admin.Shutdown(shutdownCtx))
+	}
+	if err != nil {
 		return fmt.Errorf("serving: %w", err)
 	}
 	return nil

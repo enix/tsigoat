@@ -100,6 +100,9 @@ func TestParseFull(t *testing.T) {
 	if got, want := c.Listen, []string{"[::]:5353", "127.0.0.1:10053"}; !slices.Equal(got, want) {
 		t.Errorf("Listen = %q, want %q", got, want)
 	}
+	if c.AdminListen != "[::]:9153" {
+		t.Errorf("AdminListen = %q", c.AdminListen)
+	}
 
 	wantKeys := []struct {
 		name      string

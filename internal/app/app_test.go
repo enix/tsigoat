@@ -3,10 +3,14 @@ package app_test
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/miekg/dns"
 
 	"github.com/enix/tsigoat/internal/app"
 	"github.com/enix/tsigoat/internal/backend"
@@ -102,5 +106,70 @@ func TestNewBackend(t *testing.T) {
 	// Nothing listens on port 1.
 	if _, err := b.Lookup(t.Context(), "example.test.", "example.test."); err == nil {
 		t.Error("Lookup() succeeded without a PowerDNS server")
+	}
+}
+
+func httpGet(t *testing.T, url string) (status int, body string) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, url, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err.Error()
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp.StatusCode, string(data)
+}
+
+func TestAdminServer(t *testing.T) {
+	t.Parallel()
+
+	c := minimalConfig(t)
+	c.AdminListen = "127.0.0.1:0"
+	a, err := app.New(c, slog.New(slog.DiscardHandler), func(*config.Backend) (backend.Backend, error) {
+		return memory.New(), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if addr := a.AdminAddr(); addr != "" {
+			if status, _ := httpGet(t, "http://"+addr+"/readyz"); status == http.StatusOK {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("tsigoat did not get ready")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	m := new(dns.Msg)
+	m.SetQuestion("example.test.", dns.TypeSOA)
+	client := &dns.Client{Timeout: 2 * time.Second}
+	resp, _, err := client.ExchangeContext(t.Context(), m, a.Server.Addrs()[0])
+	if err != nil || resp.Rcode != dns.RcodeRefused {
+		t.Fatalf("unsigned SOA query: %v, %v", resp, err)
+	}
+
+	want := `tsigoat_dns_responses_total{algorithm="",key="",opcode="QUERY",rcode="REFUSED",zone="example.test."} 1`
+	if status, body := httpGet(t, "http://"+a.AdminAddr()+"/metrics"); status != http.StatusOK || !strings.Contains(body, want) {
+		t.Errorf("/metrics = %d, without %s:\n%s", status, want, body)
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Errorf("Run() = %v", err)
 	}
 }

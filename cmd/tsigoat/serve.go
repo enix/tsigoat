@@ -19,6 +19,7 @@ import (
 type serveOptions struct {
 	configPath   string
 	listen       []string
+	adminListen  string
 	logFormat    string
 	logLevel     string
 	autoMemLimit bool
@@ -41,6 +42,8 @@ the updates in progress and exit. Logs go to the standard error.`,
 	flags.StringVarP(&o.configPath, "config", "c", defaultConfigPath, "configuration file")
 	flags.StringSliceVar(&o.listen, "listen", nil,
 		"address to listen on for both UDP and TCP, repeatable; replaces the addresses of the configuration")
+	flags.StringVar(&o.adminListen, "admin-listen", "",
+		"address of the administration HTTP server (/healthz, /readyz, /metrics); replaces the one of the configuration")
 	flags.StringVar(&o.logFormat, "log-format", string(logging.FormatText),
 		"log format: "+strings.Join(logging.Formats(), ", "))
 	flags.StringVar(&o.logLevel, "log-level", "info", "log level: "+strings.Join(logging.Levels(), ", "))
@@ -74,6 +77,9 @@ func (o *serveOptions) run(ctx context.Context, stderr io.Writer) error {
 	}
 	if len(o.listen) > 0 {
 		c.Listen = o.listen
+	}
+	if o.adminListen != "" {
+		c.AdminListen = o.adminListen
 	}
 	logger.InfoContext(ctx, "configuration loaded", slog.String("path", o.configPath),
 		slog.Int("keys", len(c.Keys)), slog.Int("backends", len(c.Backends)), slog.Int("zones", len(c.Zones)))

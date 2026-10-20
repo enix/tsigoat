@@ -49,6 +49,32 @@ type Options struct {
 	// Timeout bounds the processing of one request, backend calls included;
 	// DefaultTimeout when zero.
 	Timeout time.Duration
+	// Observer, when set, receives an Answer for every response.
+	Observer Observer
+}
+
+// Observer receives a description of every response.
+type Observer interface {
+	Observe(answer *Answer)
+}
+
+// Answer describes a response. Its fields take a bounded set of values, fit
+// for metric labels: names come from the configuration, never from the
+// request alone.
+type Answer struct {
+	// Opcode and Rcode are mnemonics, such as UPDATE and NOERROR.
+	Opcode string
+	Rcode  string
+	// Zone is the served zone that the request names, "" otherwise.
+	Zone string
+	// Key and Algorithm identify the TSIG key of a request whose signature
+	// is valid; "" for unsigned requests.
+	Key       string
+	Algorithm string
+	// TSIGError is the TSIG error of a request whose signature does not
+	// verify, such as BADSIG; "" otherwise.
+	TSIGError string
+	Duration  time.Duration
 }
 
 // Server is a DNS UPDATE server.
@@ -57,9 +83,10 @@ type Server struct {
 	keyring *auth.Keyring
 	zones   map[string]*servedZone
 	// served holds the canonical names of the zones.
-	served  []string
-	logger  *slog.Logger
-	timeout time.Duration
+	served   []string
+	logger   *slog.Logger
+	timeout  time.Duration
+	observer Observer
 
 	mu      sync.Mutex
 	servers []*dns.Server
@@ -85,11 +112,12 @@ func New(options *Options) (*Server, error) {
 		return nil, errors.New("missing keyring or logger")
 	}
 	s := &Server{
-		listen:  options.Listen,
-		keyring: options.Keyring,
-		zones:   make(map[string]*servedZone, len(options.Zones)),
-		logger:  options.Logger,
-		timeout: options.Timeout,
+		listen:   options.Listen,
+		keyring:  options.Keyring,
+		zones:    make(map[string]*servedZone, len(options.Zones)),
+		logger:   options.Logger,
+		timeout:  options.Timeout,
+		observer: options.Observer,
 	}
 	if s.timeout <= 0 {
 		s.timeout = DefaultTimeout
