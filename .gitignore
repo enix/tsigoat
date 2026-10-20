@@ -12,6 +12,7 @@
 /.direnv
 .keyring
 .ropeproject
+__pycache__/
 
 # Local working notes, never committed
 /docs/local/
