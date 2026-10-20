@@ -465,3 +465,67 @@ func TestRunStopsWithTheContext(t *testing.T) {
 		t.Fatal("Run() did not return")
 	}
 }
+
+func TestQueries(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+
+	query := func(name string, qtype, qclass uint16) *dns.Msg {
+		m := new(dns.Msg)
+		m.SetQuestion(name, qtype)
+		m.Question[0].Qclass = qclass
+		return m
+	}
+	tests := []struct {
+		name      string
+		msg       *dns.Msg
+		signed    bool
+		rcode     int
+		answer    int
+		authority int
+	}{
+		{"apex SOA, signed", query(testZone, dns.TypeSOA, dns.ClassINET), true, dns.RcodeSuccess, 1, 0},
+		{"apex SOA, unsigned", query(testZone, dns.TypeSOA, dns.ClassINET), false, dns.RcodeSuccess, 1, 0},
+		{"SOA below the apex", query("_acme-challenge.www."+testZone, dns.TypeSOA, dns.ClassINET), false, dns.RcodeSuccess, 0, 1},
+		{"other type", query("www."+testZone, dns.TypeA, dns.ClassINET), true, dns.RcodeNotImplemented, 0, 0},
+		{"unknown zone", query("other.test.", dns.TypeSOA, dns.ClassINET), true, dns.RcodeRefused, 0, 0},
+		{"other class", query(testZone, dns.TypeSOA, dns.ClassCHAOS), false, dns.RcodeRefused, 0, 0},
+	}
+	for _, tt := range tests {
+		var signedAt time.Time
+		if tt.signed {
+			signedAt = time.Now()
+		}
+		resp, err := f.exchange(t, "udp", tt.msg, signedAt)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		if resp.Rcode != tt.rcode || len(resp.Answer) != tt.answer || len(resp.Ns) != tt.authority {
+			t.Errorf("%s: rcode %s, %d answers, %d authority records; want %s, %d, %d", tt.name,
+				dns.RcodeToString[resp.Rcode], len(resp.Answer), len(resp.Ns),
+				dns.RcodeToString[tt.rcode], tt.answer, tt.authority)
+		}
+		if tt.rcode == dns.RcodeSuccess && !resp.Authoritative {
+			t.Errorf("%s: not authoritative", tt.name)
+		}
+		if tt.signed && resp.IsTsig() == nil {
+			t.Errorf("%s: the response to a signed query is not signed", tt.name)
+		}
+		for _, rr := range append(resp.Answer, resp.Ns...) {
+			if rr.Header().Rrtype != dns.TypeSOA || rr.Header().Name != testZone {
+				t.Errorf("%s: unexpected record %s", tt.name, rr)
+			}
+		}
+	}
+
+	// Two questions.
+	m := query(testZone, dns.TypeSOA, dns.ClassINET)
+	m.Question = append(m.Question, m.Question[0])
+	data, err := m.Pack()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp := f.exchangeRaw(t, data); resp.Rcode != dns.RcodeFormatError {
+		t.Errorf("two questions: rcode %s, want FORMERR", dns.RcodeToString[resp.Rcode])
+	}
+}
