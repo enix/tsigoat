@@ -85,7 +85,18 @@ func (s *Server) handle(ctx context.Context, ex *exchange) *dns.Msg {
 		return ex.reply(dns.RcodeFormatError)
 	}
 	if tsig := ex.req.IsTsig(); tsig != nil {
-		if err := ex.w.TsigStatus(); err != nil {
+		err := ex.w.TsigStatus()
+		if errors.Is(err, auth.ErrMACSize) {
+			// RFC 8945 5.2.2.1: the message is corrupt.
+			ex.logger.InfoContext(ctx, "malformed request", "reason", err.Error())
+			return ex.reply(dns.RcodeFormatError)
+		}
+		if err == nil {
+			// RFC 8945 5.2: the truncation policy comes last, once the MAC
+			// and the time verified.
+			err = s.keyring.CheckTruncation(tsig)
+		}
+		if err != nil {
 			return s.tsigFailure(ctx, ex, tsig, err)
 		}
 		ex.identity = dns.CanonicalName(tsig.Hdr.Name)
@@ -154,8 +165,9 @@ func (ex *exchange) reply(rcode int) *dns.Msg {
 }
 
 // tsigFailure answers a request whose signature does not verify: NOTAUTH
-// with the TSIG error, unsigned unless the error is BADTIME (RFC 8945 5.2,
-// 5.3.2).
+// with the TSIG error, unsigned for BADKEY and BADSIG, signed for BADTIME and
+// BADTRUNC (RFC 8945 5.2, 5.3.2), which miekg/dns does when it writes the
+// response.
 func (s *Server) tsigFailure(ctx context.Context, ex *exchange, tsig *dns.TSIG, err error) *dns.Msg {
 	code := auth.TSIGError(err)
 	attrs := []any{

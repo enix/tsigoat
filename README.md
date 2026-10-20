@@ -42,7 +42,7 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
 - **TSIG**: one algorithm per key, HMAC-SHA256 by default, HMAC-SHA224,
   SHA384 and SHA512 too, and the legacy HMAC-SHA1 and HMAC-MD5 for the keys
   that opt into them. Responses are signed; signature failures get the BADKEY,
-  BADSIG and BADTIME errors of RFC 8945.
+  BADSIG, BADTIME and BADTRUNC errors of RFC 8945.
 - **Policy per zone**: keys that may update the whole zone, and rules that
   restrict other keys to some names and record types, with bounds on the TTL
   and the number of the records. An `acme` rule lets a key write the values of

@@ -28,8 +28,10 @@ with depguard rules.
 ## Life of an update
 
 1. **TSIG.** miekg/dns reads the message and verifies its signature with the
-   keyring. A failure gets NOTAUTH with BADKEY, BADSIG or BADTIME. A TSIG or
-   OPT record out of place gets FORMERR, an EDNS version other than 0 BADVERS.
+   keyring. A failure gets NOTAUTH with BADKEY, BADSIG, BADTIME, or BADTRUNC
+   for a truncated MAC. A TSIG or OPT record out of place, or a MAC size out
+   of the bounds of RFC 8945, gets FORMERR, an EDNS version other than 0
+   BADVERS.
 2. **Zone section**: exactly one entry, of type SOA, of a data class, or
    FORMERR.
 3. **Admission**: the zone must be served, and the key, or the absence of

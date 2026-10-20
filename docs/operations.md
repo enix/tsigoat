@@ -99,7 +99,7 @@ With `admin.listen` set, tsigoat serves over HTTP:
 | --- | --- |
 | `tsigoat_dns_responses_total` | `opcode`, `rcode`, `zone`, `key`, `algorithm` |
 | `tsigoat_dns_response_duration_seconds` | `opcode` |
-| `tsigoat_tsig_failures_total` | `error`: BADKEY, BADSIG or BADTIME |
+| `tsigoat_tsig_failures_total` | `error`: BADKEY, BADSIG, BADTIME or BADTRUNC |
 | `tsigoat_backend_calls_total` | `backend`, `operation` (lookup, apply; relay and check for the `rfc2136` and `webhook` backends), `result` (success, error, or indeterminate when tsigoat could not tell whether a write applied) |
 | `tsigoat_backend_call_duration_seconds` | `backend`, `operation` |
 | `tsigoat_build_info` | `version`, `revision`, `goversion` |
@@ -150,7 +150,8 @@ backend too slow for the ten seconds that a request may last.
 Requests have failed TSIG verification more than once every ten seconds, for
 fifteen minutes: BADKEY for an unknown key or another algorithm than the one
 of the key, BADSIG for a wrong secret, BADTIME for a clock beyond the time
-margin of the signature. The `TSIG verification failed` log entries name the
+margin of the signature, BADTRUNC for a client that truncates its MACs, which
+tsigoat does not accept. The `TSIG verification failed` log entries name the
 client, the key and the algorithm. A steady flow from unknown clients rather
 tells of a probe: restrict who reaches the DNS port.
 

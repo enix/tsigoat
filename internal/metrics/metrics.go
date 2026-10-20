@@ -49,7 +49,7 @@ func New(info *product.Info) *Metrics {
 		tsigFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Name:      "tsig_failures_total",
-			Help:      "Requests whose TSIG signature does not verify, by TSIG error: BADKEY, BADSIG or BADTIME.",
+			Help:      "Requests whose TSIG signature does not verify, by TSIG error: BADKEY, BADSIG, BADTIME or BADTRUNC.",
 		}, []string{"error"}),
 		backendCalls: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,

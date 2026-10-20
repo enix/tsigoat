@@ -21,6 +21,12 @@ the margin that the client chose, five minutes for most clients.
   as RFC 8945 requires.
 - A request signed too long ago or ahead gets BADTIME, signed, with the time
   of the server, which shows the clock offset to the client.
+- tsigoat requires full MACs, as RFC 8945 lets a local policy do. A MAC that
+  the client truncated as RFC 8945 allows, down to the larger of 10 octets
+  and half the output of the algorithm, and that verifies, gets BADTRUNC,
+  signed. A MAC shorter than that, or longer than the output, makes the
+  request corrupt: FORMERR, without TSIG record. tsigoat checks the key, the
+  MAC, the time, then the truncation, in the order of RFC 8945.
 - The answers to signed requests are signed with the same key.
 
 ## Legacy algorithms

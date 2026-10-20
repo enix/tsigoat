@@ -29,7 +29,19 @@ var (
 	// ErrAlgorithmMismatch reports a request signed with another algorithm
 	// than the one of its key.
 	ErrAlgorithmMismatch = errors.New("TSIG algorithm mismatch")
+	// ErrMACSize reports a MAC longer than the output of its algorithm, or
+	// truncated below the larger of 10 octets and half that output: RFC 8945
+	// 5.2.2.1 makes the message corrupt.
+	ErrMACSize = errors.New("TSIG MAC size out of bounds")
+	// ErrTruncatedMAC reports a MAC that RFC 8945 allows to truncate, and
+	// that verifies, but shorter than the full output of its algorithm,
+	// which tsigoat requires.
+	ErrTruncatedMAC = errors.New("truncated TSIG MAC")
 )
+
+// minMACSize is the shortest truncated MAC that RFC 8945 5.2.2.1 allows,
+// whatever the algorithm.
+const minMACSize = 10
 
 // Keyring holds the TSIG keys. It implements dns.TsigProvider: every key
 // signs and verifies with its own algorithm only.
@@ -104,15 +116,39 @@ func (r *Keyring) Generate(msg []byte, t *dns.TSIG) ([]byte, error) {
 	return k.sign(msg), nil
 }
 
-// Verify implements dns.TsigProvider. miekg/dns checks the time afterwards.
+// Verify implements dns.TsigProvider: it checks the key, then the MAC, which
+// RFC 8945 5.2.2.1 allows to truncate down to the larger of 10 octets and
+// half the output of the algorithm. miekg/dns checks the time afterwards, and
+// CheckTruncation the truncation, last, as RFC 8945 5.2 orders.
 func (r *Keyring) Verify(msg []byte, t *dns.TSIG) error {
 	k, err := r.key(t)
 	if err != nil {
 		return err
 	}
 	mac, err := hex.DecodeString(t.MAC)
-	if err != nil || !hmac.Equal(k.sign(msg), mac) {
+	if err != nil {
 		return dns.ErrSig
+	}
+	full := k.sign(msg)
+	if len(mac) > len(full) || len(mac) < max(minMACSize, len(full)/2) {
+		return fmt.Errorf("%w: %d octets, for an output of %d", ErrMACSize, len(mac), len(full))
+	}
+	if !hmac.Equal(full[:len(mac)], mac) {
+		return dns.ErrSig
+	}
+	return nil
+}
+
+// CheckTruncation returns ErrTruncatedMAC for a request whose MAC, which
+// verified, is shorter than the full output of its algorithm: tsigoat
+// requires full MACs, which RFC 8945 7 lets a local policy do.
+func (r *Keyring) CheckTruncation(t *dns.TSIG) error {
+	k, err := r.key(t)
+	if err != nil {
+		return err
+	}
+	if size := len(t.MAC) / 2; size < k.newHash().Size() {
+		return fmt.Errorf("%w: %d octets, for an output of %d", ErrTruncatedMAC, size, k.newHash().Size())
 	}
 	return nil
 }
@@ -139,13 +175,17 @@ func (k *key) sign(msg []byte) []byte {
 
 // TSIGError returns the TSIG error that answers a verification error, as
 // RFC 8945 5.2 defines them: BADKEY for an unknown key or algorithm, BADTIME
-// for a signature outside its validity period, BADSIG otherwise.
+// for a signature outside its validity period, BADTRUNC for a MAC truncated
+// beyond the local policy, BADSIG otherwise. A MAC size out of bounds, which
+// gets FORMERR without a TSIG error, is the business of the caller.
 func TSIGError(err error) uint16 {
 	switch {
 	case errors.Is(err, ErrUnknownKey), errors.Is(err, ErrAlgorithmMismatch):
 		return dns.RcodeBadKey
 	case errors.Is(err, dns.ErrTime):
 		return dns.RcodeBadTime
+	case errors.Is(err, ErrTruncatedMAC):
+		return dns.RcodeBadTrunc
 	default:
 		return dns.RcodeBadSig
 	}
