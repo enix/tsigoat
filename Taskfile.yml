@@ -188,6 +188,11 @@ tasks:
     cmds:
       - "{{.DAGGER}} call fuzz --fuzztime={{.FUZZTIME | default \"1m\"}}"
 
+  test:mutation:
+    desc: Mutation testing of the engine and the policy with gremlins, inside Dagger (informational)
+    cmds:
+      - "{{.DAGGER}} call mutation"
+
   test:acme:
     desc: "ACME DNS-01 flow: lego and certbot get certificates from Pebble through tsigoat, inside Dagger (PDNS_VERSION=4.9|5.0)"
     cmds:

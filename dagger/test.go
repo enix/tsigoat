@@ -82,3 +82,18 @@ done
 `}).
 		Stdout(ctx)
 }
+
+// Mutation runs gremlins on the packages that hold the protocol and security
+// logic: it alters their code and reports the alterations that no test
+// notices. The report is informational; it fails only when gremlins does.
+func (m *Tsigoat) Mutation(ctx context.Context) (string, error) {
+	return goBase(m.Source).
+		WithExec([]string{"go", "install", "github.com/go-gremlins/gremlins/cmd/gremlins@" + gremlinsModule}).
+		WithExec([]string{"sh", "-euc", `
+for pkg in ./internal/update ./internal/zone ./internal/auth; do
+  echo "== $pkg"
+  gremlins unleash --workers 4 --timeout-coefficient 10 "$pkg" | grep -Ev '^ +KILLED '
+done
+`}).
+		Stdout(ctx)
+}

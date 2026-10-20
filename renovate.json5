@@ -66,6 +66,15 @@
       datasourceTemplate: "go",
     },
     {
+      customType: "regex",
+      managerFilePatterns: ["/^dagger/base\\.go$/"],
+      matchStrings: [
+        "gremlinsModule\\s*=\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "github.com/go-gremlins/gremlins",
+      datasourceTemplate: "go",
+    },
+    {
       // The cert-manager chart of the acceptance test.
       customType: "regex",
       managerFilePatterns: ["/^dagger/base\\.go$/"],

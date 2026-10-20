@@ -64,6 +64,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | ACME flow | `task test:acme` | `dagger call test-acme`: lego and certbot get certificates from Pebble |
 | BIND differential | `task test:differential` | `dagger call test-differential`: the scenarios against BIND 9; intended divergences in `test/differential/divergences.yaml` |
 | cert-manager | `task test:acceptance` | `dagger call test-acceptance`: cert-manager in k3s, inside Dagger; nightly |
+| Mutation | `task test:mutation` | `dagger call mutation`: gremlins on update, zone and auth; informational, nightly |
 | Fuzzing | `task test:fuzz` | `dagger call fuzz --fuzztime=1m`: every `Fuzz*` target; 10 minutes each in the nightly workflow |
 | Security | `task security` | gitleaks, govulncheck, Trivy |
 | Dev backend | `task dev` + `task dev:run` | PowerDNS on :8081 (API) and :5300 (DNS); tsigoat on 127.0.0.1:10053 |

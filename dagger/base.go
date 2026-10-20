@@ -28,6 +28,7 @@ const (
 	certManagerChart  = "v1.21.2" // oci://quay.io/jetstack/charts/cert-manager
 	golangciLint      = "v2.15.0" // installed via `go install`
 	gotestsumModule   = "v1.13.0" // ditto
+	gremlinsModule    = "v0.6.0"  // ditto
 	govulncheckPath   = "latest"  // tracking latest, no Renovate pin
 )
 
