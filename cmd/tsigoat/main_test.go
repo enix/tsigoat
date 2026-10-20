@@ -26,7 +26,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestCheckConfig(t *testing.T) {
-	t.Setenv("TSIGOAT_TEST_SECRET", "dGhpcyBpcyBhIHRlc3Qgc2VjcmV0LCB0aGlydHktdHdvIQ==")
+	t.Setenv("TSIGOAT_TEST_SECRET", "dGhpcyBpcyBhIHRlc3Qgc2VjcmV0LCB0aGlydHktdHdvIQ==") // gitleaks:allow (fixture)
 	t.Setenv("TSIGOAT_TEST_API_KEY", "test-api-key")
 
 	code, stdout, stderr := execute("check-config", "--config", "../../test/config/valid/full.yaml")

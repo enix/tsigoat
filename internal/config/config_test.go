@@ -15,7 +15,7 @@ import (
 func testOptions() config.Options {
 	env := map[string]string{
 		// 32 bytes, base64-encoded.
-		"TSIGOAT_TEST_SECRET":  "dGhpcyBpcyBhIHRlc3Qgc2VjcmV0LCB0aGlydHktdHdvIQ==",
+		"TSIGOAT_TEST_SECRET":  "dGhpcyBpcyBhIHRlc3Qgc2VjcmV0LCB0aGlydHktdHdvIQ==", // gitleaks:allow (fixture)
 		"TSIGOAT_TEST_API_KEY": "test-api-key",
 	}
 	return config.Options{

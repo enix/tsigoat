@@ -17,7 +17,7 @@ import (
 const minimal = `
 keys:
   - name: key.example.
-    secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= # gitleaks:allow (fixture)
 backends:
   - name: pdns
     type: powerdns

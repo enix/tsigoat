@@ -3,12 +3,9 @@
 // Package e2e runs the scenarios of test/scenario against tsigoat placed in
 // front of a real PowerDNS server.
 //
-// `task test:e2e` runs it inside Dagger. To run it against the development
-// backend of `task dev` instead:
-//
-//	TSIGOAT_E2E_PDNS_URL=http://127.0.0.1:8081 \
-//	TSIGOAT_E2E_PDNS_API_KEY=ZGV2LWFwaS1rZXk= \
-//	go test -tags e2e ./test/e2e/
+// `task test:e2e` runs it inside Dagger, and `task test:e2e:dev` against the
+// development backend of `task dev`. Both set TSIGOAT_E2E_PDNS_URL and
+// TSIGOAT_E2E_PDNS_API_KEY.
 package e2e
 
 import (
