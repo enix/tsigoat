@@ -322,6 +322,66 @@ func TestBackendFailures(t *testing.T) {
 	}
 }
 
+// countingBackend counts the lookups.
+type countingBackend struct {
+	*memory.Backend
+	mu      sync.Mutex
+	lookups int
+}
+
+func (b *countingBackend) Lookup(ctx context.Context, zone, name string) ([]backend.RRset, error) {
+	b.mu.Lock()
+	b.lookups++
+	b.mu.Unlock()
+	return b.Backend.Lookup(ctx, zone, name)
+}
+
+func TestSOACache(t *testing.T) {
+	t.Parallel()
+
+	inner := memory.New()
+	inner.SetZone(testZone, records(t,
+		"example.test. 3600 IN SOA ns1.example.test. hostmaster.example.test. 1 7200 900 1209600 300",
+		"example.test. 3600 IN NS ns1.example.test.",
+	)...)
+	counting := &countingBackend{Backend: inner}
+	z := &servedZone{Zone: Zone{Name: testZone, Backend: counting}, lock: make(chan struct{}, 1)}
+
+	for range 3 {
+		soa, err := z.cachedSOA(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if soa.Header().Rrtype != dns.TypeSOA || soa.Header().Name != testZone {
+			t.Errorf("cachedSOA() = %v", soa)
+		}
+	}
+	if counting.lookups != 1 {
+		t.Errorf("%d lookups for three SOA queries, want 1", counting.lookups)
+	}
+
+	// Once expired, the SOA is read again.
+	z.soaExpires = time.Now().Add(-time.Second)
+	if _, err := z.cachedSOA(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if counting.lookups != 2 {
+		t.Errorf("%d lookups after the expiry, want 2", counting.lookups)
+	}
+
+	// Failures are not cached.
+	inner.DeleteZone(testZone)
+	z.soaExpires = time.Now().Add(-time.Second)
+	for range 2 {
+		if _, err := z.cachedSOA(t.Context()); err == nil {
+			t.Error("cachedSOA() succeeded on a missing zone")
+		}
+	}
+	if counting.lookups != 4 {
+		t.Errorf("%d lookups after two failures, want 4", counting.lookups)
+	}
+}
+
 func TestZoneLockHonoursDeadlines(t *testing.T) {
 	t.Parallel()
 

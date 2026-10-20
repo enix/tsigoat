@@ -363,7 +363,7 @@ func (s *Server) query(ctx context.Context, ex *exchange) *dns.Msg {
 		return ex.reply(dns.RcodeNotImplemented)
 	}
 
-	soa, err := lookupSOA(ctx, z)
+	soa, err := z.cachedSOA(ctx)
 	if err != nil {
 		ex.logger.ErrorContext(ctx, "reading the SOA failed", "zone", zoneName, "error", err)
 		return ex.reply(dns.RcodeServerFailure)

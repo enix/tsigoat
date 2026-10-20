@@ -95,12 +95,21 @@ type Server struct {
 	errs chan error
 }
 
+// soaCacheTTL is how long the answers to the SOA queries of a zone reuse its
+// SOA: since anyone may send them, they must not reach the backend each time.
+const soaCacheTTL = 30 * time.Second
+
 // servedZone is a zone with the lock that serializes its updates.
 type servedZone struct {
 	Zone
 	// lock is a channel rather than a mutex, so that waiting for it honours
 	// the deadline of the request.
 	lock chan struct{}
+
+	// soaMu guards the SOA cache, and serializes its refreshes.
+	soaMu      sync.Mutex
+	soa        dns.RR
+	soaExpires time.Time
 }
 
 // New returns a server.
@@ -302,6 +311,22 @@ func accept(header dns.Header) dns.MsgAcceptAction {
 		return dns.MsgIgnore
 	}
 	return dns.MsgAccept
+}
+
+// cachedSOA returns the SOA of the zone, which it reads from the backend at
+// most once per soaCacheTTL, failures aside.
+func (z *servedZone) cachedSOA(ctx context.Context) (dns.RR, error) {
+	z.soaMu.Lock()
+	defer z.soaMu.Unlock()
+	now := time.Now()
+	if z.soa == nil || !now.Before(z.soaExpires) {
+		soa, err := lookupSOA(ctx, z)
+		if err != nil {
+			return nil, err
+		}
+		z.soa, z.soaExpires = soa, now.Add(soaCacheTTL)
+	}
+	return dns.Copy(z.soa), nil
 }
 
 // acquire takes the lock of the zone, unless ctx ends first.
