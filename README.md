@@ -123,7 +123,7 @@ names its place, such as `zones[0].policy[1].names[0]`.
 | Command | Purpose |
 | --- | --- |
 | `tsigoat serve` | Serve DNS updates until SIGINT or SIGTERM, then finish the updates in progress |
-| `tsigoat check-config` | Validate the configuration and print its warnings; exit code 1 when invalid |
+| `tsigoat check-config` | Validate the configuration and print its warnings; `--backends` also reads every zone through its backend; exit code 1 when a check fails |
 | `tsigoat version` | Print the version; `--short` for the number only |
 
 `serve` and `check-config` read `--config`, `/etc/tsigoat/config.yaml` by

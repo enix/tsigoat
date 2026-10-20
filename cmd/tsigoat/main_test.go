@@ -43,6 +43,12 @@ func TestCheckConfig(t *testing.T) {
 		}
 	}
 
+	// The backends of the fixture do not exist.
+	code, stdout, _ = execute("check-config", "--config", "../../test/config/valid/full.yaml", "--backends")
+	if code != 1 || !strings.Contains(stdout, "failure: zone example.test. on backend pdns") {
+		t.Errorf("--backends: code %d, output %q", code, stdout)
+	}
+
 	code, _, stderr = execute("check-config", "--config", "../../test/config/invalid/key-duplicate.yaml")
 	if code != 1 || !strings.Contains(stderr, "error: keys[1].name: duplicate key") {
 		t.Errorf("invalid configuration: code %d, stderr %q", code, stderr)
