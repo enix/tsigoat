@@ -2,6 +2,10 @@ module github.com/enix/tsigoat
 
 go 1.26.0
 
+// The toolchain of the tests and of the releases alike, which the golang image
+// of dagger/base.go matches (task check:toolchain).
+toolchain go1.27.2
+
 require (
 	github.com/KimMachineGun/automemlimit v1.0.0
 	github.com/miekg/dns v1.1.73

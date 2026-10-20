@@ -181,5 +181,6 @@ with the D* decisions, tooling), which must never be committed.
   names its linter and explains why.
 - Tests sit next to the code; table-driven for parsers; `Fuzz*` targets for
   code that parses untrusted bytes.
-- Single sources of truth: Go version in `go.mod`, Dagger version in
+- Single sources of truth: Go toolchain in `go.mod` (`toolchain`, which the
+  golang image of `dagger/base.go` matches: `task check:toolchain`), Dagger version in
   `dagger.json`, pinned images in `dagger/base.go` (tracked by Renovate).

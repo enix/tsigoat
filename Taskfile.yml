@@ -51,12 +51,18 @@ tasks:
 
   # ─── Drift checks ────────────────────────────────────────────────────────
   check:drift:
-    desc: Formatting, module tidiness and generated chart files
+    desc: Formatting, module tidiness, Go toolchain and generated chart files
     cmds:
       - task: check:fmt
       - task: check:fmt:dagger
       - task: check:tidy
+      - task: check:toolchain
       - task: check:helm-docs
+
+  check:toolchain:
+    desc: Fail when the golang image of the pipelines and the toolchain of go.mod differ
+    cmds:
+      - "{{.DAGGER}} call check-toolchain"
 
   check:fmt:
     desc: Fail when Go files are not formatted (gofumpt, gci)

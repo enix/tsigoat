@@ -39,8 +39,10 @@ The Taskfile provisions the Dagger CLI itself through `scripts/dagger-cli.sh`.
 
 Single sources of truth:
 
-- the Go version is the `go` directive of `go.mod`; everything else uses
-  `GOTOOLCHAIN=auto`;
+- the Go toolchain is the `toolchain` directive of `go.mod`, which the tests,
+  the releases and CodeQL use alike through `GOTOOLCHAIN=auto` and
+  `setup-go`; the golang image of `dagger/base.go` matches it, which
+  `task check:toolchain` checks, and Renovate moves them together;
 - the Dagger version is the `engineVersion` of `dagger.json`; the CLI script,
   the CI composite action and Renovate all read it from there.
 

@@ -33,7 +33,7 @@ const (
 	golangciLint      = "v2.15.0" // installed via `go install`
 	gotestsumModule   = "v1.13.0" // ditto
 	gremlinsModule    = "v0.6.0"  // ditto
-	govulncheckPath   = "latest"  // tracking latest, no Renovate pin
+	govulncheckModule = "v1.9.0"  // ditto: the scanner moves with Renovate, its database with each run
 )
 
 // goBase returns a Go container with go.mod/go.sum prefetched and the module

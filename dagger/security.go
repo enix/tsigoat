@@ -44,7 +44,7 @@ func (m *Tsigoat) Gitleaks(
 // tamper-resistance is via the Go module proxy + checksum DB.
 func (m *Tsigoat) Govulncheck(ctx context.Context) (string, error) {
 	return goBase(m.Source).
-		WithExec([]string{"go", "install", "golang.org/x/vuln/cmd/govulncheck@" + govulncheckPath}).
+		WithExec([]string{"go", "install", "golang.org/x/vuln/cmd/govulncheck@" + govulncheckModule}).
 		WithExec([]string{"govulncheck", "./..."}).
 		Stdout(ctx)
 }

@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"regexp"
 
 	"dagger/tsigoat/internal/dagger"
 )
@@ -12,6 +15,27 @@ func (m *Tsigoat) CheckFmt(ctx context.Context) (string, error) {
 	return golangciBase(m.Source).
 		WithExec([]string{"golangci-lint", "fmt", "--diff", "./..."}).
 		Stdout(ctx)
+}
+
+// CheckToolchain fails when the golang image of the pipelines and the toolchain
+// directive of go.mod name different Go versions: the tests would run with
+// another compiler and standard library than the releases.
+func (m *Tsigoat) CheckToolchain(ctx context.Context) (string, error) {
+	goMod, err := m.Source.File("go.mod").Contents(ctx)
+	if err != nil {
+		return "", err
+	}
+	toolchain := regexp.MustCompile(`(?m)^toolchain go(\S+)$`).FindStringSubmatch(goMod)
+	image := regexp.MustCompile(`^golang:([0-9.]+)-`).FindStringSubmatch(golangImage)
+	switch {
+	case toolchain == nil:
+		return "", errors.New("go.mod has no toolchain directive")
+	case image == nil:
+		return "", fmt.Errorf("no Go version in the golang image %s", golangImage)
+	case toolchain[1] != image[1]:
+		return "", fmt.Errorf("go.mod names toolchain go%s, the golang image of dagger/base.go Go %s: move them together", toolchain[1], image[1])
+	}
+	return fmt.Sprintf("go.mod and the golang image both name Go %s\n", image[1]), nil
 }
 
 // CheckTidy fails when go.mod or go.sum is not tidy.

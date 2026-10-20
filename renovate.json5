@@ -60,6 +60,15 @@
       customType: "regex",
       managerFilePatterns: ["/^dagger/base\\.go$/"],
       matchStrings: [
+        "govulncheckModule\\s*=\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "golang.org/x/vuln",
+      datasourceTemplate: "go",
+    },
+    {
+      customType: "regex",
+      managerFilePatterns: ["/^dagger/base\\.go$/"],
+      matchStrings: [
         "gotestsumModule\\s*=\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
       ],
       depNameTemplate: "gotest.tools/gotestsum",
