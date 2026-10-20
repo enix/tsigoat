@@ -126,3 +126,21 @@ jobs:
       - uses: ./.github/actions/dagger
         with:
           args: test-acme --pdns-version=${{ matrix.pdns }}
+
+  differential:
+    name: Differential against BIND
+    needs: changes
+    if: |
+      always() &&
+      !inputs.skip-e2e &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: test-differential

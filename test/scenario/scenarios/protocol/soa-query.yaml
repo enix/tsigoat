@@ -8,4 +8,3 @@ expect:
   authoritative: true
   signedResponse: true
   answer: ["@ SOA"]
-  authority: []

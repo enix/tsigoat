@@ -53,6 +53,7 @@ Single sources of truth:
 | Unit tests | `task test:unit` |
 | End-to-end scenarios and fault injection | `task test:e2e` (`PDNS_VERSION=4.9` for the other PowerDNS line), or `task test:e2e:dev` against `task dev` |
 | Real DNS clients | `task test:clients` (nsupdate), `task test:acme` (lego and certbot with Pebble) |
+| Scenarios against BIND 9 | `task test:differential`; intended divergences go to `test/differential/divergences.yaml` |
 | cert-manager in Kubernetes | `task test:acceptance`, which runs k3s inside Dagger; nightly in CI |
 | Fuzzing | `task test:fuzz`, `FUZZTIME=10m` for longer runs; nightly in CI |
 | Linters | `task lint`, or `task lint:go`, `lint:markdown`, `lint:actions`... |

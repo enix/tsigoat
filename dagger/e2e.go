@@ -265,3 +265,17 @@ dig +short -p @PDNS_PORT@ @pdns "_acme-challenge.@ZONE@" TXT
 echo "== OK"
 `)
 }
+
+// TestDifferential runs the scenarios against BIND 9, the reference
+// implementation of RFC 2136, to check what they expect; the scenarios where
+// tsigoat departs from BIND on purpose are listed with their reason.
+func (m *Tsigoat) TestDifferential(ctx context.Context) (string, error) {
+	return goBase(m.Source).
+		WithExec([]string{"apk", "add", "--no-cache", "bind"}).
+		WithExec([]string{"go", "install", "gotest.tools/gotestsum@" + gotestsumModule}).
+		WithExec([]string{
+			"gotestsum", "--format=testname", "--",
+			"-tags=differential", "-count=1", "./test/differential/...",
+		}).
+		Stdout(ctx)
+}

@@ -1,0 +1,28 @@
+# Scenarios that fail against BIND 9 on purpose, with the reason: tsigoat
+# departs from BIND there. A listed scenario must fail; a scenario that fails
+# without being listed points at a wrong expectation, or at a behavior of
+# tsigoat to reconsider.
+
+# Unsigned requests get the same REFUSED for unknown and forbidden zones, so
+# that they cannot tell which zones tsigoat serves; BIND answers NOTAUTH for an
+# unknown zone, as RFC 2136 3.1.2 says.
+tsig/unsigned-to-unknown-zone: unsigned updates of unknown zones are refused, not NOTAUTH
+
+# The backend owns the SOA serial: SOA updates need a policy rule that names
+# the SOA type (decision D7). BIND accepts them from any key granted ANY.
+update/soa-refused: SOA updates need an explicit policy rule
+
+# tsigoat is not a name server. It answers the SOA queries that clients use to
+# find the zone of a name, with NOERROR whether the name exists or not, to
+# avoid a backend call per query; other queries and opcodes get NOTIMP.
+protocol/soa-query-unsigned: SOA queries get NOERROR, without checking that the name exists
+protocol/soa-query-below-apex: SOA queries get NOERROR, without checking that the name exists
+protocol/other-query: queries other than SOA are not implemented
+protocol/notify-opcode: NOTIFY is not implemented
+
+# Policy rules ("*" and "**" patterns, SOA only when named, prerequisites
+# limited to the names a key may update) have no BIND translation in the
+# differential runner, which only grants the zone keys.
+policy/allowed: policy rules are not translated for BIND
+policy/delete-record: policy rules are not translated for BIND
+policy/soa-rule: policy rules are not translated for BIND

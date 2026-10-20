@@ -142,12 +142,13 @@ tasks:
 
   # ─── Tests ───────────────────────────────────────────────────────────────
   test:
-    desc: Run all tests (unit, end-to-end scenarios, real clients, ACME flow)
+    desc: Run all tests (unit, end-to-end scenarios, real clients, ACME flow, BIND differential)
     cmds:
       - task: test:unit
       - task: test:e2e
       - task: test:clients
       - task: test:acme
+      - task: test:differential
 
   test:unit:
     desc: Unit tests with the race detector, a shuffled order and coverage
@@ -171,6 +172,11 @@ tasks:
     desc: "Real DNS clients (nsupdate) against tsigoat and PowerDNS, inside Dagger (PDNS_VERSION=4.9|5.0)"
     cmds:
       - "{{.DAGGER}} call test-clients --pdns-version={{.PDNS_VERSION | default \"5.0\"}}"
+
+  test:differential:
+    desc: The scenarios against BIND 9, the reference implementation, inside Dagger
+    cmds:
+      - "{{.DAGGER}} call test-differential"
 
   test:acceptance:
     desc: "cert-manager in k3s gets certificates from Pebble through tsigoat, inside Dagger (PDNS_VERSION=4.9|5.0)"

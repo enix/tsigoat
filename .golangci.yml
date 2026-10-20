@@ -2,9 +2,10 @@ version: "2"
 
 run:
   timeout: 5m
-  # Lint the end-to-end tests too.
+  # Lint the end-to-end and differential tests too.
   build-tags:
     - e2e
+    - differential
 
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
