@@ -1,6 +1,12 @@
-# tsigoat
+<!-- markdownlint-disable-next-line MD041 -->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/enix/tsigoat/raw/main/docs/assets/logo-dark.svg">
+    <img alt="tsigoat" src="https://github.com/enix/tsigoat/raw/main/docs/assets/logo-light.svg" width="400">
+  </picture>
+</p>
 
-The RFC 2136 to anything proxy.
+<p align="center">The RFC 2136 to anything proxy.</p>
 
 tsigoat receives DNS UPDATE messages ([RFC 2136][rfc2136]), authenticates them
 with TSIG ([RFC 8945][rfc8945]) and applies the changes through the API of a

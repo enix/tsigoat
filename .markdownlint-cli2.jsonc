@@ -8,6 +8,9 @@
     "MD013": false,
     // Duplicate headings are fine in different sections.
     "MD024": { "siblings_only": true },
+    // Inline HTML only for the logo of the README, which switches with the
+    // color scheme.
+    "MD033": { "allowed_elements": ["p", "picture", "source", "img"] },
   },
   "ignores": [
     // Vendored or out-of-tree.
