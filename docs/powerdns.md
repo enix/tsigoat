@@ -37,16 +37,16 @@ another server.
   default. An update that fails or times out gets SERVFAIL. A request that
   times out may still commit afterwards: a remote API cannot tell.
 - **Lookups by name**: tsigoat reads the RRsets of the names an update
-  touches, with the `rrset_name` filter of the API.
+  touches, with the `rrset_name` filter of the API. PowerDNS 4.9 leaves the
+  disabled records out of such lookups: tsigoat reads the whole zone there
+  instead, one request per name, which costs more on large zones.
 
 ## PowerDNS-specific records
 
 - **ALIAS and LUA** records, which only PowerDNS knows, can be tested by
   prerequisites and deleted, but tsigoat never writes them.
 - **Disabled records** are invisible to clients, since PowerDNS does not serve
-  them. An update that rewrites their RRset keeps them, with PowerDNS 5.0.
-  PowerDNS 4.9 leaves them out of the lookups of a name, so that such an
-  update drops them there.
+  them. An update that rewrites their RRset keeps them.
 
 ## Concurrency
 

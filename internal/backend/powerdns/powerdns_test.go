@@ -1,6 +1,7 @@
 package powerdns
 
 import (
+	"cmp"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -38,6 +40,13 @@ type fakeAPI struct {
 	canonical map[string]string
 	// failure, when set, answers every request.
 	failure func(w http.ResponseWriter)
+	// version is the version of the server, 5.0.2 when empty.
+	version string
+	// hideDisabled imitates PowerDNS 4, whose lookups of a name leave out
+	// the disabled records.
+	hideDisabled bool
+	// lookups records the queries of the GET requests of the zones.
+	lookups []string
 }
 
 func newFakeAPI(t *testing.T) (*fakeAPI, *httptest.Server) {
@@ -74,6 +83,11 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error": "Unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
+	if r.URL.Path == "/api/v1/servers/localhost" {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"version": cmp.Or(a.version, "5.0.2")})
+		return
+	}
 	id, ok := strings.CutPrefix(r.URL.Path, "/api/v1/servers/localhost/zones/")
 	sets, known := a.zones[id]
 	if !ok || !known {
@@ -84,10 +98,14 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+		a.lookups = append(a.lookups, r.URL.RawQuery)
 		name := r.URL.Query().Get("rrset_name")
 		var selected []rrset
 		for _, set := range sets {
 			if a.ignoreFilter || name == "" || strings.EqualFold(set.Name, name) {
+				if a.hideDisabled && name != "" {
+					set.Records = slices.DeleteFunc(slices.Clone(set.Records), func(r record) bool { return r.Disabled })
+				}
 				selected = append(selected, set)
 			}
 		}
@@ -555,6 +573,39 @@ func TestZoneID(t *testing.T) {
 	} {
 		if got := zoneID(zone); got != want {
 			t.Errorf("zoneID(%q) = %q, want %q", zone, got, want)
+		}
+	}
+}
+
+// TestLegacyLookups checks that tsigoat reads the whole zone from PowerDNS 4,
+// whose lookups of a name leave out the disabled records, so that an update
+// keeps them.
+func TestLegacyLookups(t *testing.T) {
+	t.Parallel()
+	for _, version := range []string{"4.9.17", "5.0.2"} {
+		api, server := newFakeAPI(t)
+		api.version, api.hideDisabled = version, version == "4.9.17"
+		b, err := New(&Options{URL: server.URL, APIKey: apiKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sets, err := b.Lookup(t.Context(), "example.test.", "www.example.test.")
+		if err != nil {
+			t.Fatal(err)
+		}
+		a := slices.IndexFunc(sets, func(set backend.RRset) bool { return set.Type == dns.TypeA })
+		change := backend.Change{Op: backend.Replace, RRset: sets[a]}
+		if err := b.Apply(t.Context(), "example.test.", []backend.Change{change}); err != nil {
+			t.Fatal(err)
+		}
+		api.mu.Lock()
+		patch, lookups := api.patches[len(api.patches)-1], slices.Clone(api.lookups)
+		api.mu.Unlock()
+		if !strings.Contains(patch, `"192.0.2.9","disabled":true`) {
+			t.Errorf("PowerDNS %s: the PATCH %s drops the disabled record", version, patch)
+		}
+		if filtered := strings.Contains(lookups[0], "rrset_name"); filtered == api.hideDisabled {
+			t.Errorf("PowerDNS %s: lookup %q, want the filter by name: %t", version, lookups[0], !api.hideDisabled)
 		}
 	}
 }

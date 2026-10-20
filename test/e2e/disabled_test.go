@@ -5,7 +5,6 @@ package e2e
 import (
 	"context"
 	"net/http"
-	"strings"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -32,20 +31,13 @@ func (d *disabledTarget) ResetZone(ctx context.Context, zone string, records []d
 
 // TestDisabledRecordsSurvive checks that an update of an RRset keeps its
 // disabled records, which PowerDNS does not serve and tsigoat does not see.
-// PowerDNS 4.9 leaves them out of the lookups of a name, so that tsigoat
-// cannot know them there: the test then checks that limit instead.
+// PowerDNS 4.9 leaves them out of the lookups of a name: tsigoat reads the
+// whole zone there.
 func TestDisabledRecordsSurvive(t *testing.T) {
 	t.Parallel()
 
 	env := newEnvironment(t)
 	api := newPowerDNS(env.pdnsURL, env.pdnsAPIKey)
-	var server struct {
-		Version string `json:"version"`
-	}
-	if _, err := api.do(t.Context(), http.MethodGet, "", nil, &server); err != nil {
-		t.Fatal(err)
-	}
-	legacy := strings.HasPrefix(server.Version, "4.")
 
 	s := scenario.Scenario{
 		Name:        "backend/disabled-records",
@@ -55,9 +47,6 @@ func TestDisabledRecordsSurvive(t *testing.T) {
 		Expect: scenario.Expect{Records: &[]string{
 			"www 300 IN A 192.0.2.1", "www 300 IN A 192.0.2.5", "www 300 IN A 192.0.2.9",
 		}},
-	}
-	if legacy {
-		s.KnownDefect = "PowerDNS " + server.Version + " hides disabled records from the lookups of a name"
 	}
 	tsigoat := startTsigoat(t, env, []scenario.Scenario{s}, env.pdns())
 	scenario.Run(t, &disabledTarget{&pdnsTarget{api: api, addr: tsigoat.addr}}, &s, parentDomain)

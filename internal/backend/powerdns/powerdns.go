@@ -62,6 +62,12 @@ type Backend struct {
 	// entry.
 	disabledMu sync.Mutex
 	disabled   map[string]map[string][]record
+
+	// legacy tells whether the server is PowerDNS 4, whose lookups of a
+	// name leave out the disabled records, once read.
+	legacyMu    sync.Mutex
+	legacy      bool
+	legacyKnown bool
 }
 
 var _ backend.Backend = (*Backend)(nil)
@@ -126,10 +132,18 @@ type record struct {
 }
 
 // Lookup implements backend.Backend. Disabled records are left out, as
-// PowerDNS does not serve them.
+// PowerDNS does not serve them, but kept for Apply. PowerDNS 4 leaves them out
+// of the lookups of a name: there, Lookup reads the whole zone.
 func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRset, error) {
 	name = dns.CanonicalName(name)
+	legacy, err := b.isLegacy(ctx)
+	if err != nil {
+		return nil, err
+	}
 	query := url.Values{"rrsets": {"true"}, "rrset_name": {name}}
+	if legacy {
+		query.Del("rrset_name")
+	}
 	var content struct {
 		RRsets []rrset `json:"rrsets"`
 	}
@@ -160,6 +174,23 @@ func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRse
 	}
 	b.keepDisabled(zone, name, disabled)
 	return sets, nil
+}
+
+// isLegacy tells whether the server is PowerDNS 4, which it reads once.
+func (b *Backend) isLegacy(ctx context.Context) (bool, error) {
+	b.legacyMu.Lock()
+	defer b.legacyMu.Unlock()
+	if b.legacyKnown {
+		return b.legacy, nil
+	}
+	var server struct {
+		Version string `json:"version"`
+	}
+	if err := b.do(ctx, http.MethodGet, "", nil, &server); err != nil {
+		return false, fmt.Errorf("reading the version of PowerDNS: %w", err)
+	}
+	b.legacy, b.legacyKnown = strings.HasPrefix(server.Version, "4."), true
+	return b.legacy, nil
 }
 
 // keepDisabled records the disabled records of a name.
