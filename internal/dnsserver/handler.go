@@ -36,6 +36,10 @@ type exchange struct {
 	identity string
 	// tsig is the TSIG record of a signed request whose signature is valid.
 	tsig *dns.TSIG
+	// tsigError is the TSIG error of a request whose signature does not
+	// verify, which the response carries: WriteMsg takes the TSIG record out
+	// of the response as it signs it, before the observer sees it.
+	tsigError uint16
 	// zone is the served zone that the request names, once known.
 	zone   string
 	logger *slog.Logger
@@ -79,8 +83,8 @@ func (ex *exchange) answer(resp *dns.Msg, elapsed time.Duration) *Answer {
 	if ex.tsig != nil {
 		a.Algorithm = dns.CanonicalName(ex.tsig.Algorithm)
 	}
-	if tsig := resp.IsTsig(); tsig != nil && tsig.Error != dns.RcodeSuccess {
-		a.TSIGError = dns.RcodeToString[int(tsig.Error)]
+	if ex.tsigError != dns.RcodeSuccess {
+		a.TSIGError = dns.RcodeToString[int(ex.tsigError)]
 	}
 	return a
 }
@@ -227,6 +231,7 @@ func (s *Server) signedLen(tsig *dns.TSIG) int {
 // response.
 func (s *Server) tsigFailure(ctx context.Context, ex *exchange, tsig *dns.TSIG, err error) *dns.Msg {
 	code := auth.TSIGError(err)
+	ex.tsigError = code
 	attrs := []any{
 		"key", dns.CanonicalName(tsig.Hdr.Name),
 		"algorithm", dns.CanonicalName(tsig.Algorithm),

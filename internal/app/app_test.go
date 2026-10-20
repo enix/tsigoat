@@ -163,9 +163,22 @@ func TestAdminServer(t *testing.T) {
 		t.Fatalf("A query: %v, %v", resp, err)
 	}
 
-	want := `tsigoat_dns_responses_total{algorithm="",key="",opcode="QUERY",rcode="NOTIMP",zone="example.test."} 1`
-	if status, body := httpGet(t, "http://"+a.AdminAddr()+"/metrics"); status != http.StatusOK || !strings.Contains(body, want) {
-		t.Errorf("/metrics = %d, without %s:\n%s", status, want, body)
+	// Signed with an unknown key: BADKEY, which miekg/dns does not verify.
+	m.SetTsig("unknown.example.", dns.HmacSHA256, 300, time.Now().Unix())
+	client.TsigSecret = map[string]string{"unknown.example.": "c2VjcmV0"}
+	resp, _, err = client.ExchangeContext(t.Context(), m, a.Server.Addrs()[0])
+	if !errors.Is(err, dns.ErrAuth) || resp.Rcode != dns.RcodeNotAuth {
+		t.Fatalf("query signed with an unknown key: %v, %v", resp, err)
+	}
+
+	status, body := httpGet(t, "http://"+a.AdminAddr()+"/metrics")
+	for _, want := range []string{
+		`tsigoat_dns_responses_total{algorithm="",key="",opcode="QUERY",rcode="NOTIMP",zone="example.test."} 1`,
+		`tsigoat_tsig_failures_total{error="BADKEY"} 1`,
+	} {
+		if status != http.StatusOK || !strings.Contains(body, want) {
+			t.Errorf("/metrics = %d, without %s:\n%s", status, want, body)
+		}
 	}
 
 	cancel()
