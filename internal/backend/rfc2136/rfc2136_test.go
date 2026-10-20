@@ -11,6 +11,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/enix/tsigoat/internal/auth"
+	"github.com/enix/tsigoat/internal/backend"
 	"github.com/enix/tsigoat/internal/backend/rfc2136"
 	"github.com/enix/tsigoat/internal/config"
 )
@@ -250,24 +251,32 @@ func TestExchangeFailures(t *testing.T) {
 		keys    []config.Key
 		handler handler
 		err     string
+		// indeterminate tells that the server may have applied the update.
+		indeterminate bool
 	}{
-		{"wrong secret", []config.Key{wrongSecret}, reply(dns.RcodeSuccess), "rejected the signature of key tsigoat.: BADSIG"},
+		{"wrong secret", []config.Key{wrongSecret}, reply(dns.RcodeSuccess), "rejected the signature of key tsigoat.: BADSIG", false},
 		{"unsigned response", []config.Key{relayKey()}, func(w dns.ResponseWriter, req *dns.Msg) {
 			_ = w.WriteMsg(new(dns.Msg).SetRcode(req, dns.RcodeSuccess))
-		}, "answered NOERROR without signing"},
+		}, "answered NOERROR without signing", false},
 		{"response signed with another key", []config.Key{relayKey(), other}, func(w dns.ResponseWriter, req *dns.Msg) {
 			resp := new(dns.Msg).SetRcode(req, dns.RcodeSuccess)
 			resp.SetTsig("other.", dns.HmacSHA256, 300, time.Now().Unix())
 			_ = w.WriteMsg(resp)
-		}, "does not verify"},
+		}, "does not verify", true},
+		{"connection closed without a response", []config.Key{relayKey()}, func(w dns.ResponseWriter, _ *dns.Msg) {
+			_ = w.Close()
+		}, "exchanging with", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			server := startNameServer(t, tt.keys, tt.handler)
-			if _, err := newRelay(t, server.addr, time.Second).Update(t.Context(), zone, "", nil, nil); err == nil ||
-				!strings.Contains(err.Error(), tt.err) {
+			_, err := newRelay(t, server.addr, time.Second).Update(t.Context(), zone, "", nil, nil)
+			if err == nil || !strings.Contains(err.Error(), tt.err) {
 				t.Errorf("Update() error = %v, want one about %q", err, tt.err)
+			}
+			if backend.IsIndeterminate(err) != tt.indeterminate {
+				t.Errorf("Update() error = %v, indeterminate %t, want %t", err, backend.IsIndeterminate(err), tt.indeterminate)
 			}
 		})
 	}
@@ -282,12 +291,21 @@ func TestTimeout(t *testing.T) {
 	t.Cleanup(func() { close(release) })
 
 	start := time.Now()
-	_, err := newRelay(t, server.addr, 100*time.Millisecond).Update(t.Context(), zone, "", nil, nil)
+	relay := newRelay(t, server.addr, 100*time.Millisecond)
+	_, err := relay.Update(t.Context(), zone, "", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "exchanging with "+server.addr) {
 		t.Errorf("Update() error = %v, want a timeout", err)
 	}
+	// The server received the update, and may apply it after the timeout.
+	if !backend.IsIndeterminate(err) {
+		t.Errorf("Update() error = %v, want an unknown outcome", err)
+	}
 	if elapsed := time.Since(start); elapsed > time.Second {
 		t.Errorf("Update() returned after %s, beyond its timeout", elapsed)
+	}
+	// A query that times out changes nothing.
+	if _, err := relay.SOA(t.Context(), zone); err == nil || backend.IsIndeterminate(err) {
+		t.Errorf("SOA() error = %v, want a plain timeout", err)
 	}
 }
 
@@ -301,8 +319,13 @@ func TestUnreachable(t *testing.T) {
 	}
 	addr := listener.Addr().String()
 	_ = listener.Close()
-	if _, err := newRelay(t, addr, time.Second).Update(t.Context(), zone, "", nil, nil); err == nil {
+	_, err = newRelay(t, addr, time.Second).Update(t.Context(), zone, "", nil, nil)
+	if err == nil {
 		t.Error("Update() succeeded without a server")
+	}
+	// Nothing reached a server.
+	if backend.IsIndeterminate(err) {
+		t.Errorf("Update() error = %v, want a plain failure", err)
 	}
 }
 

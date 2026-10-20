@@ -9,7 +9,9 @@
 // server, or of a configuration, that the operator of tsigoat must fix: a
 // REFUSED update, for one, means that the server does not grant tsigoat what
 // its policy grants the client. They are errors, which the client gets as
-// SERVFAIL.
+// SERVFAIL. An exchange that fails once the update reached the server, as when
+// the response does not come in time, leaves the outcome unknown: the server
+// may have applied the update.
 package rfc2136
 
 import (
@@ -83,6 +85,10 @@ func (r *Relay) Update(ctx context.Context, zone, _ string, prerequisites, updat
 	m.Answer = withoutRDATA(prerequisites, true)
 	m.Ns = withoutRDATA(updates, false)
 	resp, err := r.exchange(ctx, zone, m)
+	if _, sent := errors.AsType[*sentError](err); sent {
+		// The server may have applied the update before the failure.
+		return 0, backend.Indeterminate(err)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -135,15 +141,50 @@ func (r *Relay) Check(ctx context.Context, zone string) error {
 	return err
 }
 
+// sentError is a failure of an exchange after the message reached the server
+// whole, while tsigoat waited for the response or verified it: the server may
+// have processed the message.
+type sentError struct {
+	err error
+}
+
+func (e *sentError) Error() string {
+	return e.err.Error()
+}
+
+func (e *sentError) Unwrap() error {
+	return e.err
+}
+
+// watchedConn tells whether an exchange started to read the response: by
+// then, it wrote the message whole.
+type watchedConn struct {
+	net.Conn
+	reading bool
+}
+
+func (c *watchedConn) Read(b []byte) (int, error) {
+	c.reading = true
+	return c.Conn.Read(b) //nolint:wrapcheck // the reads of miekg/dns, which wraps their errors
+}
+
 // exchange signs a message about a zone, sends it over TCP, and returns the
-// response once its signature verifies.
+// response once its signature verifies. A failure after the message reached
+// the server whole is a *sentError.
 func (r *Relay) exchange(ctx context.Context, zone string, m *dns.Msg) (*dns.Msg, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
 	m.SetTsig(r.keyName, r.algorithm, fudge, time.Now().Unix())
 	client := &dns.Client{Net: "tcp", Timeout: r.timeout, TsigProvider: r.keyring}
 
-	resp, _, err := client.ExchangeContext(ctx, m, r.server)
+	conn, err := client.DialContext(ctx, r.server)
+	if err != nil {
+		return nil, fmt.Errorf("exchanging with %s: %w", r.server, err)
+	}
+	defer func() { _ = conn.Close() }()
+	watched := &watchedConn{Conn: conn.Conn}
+	conn.Conn = watched
+	resp, _, err := client.ExchangeWithConnContext(ctx, m, conn)
 	if resp != nil {
 		// The server signs a response with a TSIG error when it can, or
 		// leaves its MAC empty, which fails the verification.
@@ -157,7 +198,11 @@ func (r *Relay) exchange(ctx context.Context, zone string, m *dns.Msg) (*dns.Msg
 		return nil, fmt.Errorf("%s answered NOTAUTH: it is not authoritative for zone %s", r.server, zone)
 	case errors.Is(err, dns.ErrSig), errors.Is(err, dns.ErrTime), errors.Is(err, auth.ErrUnknownKey),
 		errors.Is(err, auth.ErrAlgorithmMismatch):
-		return nil, fmt.Errorf("the response of %s does not verify: %w", r.server, err)
+		// A response that does not verify tells nothing of what the server
+		// did with the message.
+		return nil, &sentError{err: fmt.Errorf("the response of %s does not verify: %w", r.server, err)}
+	case err != nil && watched.reading:
+		return nil, &sentError{err: fmt.Errorf("exchanging with %s: %w", r.server, err)}
 	case err != nil:
 		return nil, fmt.Errorf("exchanging with %s: %w", r.server, err)
 	case resp.IsTsig() == nil:
