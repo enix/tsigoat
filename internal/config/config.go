@@ -244,6 +244,12 @@ func Parse(data []byte, options Options) (*Config, []string, error) {
 		return nil, nil, fmt.Errorf("decoding the configuration: %w", err)
 	}
 
+	// A second document would go unchecked.
+	var second any
+	if err := decoder.Decode(&second); !errors.Is(err, io.EOF) {
+		return nil, nil, errors.New("decoding the configuration: it holds more than one YAML document")
+	}
+
 	v := &validator{options: options}
 	config := v.config(&raw)
 	if len(v.errs) > 0 {

@@ -768,6 +768,9 @@ func (v *validator) ruleBounds(path string, r *fileRule, rule *Rule) {
 
 // namePattern validates a policy name pattern, which must lie inside the zone.
 func (v *validator) namePattern(path, pattern, zone string) (string, bool) {
+	if escaped(path, pattern, v) {
+		return "", false
+	}
 	canonical := canonicalName(pattern)
 	if pattern == "" || !validName(canonical) {
 		v.errorf(path, "invalid name pattern %q", pattern)
@@ -786,6 +789,9 @@ func (v *validator) domainName(path, name string) (string, bool) {
 		v.errorf(path, "missing name")
 		return "", false
 	}
+	if escaped(path, name, v) {
+		return "", false
+	}
 	canonical := canonicalName(name)
 	if canonical == "." || !validName(canonical) {
 		v.errorf(path, "invalid domain name %q", name)
@@ -796,6 +802,17 @@ func (v *validator) domainName(path, name string) (string, bool) {
 
 // canonicalName returns the canonical form of a name: lower case, with a
 // trailing dot.
+// escaped reports, as an error, a name that holds escapes: its wire form,
+// which requests carry, may be spelled otherwise, such as \101xample.test.
+// for example.test., so that it would match nothing.
+func escaped(path, name string, v *validator) bool {
+	if !strings.Contains(name, `\`) {
+		return false
+	}
+	v.errorf(path, "%q holds escapes, which names may not hold", name)
+	return true
+}
+
 func canonicalName(name string) string {
 	return dns.CanonicalName(name)
 }
