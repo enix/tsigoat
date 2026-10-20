@@ -20,12 +20,16 @@ const (
 	e2eDNSPort      = 5353
 	pdnsDNSPort     = 5300
 	pdnsAPIPort     = 8081
+	toxiproxyPort   = 8474
+	// proxiedAPIPort is where toxiproxy relays the PowerDNS API.
+	proxiedAPIPort = 18081
 )
 
 // TestEndToEnd runs the scenarios of test/scenario against tsigoat placed in
 // front of a PowerDNS server. The Go test suite builds tsigoat, runs it with a
 // configuration serving the zone of every scenario, and checks the outcome
-// of each scenario through the PowerDNS API.
+// of each scenario through the PowerDNS API. A toxiproxy between tsigoat and
+// the PowerDNS API injects the faults of the fault tests.
 func (m *Tsigoat) TestEndToEnd(
 	ctx context.Context,
 	// PowerDNS release line to test against: "4.9" or "5.0".
@@ -37,12 +41,16 @@ func (m *Tsigoat) TestEndToEnd(
 	if err != nil {
 		return "", err
 	}
+	pdns := asPowerDNSService(server)
 
 	return goBase(m.Source).
 		WithExec([]string{"go", "install", "gotest.tools/gotestsum@" + gotestsumModule}).
-		WithServiceBinding("pdns", asPowerDNSService(server)).
+		WithServiceBinding("pdns", pdns).
+		WithServiceBinding("toxiproxy", toxiproxy(pdns)).
 		WithEnvVariable("TSIGOAT_E2E_PDNS_URL", fmt.Sprintf("http://pdns:%d", pdnsAPIPort)).
 		WithEnvVariable("TSIGOAT_E2E_PDNS_API_KEY", e2eAPIKey).
+		WithEnvVariable("TSIGOAT_E2E_TOXIPROXY_URL", fmt.Sprintf("http://toxiproxy:%d", toxiproxyPort)).
+		WithEnvVariable("TSIGOAT_E2E_PROXIED_PDNS_URL", fmt.Sprintf("http://toxiproxy:%d", proxiedAPIPort)).
 		WithExec([]string{
 			"gotestsum", "--format=testname", "--",
 			"-tags=e2e", "-count=1", "./test/e2e/...",
@@ -106,6 +114,24 @@ func (m *Tsigoat) e2eImage() *dagger.Container {
 	return dag.Container().
 		From(alpineImage).
 		WithFile("/usr/local/bin/tsigoat", binary)
+}
+
+// toxiproxy returns a toxiproxy service that relays the PowerDNS API on
+// proxiedAPIPort, under the proxy name "pdns-api". The proxy exists from the
+// start, so that the port listens when Dagger checks it.
+func toxiproxy(pdns *dagger.Service) *dagger.Service {
+	config := fmt.Sprintf(`[{"name": "pdns-api", "listen": "0.0.0.0:%d", "upstream": "pdns:%d", "enabled": true}]`,
+		proxiedAPIPort, pdnsAPIPort)
+	return dag.Container().
+		From(toxiproxyImage).
+		WithServiceBinding("pdns", pdns).
+		WithNewFile("/etc/toxiproxy.json", config).
+		WithExposedPort(toxiproxyPort).
+		WithExposedPort(proxiedAPIPort).
+		AsService(dagger.ContainerAsServiceOpts{
+			UseEntrypoint: true,
+			Args:          []string{"-host=0.0.0.0", "-config=/etc/toxiproxy.json"},
+		})
 }
 
 // powerDNS returns a PowerDNS authoritative server with its HTTP API enabled.

@@ -26,14 +26,26 @@ type environment struct {
 	pdnsAPIKey string
 	// binary is a prebuilt tsigoat binary; the tests build one otherwise.
 	binary string
+	// toxiproxyURL is the API of a toxiproxy relaying the PowerDNS API on
+	// proxiedPDNSURL, for the fault tests.
+	toxiproxyURL   string
+	proxiedPDNSURL string
 }
 
-func newEnvironment(t *testing.T) environment {
+// pdns returns the settings of the PowerDNS API.
+func (e *environment) pdns() scenario.PowerDNS {
+	return scenario.PowerDNS{URL: e.pdnsURL, APIKey: e.pdnsAPIKey}
+}
+
+func newEnvironment(t *testing.T) *environment {
 	t.Helper()
-	env := environment{
+	env := &environment{
 		pdnsURL:    os.Getenv("TSIGOAT_E2E_PDNS_URL"),
 		pdnsAPIKey: os.Getenv("TSIGOAT_E2E_PDNS_API_KEY"),
 		binary:     os.Getenv("TSIGOAT_E2E_BINARY"),
+
+		toxiproxyURL:   os.Getenv("TSIGOAT_E2E_TOXIPROXY_URL"),
+		proxiedPDNSURL: os.Getenv("TSIGOAT_E2E_PROXIED_PDNS_URL"),
 	}
 	if env.pdnsURL == "" {
 		t.Skip("TSIGOAT_E2E_PDNS_URL is not set: run the end-to-end tests through `task test:e2e`")
@@ -44,11 +56,12 @@ func newEnvironment(t *testing.T) environment {
 // tsigoat is a running tsigoat process.
 type tsigoat struct {
 	addr string
+	logs *syncBuffer
 }
 
 // startTsigoat runs tsigoat with a configuration that serves the zone of
 // every scenario, until the end of the test.
-func startTsigoat(t *testing.T, env environment, scenarios []scenario.Scenario) *tsigoat {
+func startTsigoat(t *testing.T, env *environment, scenarios []scenario.Scenario, pdns scenario.PowerDNS) *tsigoat {
 	t.Helper()
 
 	binary := env.binary
@@ -56,7 +69,7 @@ func startTsigoat(t *testing.T, env environment, scenarios []scenario.Scenario) 
 		binary = buildTsigoat(t)
 	}
 
-	data, err := scenario.Config(scenarios, parentDomain, scenario.PowerDNS{URL: env.pdnsURL, APIKey: env.pdnsAPIKey})
+	data, err := scenario.Config(scenarios, parentDomain, pdns)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +101,7 @@ func startTsigoat(t *testing.T, env environment, scenarios []scenario.Scenario) 
 	})
 
 	waitForTCP(t, addr, logs)
-	return &tsigoat{addr: addr}
+	return &tsigoat{addr: addr, logs: logs}
 }
 
 func buildTsigoat(t *testing.T) string {
@@ -152,6 +165,13 @@ func (b *syncBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.Write(p)
+}
+
+// String returns everything written.
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // tail returns the last lines written.

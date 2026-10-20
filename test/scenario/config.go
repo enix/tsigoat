@@ -11,6 +11,8 @@ import (
 type PowerDNS struct {
 	URL    string
 	APIKey string
+	// Timeout of the calls to the API, such as "1s"; the default when empty.
+	Timeout string
 }
 
 // Config renders the configuration of tsigoat that serves the zones of the
@@ -23,8 +25,9 @@ func Config(scenarios []Scenario, parent string, pdns PowerDNS) ([]byte, error) 
 		Secret    string `yaml:"secret"`
 	}
 	type powerDNS struct {
-		URL    string `yaml:"url"`
-		APIKey string `yaml:"apiKey"`
+		URL     string `yaml:"url"`
+		APIKey  string `yaml:"apiKey"`
+		Timeout string `yaml:"timeout,omitempty"`
 	}
 	type backend struct {
 		Name     string   `yaml:"name"`

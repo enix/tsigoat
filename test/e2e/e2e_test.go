@@ -27,7 +27,7 @@ func TestScenarios(t *testing.T) {
 	}
 
 	api := newPowerDNS(env.pdnsURL, env.pdnsAPIKey)
-	server := startTsigoat(t, env, scenarios)
+	server := startTsigoat(t, env, scenarios, env.pdns())
 	target := &pdnsTarget{api: api, addr: server.addr}
 
 	for _, s := range scenarios {

@@ -42,7 +42,7 @@ func TestSOASerialIncrements(t *testing.T) {
 		Requests:    []scenario.Request{{Updates: []string{`add www 60 IN TXT "serial"`}}},
 		Expect:      scenario.Expect{Records: &[]string{`www 60 IN TXT "serial"`}},
 	}
-	server := startTsigoat(t, env, []scenario.Scenario{s})
+	server := startTsigoat(t, env, []scenario.Scenario{s}, env.pdns())
 	api := newPowerDNS(env.pdnsURL, env.pdnsAPIKey)
 	target := &serialTarget{pdnsTarget: &pdnsTarget{api: api, addr: server.addr}}
 
