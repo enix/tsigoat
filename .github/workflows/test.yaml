@@ -29,6 +29,7 @@ jobs:
     outputs:
       go: ${{ steps.filter.outputs.go }}
       helm: ${{ steps.filter.outputs.helm }}
+      webhook: ${{ steps.filter.outputs.webhook }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -47,6 +48,8 @@ jobs:
             helm:
               - 'chart/**'
               - 'examples/helm/**'
+            webhook:
+              - 'examples/webhook/**'
 
   unit:
     name: Unit tests
@@ -149,6 +152,24 @@ jobs:
       - uses: ./.github/actions/dagger
         with:
           args: test-acme --pdns-version=${{ matrix.pdns }}
+
+  webhook:
+    name: Webhook example
+    needs: changes
+    if: |
+      always() &&
+      !inputs.skip-e2e &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true' || needs.changes.outputs.webhook == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: test-webhook-example
 
   differential:
     name: Differential against BIND

@@ -154,13 +154,14 @@ tasks:
 
   # ─── Tests ───────────────────────────────────────────────────────────────
   test:
-    desc: Run all tests (unit, Helm chart, end-to-end scenarios, real clients, ACME flow, BIND differential)
+    desc: Run all tests (unit, Helm chart, end-to-end scenarios, real clients, ACME flow, webhook example, BIND differential)
     cmds:
       - task: test:unit
       - task: test:helm
       - task: test:e2e
       - task: test:clients
       - task: test:acme
+      - task: test:webhook
       - task: test:differential
 
   test:unit:
@@ -210,6 +211,11 @@ tasks:
     desc: Mutation testing of the engine and the policy with gremlins, inside Dagger (informational)
     cmds:
       - "{{.DAGGER}} call mutation"
+
+  test:webhook:
+    desc: nsupdate through tsigoat to the example webhook in Python, with each authentication, inside Dagger
+    cmds:
+      - "{{.DAGGER}} call test-webhook-example"
 
   test:acme:
     desc: "ACME DNS-01 flow: lego and certbot get certificates from Pebble through tsigoat, inside Dagger (PDNS_VERSION=4.9|5.0)"

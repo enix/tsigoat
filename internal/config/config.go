@@ -57,10 +57,12 @@ type Key struct {
 // Backend is a DNS provider that tsigoat applies the updates to.
 type Backend struct {
 	Name string
-	// Type is "powerdns" or "rfc2136"; the settings of that type are set.
+	// Type is "powerdns", "rfc2136" or "webhook"; the settings of that type
+	// are set.
 	Type     string
 	PowerDNS *PowerDNS
 	RFC2136  *RFC2136
+	Webhook  *Webhook
 }
 
 // PowerDNS holds the settings of a PowerDNS backend.
@@ -85,6 +87,35 @@ type RFC2136 struct {
 	Key Key
 	// Timeout bounds every exchange with the server.
 	Timeout time.Duration
+}
+
+// Webhook holds the settings of a webhook backend: an HTTP endpoint that
+// tsigoat posts the updates to, as JSON.
+type Webhook struct {
+	URL string
+	// Timeout bounds every request, from the connection to the response.
+	Timeout time.Duration
+	// CAFile is a PEM bundle trusted for the certificate of the endpoint, on
+	// top of the system roots.
+	CAFile string
+	// InsecureSkipVerify accepts any certificate.
+	InsecureSkipVerify bool
+	// FollowRedirects follows the 307 and 308 redirects.
+	FollowRedirects bool
+	// SignatureSecret signs the requests with HMAC-SHA256, when set.
+	SignatureSecret string
+	// Username and Password authenticate the requests with HTTP basic
+	// authentication, when Username is set.
+	Username, Password string
+	// BearerToken authenticates the requests with a bearer token, when set.
+	BearerToken string
+	// Headers come with every request.
+	Headers []Header
+}
+
+// Header is an HTTP header.
+type Header struct {
+	Name, Value string
 }
 
 // Zone is a zone served by tsigoat.
@@ -208,6 +239,45 @@ type fileBackend struct {
 	Type     string        `yaml:"type"`
 	PowerDNS *filePowerDNS `yaml:"powerdns"`
 	RFC2136  *fileRFC2136  `yaml:"rfc2136"`
+	Webhook  *fileWebhook  `yaml:"webhook"`
+}
+
+type fileWebhook struct {
+	URL                string         `yaml:"url"`
+	Timeout            string         `yaml:"timeout"`
+	CAFile             string         `yaml:"caFile"`
+	InsecureSkipVerify bool           `yaml:"insecureSkipVerify"`
+	FollowRedirects    bool           `yaml:"followRedirects"`
+	Signature          *fileSignature `yaml:"signature"`
+	BasicAuth          *fileBasicAuth `yaml:"basicAuth"`
+	Bearer             *fileBearer    `yaml:"bearer"`
+	Headers            []fileHeader   `yaml:"headers"`
+}
+
+type fileSignature struct {
+	Secret     string `yaml:"secret"`
+	SecretFile string `yaml:"secretFile"`
+	SecretEnv  string `yaml:"secretEnv"`
+}
+
+type fileBasicAuth struct {
+	Username     string `yaml:"username"`
+	Password     string `yaml:"password"`
+	PasswordFile string `yaml:"passwordFile"`
+	PasswordEnv  string `yaml:"passwordEnv"`
+}
+
+type fileBearer struct {
+	Token     string `yaml:"token"`
+	TokenFile string `yaml:"tokenFile"`
+	TokenEnv  string `yaml:"tokenEnv"`
+}
+
+type fileHeader struct {
+	Name      string `yaml:"name"`
+	Value     string `yaml:"value"`
+	ValueFile string `yaml:"valueFile"`
+	ValueEnv  string `yaml:"valueEnv"`
 }
 
 type filePowerDNS struct {

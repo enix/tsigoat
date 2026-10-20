@@ -7,7 +7,8 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Backend is the backend of every zone of the scenarios: PowerDNS or RFC2136.
+// Backend is the backend of every zone of the scenarios: PowerDNS, RFC2136
+// or Webhook.
 type Backend interface {
 	// entry returns the backend in the configuration of tsigoat.
 	entry() backendEntry
@@ -23,6 +24,20 @@ type PowerDNS struct {
 
 func (p PowerDNS) entry() backendEntry {
 	return backendEntry{Name: "pdns", Type: "powerdns", PowerDNS: &powerDNSEntry{URL: p.URL, APIKey: p.APIKey, Timeout: p.Timeout}}
+}
+
+// Webhook locates an endpoint that tsigoat posts the updates to.
+type Webhook struct {
+	URL string
+	// Secret signs the requests.
+	Secret string
+}
+
+func (w Webhook) entry() backendEntry {
+	return backendEntry{Name: "webhook", Type: "webhook", Webhook: &webhookEntry{
+		URL:       w.URL,
+		Signature: signatureEntry{Secret: w.Secret},
+	}}
 }
 
 // RFC2136 locates a name server that tsigoat relays the updates to.
@@ -58,11 +73,19 @@ type (
 		Server string   `yaml:"server"`
 		Key    keyEntry `yaml:"key"`
 	}
+	signatureEntry struct {
+		Secret string `yaml:"secret"`
+	}
+	webhookEntry struct {
+		URL       string         `yaml:"url"`
+		Signature signatureEntry `yaml:"signature"`
+	}
 	backendEntry struct {
 		Name     string         `yaml:"name"`
 		Type     string         `yaml:"type"`
 		PowerDNS *powerDNSEntry `yaml:"powerdns,omitempty"`
 		RFC2136  *rfc2136Entry  `yaml:"rfc2136,omitempty"`
+		Webhook  *webhookEntry  `yaml:"webhook,omitempty"`
 	}
 	ruleEntry struct {
 		Key        string   `yaml:"key"`

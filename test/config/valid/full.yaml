@@ -35,6 +35,23 @@ backends:
         algorithm: hmac-sha1
         secretEnv: TSIGOAT_TEST_SECRET
       timeout: 3s
+  - name: hook
+    type: webhook
+    webhook:
+      url: https://hooks.example.test/tsigoat
+      timeout: 2s
+      followRedirects: true
+      insecureSkipVerify: true
+      signature:
+        secretEnv: TSIGOAT_TEST_API_KEY
+      basicAuth:
+        username: tsigoat
+        passwordFile: ../../test/config/secret.txt
+      headers:
+        - name: x-tenant
+          value: dns
+        - name: X-Api-Key
+          valueEnv: TSIGOAT_TEST_API_KEY
 zones:
   - name: Example.Test
     backend: pdns
@@ -56,4 +73,7 @@ zones:
     allowUnauthenticated: true
   - name: relayed.test.
     backend: bind
+    keys: [admin.]
+  - name: hooked.test.
+    backend: hook
     keys: [admin.]

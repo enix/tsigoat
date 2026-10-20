@@ -147,7 +147,7 @@ func TestUpdateRelaysTheMessage(t *testing.T) {
 		t.Fatal(unpackErr)
 	}
 
-	rcode, err := newRelay(t, server.addr, time.Second).Update(t.Context(), zone, decoded.Answer, decoded.Ns)
+	rcode, err := newRelay(t, server.addr, time.Second).Update(t.Context(), zone, "client.", decoded.Answer, decoded.Ns)
 	if err != nil || rcode != dns.RcodeSuccess {
 		t.Fatalf("Update() = %s, %v, want NOERROR", dns.RcodeToString[rcode], err)
 	}
@@ -221,7 +221,7 @@ func TestUpdateRcodes(t *testing.T) {
 		t.Run(rcodeName(tt.rcode), func(t *testing.T) {
 			t.Parallel()
 			server := startNameServer(t, []config.Key{relayKey()}, reply(tt.rcode))
-			rcode, err := newRelay(t, server.addr, time.Second).Update(t.Context(), zone, nil, nil)
+			rcode, err := newRelay(t, server.addr, time.Second).Update(t.Context(), zone, "", nil, nil)
 			switch {
 			case tt.err == "" && (err != nil || rcode != tt.rcode):
 				t.Errorf("Update() = %s, %v, want %s", rcodeName(rcode), err, rcodeName(tt.rcode))
@@ -265,7 +265,7 @@ func TestExchangeFailures(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			server := startNameServer(t, tt.keys, tt.handler)
-			if _, err := newRelay(t, server.addr, time.Second).Update(t.Context(), zone, nil, nil); err == nil ||
+			if _, err := newRelay(t, server.addr, time.Second).Update(t.Context(), zone, "", nil, nil); err == nil ||
 				!strings.Contains(err.Error(), tt.err) {
 				t.Errorf("Update() error = %v, want one about %q", err, tt.err)
 			}
@@ -282,7 +282,7 @@ func TestTimeout(t *testing.T) {
 	t.Cleanup(func() { close(release) })
 
 	start := time.Now()
-	_, err := newRelay(t, server.addr, 100*time.Millisecond).Update(t.Context(), zone, nil, nil)
+	_, err := newRelay(t, server.addr, 100*time.Millisecond).Update(t.Context(), zone, "", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "exchanging with "+server.addr) {
 		t.Errorf("Update() error = %v, want a timeout", err)
 	}
@@ -301,7 +301,7 @@ func TestUnreachable(t *testing.T) {
 	}
 	addr := listener.Addr().String()
 	_ = listener.Close()
-	if _, err := newRelay(t, addr, time.Second).Update(t.Context(), zone, nil, nil); err == nil {
+	if _, err := newRelay(t, addr, time.Second).Update(t.Context(), zone, "", nil, nil); err == nil {
 		t.Error("Update() succeeded without a server")
 	}
 }
@@ -367,7 +367,7 @@ func TestContextCanceled(t *testing.T) {
 	server := startNameServer(t, []config.Key{relayKey()}, reply(dns.RcodeSuccess))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, err := newRelay(t, server.addr, time.Second).Update(ctx, zone, nil, nil); err == nil {
+	if _, err := newRelay(t, server.addr, time.Second).Update(ctx, zone, "", nil, nil); err == nil {
 		t.Error("Update() succeeded with a canceled context")
 	}
 }

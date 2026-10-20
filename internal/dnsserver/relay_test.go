@@ -32,15 +32,15 @@ type fakeRelay struct {
 }
 
 type relayed struct {
-	zone                   string
+	zone, key              string
 	prerequisites, updates []dns.RR
 }
 
 var _ backend.Relay = (*fakeRelay)(nil)
 
-func (r *fakeRelay) Update(ctx context.Context, zone string, prerequisites, updates []dns.RR) (int, error) {
+func (r *fakeRelay) Update(ctx context.Context, zone, key string, prerequisites, updates []dns.RR) (int, error) {
 	r.mu.Lock()
-	r.calls = append(r.calls, relayed{zone: zone, prerequisites: prerequisites, updates: updates})
+	r.calls = append(r.calls, relayed{zone: zone, key: key, prerequisites: prerequisites, updates: updates})
 	r.mu.Unlock()
 	if r.barrier != nil {
 		r.barrier.Done()
@@ -53,6 +53,11 @@ func (r *fakeRelay) Update(ctx context.Context, zone string, prerequisites, upda
 		}
 	}
 	return r.rcode, r.err
+}
+
+func (r *fakeRelay) Check(ctx context.Context, zone string) error {
+	_, err := r.SOA(ctx, zone)
+	return err
 }
 
 func (r *fakeRelay) SOA(context.Context, string) (dns.RR, error) {
@@ -128,7 +133,7 @@ func TestRelayedUpdate(t *testing.T) {
 		t.Fatalf("%d updates relayed, want 1", len(calls))
 	}
 	call := calls[0]
-	if call.zone != testZone || len(call.prerequisites) != 1 || len(call.updates) != 1 ||
+	if call.zone != testZone || call.key != keyName || len(call.prerequisites) != 1 || len(call.updates) != 1 ||
 		update.Operation(call.updates[0]) != `add www.example.test. 60 TXT "hello"` {
 		t.Errorf("relayed %+v, want the prerequisite and the update of the request", call)
 	}
@@ -154,6 +159,10 @@ func TestRelayedOutcomes(t *testing.T) {
 		{
 			"relay failure", &fakeRelay{err: errors.New("refused by the server")}, dns.RcodeServerFailure,
 			`error="relaying the update: refused by the server"`,
+		},
+		{
+			"rejection", &fakeRelay{err: &backend.RejectionError{Rcode: dns.RcodeRefused, Reason: "no prerequisites here"}},
+			dns.RcodeRefused, `reason="no prerequisites here"`,
 		},
 	}
 	for _, tt := range tests {

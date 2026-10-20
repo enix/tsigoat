@@ -282,7 +282,7 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		return
 	}
 	if z.Relay != nil {
-		relay(ctx, z, req, out)
+		relay(ctx, z, ex.identity, req, out)
 		return
 	}
 
@@ -314,9 +314,13 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 // relay hands an authorized update over to the relay of its zone, which
 // evaluates its prerequisites and applies it: tsigoat neither reads the zone
 // nor serializes its updates.
-func relay(ctx context.Context, z *servedZone, req *update.Request, out *outcome) {
+func relay(ctx context.Context, z *servedZone, identity string, req *update.Request, out *outcome) {
 	out.relayed = req.Updates
-	rcode, err := z.Relay.Update(ctx, z.Name, req.Prerequisites, req.Updates)
+	rcode, err := z.Relay.Update(ctx, z.Name, identity, req.Prerequisites, req.Updates)
+	if rejection, ok := errors.AsType[*backend.RejectionError](err); ok {
+		out.rcode, out.reason = rejection.Rcode, rejection.Reason
+		return
+	}
 	if err != nil {
 		out.fail(fmt.Errorf("relaying the update: %w", err))
 		return

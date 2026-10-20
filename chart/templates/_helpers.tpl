@@ -128,6 +128,16 @@ the secrets out of the ConfigMap: they belong in the Secret mounted in
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.rfc2136) (kindIs "map" $backend.rfc2136.key) (hasKey $backend.rfc2136.key "secret") -}}
 {{- fail (printf "config.backends[%d].rfc2136.key.secret would store a TSIG secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with secretFile" $i) -}}
 {{- end -}}
+{{- if and (kindIs "map" $backend) (kindIs "map" $backend.webhook) -}}
+{{- range $setting := list "signature.secret" "basicAuth.password" "bearer.token" -}}
+{{- $section := index (splitList "." $setting) 0 -}}
+{{- $field := index (splitList "." $setting) 1 -}}
+{{- $settings := index $backend.webhook $section -}}
+{{- if and (kindIs "map" $settings) (hasKey $settings $field) -}}
+{{- fail (printf "config.backends[%d].webhook.%s would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with %sFile" $i $setting $field) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- toYaml $config -}}
 {{- end -}}

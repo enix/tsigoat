@@ -62,6 +62,38 @@ backends:
       # Timeout of every exchange with the server. Default: 5s.
       timeout: 5s
 
+  # An HTTP endpoint of yours, which applies the updates, for a provider that
+  # tsigoat does not support: tsigoat checks the keys and the policy, then
+  # posts every update as JSON. docs/webhook.md describes the requests, and
+  # examples/webhook/webhook.py is a starting point.
+  - name: hook
+    type: webhook
+    webhook:
+      url: https://hooks.example.org/tsigoat
+      # HMAC-SHA256 signature of the requests: exactly one of secret,
+      # secretFile and secretEnv.
+      signature:
+        secretFile: /run/secrets/tsigoat/webhook
+      # Credentials, besides or instead of the signature: basicAuth, with a
+      # username and a password, passwordFile or passwordEnv; or bearer, with
+      # a token, tokenFile or tokenEnv.
+      basicAuth:
+        username: tsigoat
+        passwordFile: /run/secrets/tsigoat/webhook-password
+      # Headers of every request, with a value, valueFile or valueEnv.
+      headers:
+        - name: X-Tenant
+          value: dns
+      # Timeout of every request, from the connection to the end of the
+      # response. Default: 5s.
+      timeout: 5s
+      # PEM bundle trusted for the certificate of the endpoint, on top of the
+      # system roots; insecureSkipVerify accepts any certificate, with a
+      # warning.
+      caFile: /etc/tsigoat/webhook-ca.pem
+      # Follow the 307 and 308 redirects of the endpoint. Default: false.
+      followRedirects: false
+
 # Zones that tsigoat accepts updates for. They must exist in their backend.
 zones:
   - name: example.com.
@@ -101,3 +133,10 @@ zones:
     policy:
       - key: cert-manager.
         acme: ["example.net.", "**.example.net."]
+
+  # A zone of a provider behind the webhook.
+  - name: example.org.
+    backend: hook
+    policy:
+      - key: cert-manager.
+        acme: ["example.org.", "**.example.org."]

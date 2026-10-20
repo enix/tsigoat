@@ -1,2 +1,2 @@
 # Substrings the error must contain, anchored on the configuration path.
-backends[0].rfc2136: settings of an rfc2136 backend, on a backend of type powerdns
+backends[0].rfc2136: rfc2136 settings on a backend of type powerdns

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync/atomic"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/enix/tsigoat/internal/backend"
 	"github.com/enix/tsigoat/internal/backend/powerdns"
 	"github.com/enix/tsigoat/internal/backend/rfc2136"
+	"github.com/enix/tsigoat/internal/backend/webhook"
 	"github.com/enix/tsigoat/internal/config"
 	"github.com/enix/tsigoat/internal/dnsserver"
 	"github.com/enix/tsigoat/internal/metrics"
@@ -105,18 +107,13 @@ func newBackends(entries []config.Backend, newBackend BackendFactory, m *metrics
 	backends, relays = map[string]backend.Backend{}, map[string]backend.Relay{}
 	for i := range entries {
 		entry := &entries[i]
-		if entry.Type == "rfc2136" && entry.RFC2136 != nil {
-			r, relayErr := rfc2136.New(&rfc2136.Options{
-				Server:  entry.RFC2136.Server,
-				Key:     entry.RFC2136.Key,
-				Timeout: entry.RFC2136.Timeout,
-			})
+		if entry.Type == "rfc2136" || entry.Type == "webhook" {
+			relay, relayErr := newRelay(entry)
 			if relayErr != nil {
 				return nil, nil, fmt.Errorf("backend %s: %w", entry.Name, relayErr)
 			}
-			var relay backend.Relay = r
 			if m != nil {
-				relay = m.Relay(entry.Name, r)
+				relay = m.Relay(entry.Name, relay)
 			}
 			relays[entry.Name] = relay
 			continue
@@ -131,6 +128,48 @@ func newBackends(entries []config.Backend, newBackend BackendFactory, m *metrics
 		backends[entry.Name] = b
 	}
 	return backends, relays, nil
+}
+
+// newRelay builds the relay of a configuration entry of type rfc2136 or
+// webhook.
+func newRelay(entry *config.Backend) (backend.Relay, error) {
+	switch {
+	case entry.Type == "rfc2136" && entry.RFC2136 != nil:
+		r, err := rfc2136.New(&rfc2136.Options{
+			Server:  entry.RFC2136.Server,
+			Key:     entry.RFC2136.Key,
+			Timeout: entry.RFC2136.Timeout,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configuring the RFC 2136 relay: %w", err)
+		}
+		return r, nil
+	case entry.Type == "webhook" && entry.Webhook != nil:
+		w := entry.Webhook
+		header := http.Header{}
+		for _, h := range w.Headers {
+			header.Set(h.Name, h.Value)
+		}
+		r, err := webhook.New(&webhook.Options{
+			URL:                w.URL,
+			Timeout:            w.Timeout,
+			CAFile:             w.CAFile,
+			InsecureSkipVerify: w.InsecureSkipVerify,
+			FollowRedirects:    w.FollowRedirects,
+			SignatureSecret:    w.SignatureSecret,
+			Username:           w.Username,
+			Password:           w.Password,
+			BearerToken:        w.BearerToken,
+			Header:             header,
+			UserAgent:          product.Slug + "/" + product.BuildInfo().Version,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configuring the webhook: %w", err)
+		}
+		return r, nil
+	default:
+		return nil, fmt.Errorf("no settings for a relay of type %q", entry.Type)
+	}
 }
 
 // NewBackend builds the backend of a configuration entry.

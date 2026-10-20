@@ -53,6 +53,7 @@ Single sources of truth:
 | Unit tests | `task test:unit` |
 | End-to-end scenarios and fault injection | `task test:e2e` (`PDNS_VERSION=4.9` for the other PowerDNS line), or `task test:e2e:dev` against `task dev` |
 | Real DNS clients | `task test:clients` (nsupdate), `task test:acme` (lego and certbot with Pebble) |
+| Webhook example | `task test:webhook`: nsupdate through tsigoat to `examples/webhook/webhook.py` |
 | Scenarios against BIND 9 | `task test:differential`; intended divergences go to `test/differential/divergences.yaml` |
 | Helm chart | `task lint:helm`, `task test:helm`; `task doc:helm` after a change to `chart/values.yaml` |
 | cert-manager in Kubernetes | `task test:acceptance`, which installs the chart in k3s inside Dagger; nightly in CI |

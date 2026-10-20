@@ -81,7 +81,9 @@ from one of:
 In front of BIND or another name server that implements RFC 2136, an
 `rfc2136` backend relays the updates with a key of tsigoat, see
 [RFC 2136 servers](https://github.com/enix/tsigoat/blob/main/docs/rfc2136.md)
-and `examples/helm/bind-relay.values.yaml`.
+and `examples/helm/bind-relay.values.yaml`. For a provider that tsigoat does
+not support, a `webhook` backend posts the updates to an endpoint of yours,
+see [Webhooks](https://github.com/enix/tsigoat/blob/main/docs/webhook.md).
 
 tsigoat reads its configuration and its secrets at startup. The chart
 restarts it when `config` or `secret.files` changes; after a change to an

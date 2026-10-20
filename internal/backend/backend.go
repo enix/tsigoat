@@ -33,12 +33,26 @@ type Backend interface {
 // Relay evaluates the updates of its zones itself: it checks their
 // prerequisites and applies them atomically, as RFC 2136 says.
 type Relay interface {
-	// Update relays an update of the zone, and returns the rcode that the
-	// client gets. Errors are failures of the relay, of its server or of
-	// their configuration, which the client cannot fix.
-	Update(ctx context.Context, zone string, prerequisites, updates []dns.RR) (int, error)
+	// Update relays an update of the zone, signed by key, "" when unsigned,
+	// and returns the rcode that the client gets. A *RejectionError turns the
+	// update down; other errors are failures of the relay, of its server or
+	// of their configuration, which the client cannot fix.
+	Update(ctx context.Context, zone, key string, prerequisites, updates []dns.RR) (int, error)
 	// SOA returns the SOA record of the zone.
 	SOA(ctx context.Context, zone string) (dns.RR, error)
+	// Check checks that the relay reaches the zone, without changing it.
+	Check(ctx context.Context, zone string) error
+}
+
+// RejectionError is an update that a relay turns down before evaluating it,
+// with the rcode of the response and the reason.
+type RejectionError struct {
+	Rcode  int
+	Reason string
+}
+
+func (r *RejectionError) Error() string {
+	return fmt.Sprintf("%s: %s", dns.RcodeToString[r.Rcode], r.Reason)
 }
 
 // Observer is told about the calls to a backend: the operation, when it
@@ -46,8 +60,9 @@ type Relay interface {
 type Observer func(operation string, start time.Time, err error)
 
 // ObservedRelay returns a relay that reports its calls to observe: relay for
-// the updates, lookup for the SOA queries. An update that the server turns
-// down, such as one whose prerequisites fail, is no error.
+// the updates, lookup for the SOA queries, check for the checks. An update
+// that the relay or its server turns down, such as one whose prerequisites
+// fail, is no error.
 func ObservedRelay(r Relay, observe Observer) Relay {
 	return &observedRelay{relay: r, observe: observe}
 }
@@ -57,10 +72,14 @@ type observedRelay struct {
 	observe Observer
 }
 
-func (o *observedRelay) Update(ctx context.Context, zone string, prerequisites, updates []dns.RR) (int, error) {
+func (o *observedRelay) Update(ctx context.Context, zone, key string, prerequisites, updates []dns.RR) (int, error) {
 	start := time.Now()
-	rcode, err := o.relay.Update(ctx, zone, prerequisites, updates)
-	o.observe("relay", start, err)
+	rcode, err := o.relay.Update(ctx, zone, key, prerequisites, updates)
+	if _, rejected := errors.AsType[*RejectionError](err); rejected {
+		o.observe("relay", start, nil)
+	} else {
+		o.observe("relay", start, err)
+	}
 	return rcode, err
 }
 
@@ -69,6 +88,13 @@ func (o *observedRelay) SOA(ctx context.Context, zone string) (dns.RR, error) {
 	soa, err := o.relay.SOA(ctx, zone)
 	o.observe("lookup", start, err)
 	return soa, err
+}
+
+func (o *observedRelay) Check(ctx context.Context, zone string) error {
+	start := time.Now()
+	err := o.relay.Check(ctx, zone)
+	o.observe("check", start, err)
+	return err
 }
 
 // RRset is a set of records sharing an owner name, a type and a TTL.

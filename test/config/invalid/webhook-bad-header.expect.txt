@@ -1,0 +1,4 @@
+# Substrings the error must contain, anchored on the configuration path.
+backends[0].webhook.headers[0].name: invalid header name "X Tenant"
+backends[0].webhook.headers[2].name: duplicate header X-Tenant
+backends[0].webhook.headers[3]: missing value: set value, valueFile or valueEnv

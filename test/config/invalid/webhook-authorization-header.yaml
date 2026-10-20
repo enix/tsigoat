@@ -1,0 +1,16 @@
+keys:
+  - name: e2e.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: hook
+    type: webhook
+    webhook:
+      url: https://hooks.example.test/tsigoat
+      bearer:
+        tokenEnv: TSIGOAT_TEST_API_KEY
+      headers:
+        - name: Authorization
+          value: Basic dXNlcjpwYXNz
+zones:
+  - name: example.test.
+    keys: [e2e.]

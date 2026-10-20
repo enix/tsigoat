@@ -69,7 +69,7 @@ Every update ends with one entry, `msg=update`:
 | `reason` | Why the update was rejected, for REFUSED, FORMERR, NOTZONE and failed prerequisites |
 | `error` | Why it failed, for SERVFAIL |
 | `changes` | RRset changes applied, such as `replace _acme-challenge.www.example.com. TXT 60 ["challenge-value"]` |
-| `updates` | Updates relayed to an `rfc2136` backend, as requested, such as `add _acme-challenge.www.example.com. 60 TXT "challenge-value"` |
+| `updates` | Updates relayed to an `rfc2136` or `webhook` backend, as requested, such as `add _acme-challenge.www.example.com. 60 TXT "challenge-value"` |
 | `duration` | Time to process the update |
 
 The level tells the outcome: `INFO` for applied updates and failed
@@ -93,7 +93,7 @@ With `admin.listen` set, tsigoat serves over HTTP:
 | `tsigoat_dns_responses_total` | `opcode`, `rcode`, `zone`, `key`, `algorithm` |
 | `tsigoat_dns_response_duration_seconds` | `opcode` |
 | `tsigoat_tsig_failures_total` | `error`: BADKEY, BADSIG or BADTIME |
-| `tsigoat_backend_calls_total` | `backend`, `operation` (lookup, apply, or relay for an `rfc2136` backend), `result` (success or error) |
+| `tsigoat_backend_calls_total` | `backend`, `operation` (lookup, apply; relay and check for the `rfc2136` and `webhook` backends), `result` (success or error) |
 | `tsigoat_backend_call_duration_seconds` | `backend`, `operation` |
 | `tsigoat_build_info` | `version`, `revision`, `goversion` |
 
@@ -115,9 +115,10 @@ Calls to a backend have failed for ten minutes, and the updates of its zones
 fail with SERVFAIL. The `error` field of the `msg=update` log entries tells
 why. Check that tsigoat reaches the API, through network policies, name
 resolution and TLS, and that its API key is valid: `tsigoat check-config
---backends` reads the SOA of every zone through its backend. For an `rfc2136`
-backend, also check that the server knows the key of tsigoat and grants it
-the updates, see [RFC 2136 servers](rfc2136.md#setting-up-the-server).
+--backends` checks every zone through its backend. For an `rfc2136` backend,
+also check that the server knows the key of tsigoat and grants it the
+updates, see [RFC 2136 servers](rfc2136.md#setting-up-the-server); for a
+`webhook` backend, the status that the endpoint answers, in the logs.
 
 ### TsigoatUpdatesFailing
 

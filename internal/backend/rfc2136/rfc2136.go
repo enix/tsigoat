@@ -75,8 +75,9 @@ func New(o *Options) (*Relay, error) {
 	return &Relay{server: o.Server, keyName: keyName, algorithm: algorithm, keyring: keyring, timeout: timeout}, nil
 }
 
-// Update implements backend.Relay.
-func (r *Relay) Update(ctx context.Context, zone string, prerequisites, updates []dns.RR) (int, error) {
+// Update implements backend.Relay. The server sees the updates coming from
+// the key of tsigoat, whatever the key of the client.
+func (r *Relay) Update(ctx context.Context, zone, _ string, prerequisites, updates []dns.RR) (int, error) {
 	m := new(dns.Msg)
 	m.SetUpdate(zone)
 	m.Answer = withoutRDATA(prerequisites, true)
@@ -125,6 +126,13 @@ func (r *Relay) SOA(ctx context.Context, zone string) (dns.RR, error) {
 		}
 	}
 	return nil, fmt.Errorf("%s answered the SOA query of %s without its SOA", r.server, zone)
+}
+
+// Check implements backend.Relay: it queries the SOA of the zone, signed,
+// which checks that the server answers for the zone and knows the key.
+func (r *Relay) Check(ctx context.Context, zone string) error {
+	_, err := r.SOA(ctx, zone)
+	return err
 }
 
 // exchange signs a message about a zone, sends it over TCP, and returns the

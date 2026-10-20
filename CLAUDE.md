@@ -26,6 +26,8 @@ internal/backend/      Backend interface: Lookup(name) and atomic Apply(changes)
 internal/backend/powerdns/  in-house HTTP client, generic presentation-format conversion
 internal/backend/memory/    in-memory backend for tests and dry runs
 internal/backend/rfc2136/   relay to a name server that implements RFC 2136, signed with tsigoat's key
+internal/backend/webhook/   relay to an HTTP endpoint: one signed JSON POST per update
+internal/backend/httpclient/  HTTP clients of the backends: CA bundle, no redirect by default
 internal/metrics/      Prometheus collectors: responses, TSIG failures, backend calls
 internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
 chart/                 Helm chart; README.md and values.schema.json generated
@@ -35,9 +37,13 @@ chart/                 Helm chart; README.md and values.schema.json generated
   view and the backend applies them in one atomic call (one PowerDNS PATCH).
 - One mutex per zone serialises updates in the process; a single instance is
   supported for now.
-- A zone on an `rfc2136` backend skips the engine: once the policy allows an
-  update, `backend.Relay` sends it whole to the name server, which evaluates
-  and applies it; no zone lock. The server's NOERROR, prerequisite failures,
+- A zone on an `rfc2136` or `webhook` backend skips the engine: once the
+  policy allows an update, `backend.Relay` sends it whole to the name server or
+  the endpoint, which applies it; no zone lock in the server (the webhook
+  relay serializes per zone itself), `Check` for `check-config --backends`,
+  `*backend.RejectionError` to turn an update down (webhook: prerequisites,
+  delete of the whole apex; it drops SOA and apex NS deletions, fakes the
+  SOA). The server's NOERROR, prerequisite failures,
   FORMERR and NOTZONE pass through; anything else is an error, SERVFAIL for
   the client. miekg/dns decodes RDATA-less records into typed empty structs
   that would re-encode with RDATA: the relay rewrites them (`withoutRDATA`).
@@ -78,6 +84,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | BIND differential | `task test:differential` | `dagger call test-differential`: the scenarios against BIND 9, intended divergences in `test/differential/divergences.yaml`; and through tsigoat relaying to BIND, with no divergence |
 | Helm chart | `task test:helm` | `dagger call test-helm`: `test/chart` (build tag `chart`) renders every example and fixture, then promtool and kubeconform; `task lint:helm` too |
 | Chart docs | `task doc:helm` | regenerates `chart/README.md` and `chart/values.schema.json`; `task check:helm-docs` fails when stale |
+| Webhook example | `task test:webhook` | `dagger call test-webhook-example`: nsupdate through tsigoat to `examples/webhook/webhook.py`, each authentication |
 | cert-manager | `task test:acceptance` | `dagger call test-acceptance`: the chart in k3s, cert-manager through it, inside Dagger; nightly |
 | Mutation | `task test:mutation` | `dagger call mutation`: gremlins on update, zone and auth; informational, nightly |
 | Fuzzing | `task test:fuzz` | `dagger call fuzz --fuzztime=1m`: every `Fuzz*` target; 10 minutes each in the nightly workflow |
@@ -135,7 +142,8 @@ removed with the fix.
 ## Documentation
 
 `README.md` presents tsigoat and links to `docs/`: `configuration.md`,
-`clients.md`, `powerdns.md`, `rfc2136.md`, `operations.md`, `security.md`, and
+`clients.md`, `powerdns.md`, `rfc2136.md`, `webhook.md`, `operations.md`,
+`security.md`, and
 `architecture.md` for contributors; and to `chart/README.md` for Kubernetes.
 A change of behavior updates the page that describes it. `docs/local/` is ignored by git: it holds the French working
 notes of the restart (analysis with the P*/A* defect identifiers, restart plan

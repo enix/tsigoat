@@ -3,7 +3,9 @@ package config
 import (
 	"encoding/base64"
 	"fmt"
+	"maps"
 	"net"
+	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
@@ -32,6 +34,9 @@ const (
 	defaultACMEMaxRecords = 10
 	// txtType is the type of the records of ACME challenges.
 	txtType = "TXT"
+	// httpScheme and httpsScheme are the schemes of the URLs of the backends.
+	httpScheme  = "http"
+	httpsScheme = "https"
 )
 
 // keyHolder tells who shares a TSIG key with tsigoat, for the advice of the
@@ -268,29 +273,34 @@ func (v *validator) backends(raw []fileBackend) []Backend {
 // backend validates the type of a backend and its settings, which must match.
 func (v *validator) backend(path string, b *fileBackend) Backend {
 	backend := Backend{Name: b.Name, Type: b.Type}
+	settings := map[string]bool{"powerdns": b.PowerDNS != nil, "rfc2136": b.RFC2136 != nil, "webhook": b.Webhook != nil}
 	switch b.Type {
 	case "powerdns":
-		if b.PowerDNS == nil {
-			v.errorf(path+".powerdns", "missing the settings of the powerdns backend")
-		} else {
+		if b.PowerDNS != nil {
 			backend.PowerDNS = v.powerDNS(path+".powerdns", b.PowerDNS)
 		}
-		if b.RFC2136 != nil {
-			v.errorf(path+".rfc2136", "settings of an rfc2136 backend, on a backend of type powerdns")
-		}
 	case "rfc2136":
-		if b.RFC2136 == nil {
-			v.errorf(path+".rfc2136", "missing the settings of the rfc2136 backend")
-		} else {
+		if b.RFC2136 != nil {
 			backend.RFC2136 = v.rfc2136(path+".rfc2136", b.RFC2136)
 		}
-		if b.PowerDNS != nil {
-			v.errorf(path+".powerdns", "settings of a powerdns backend, on a backend of type rfc2136")
+	case "webhook":
+		if b.Webhook != nil {
+			backend.Webhook = v.webhook(path+".webhook", b.Webhook)
 		}
 	case "":
-		v.errorf(path+".type", "missing type (expected powerdns or rfc2136)")
+		v.errorf(path+".type", "missing type (expected powerdns, rfc2136 or webhook)")
+		return backend
 	default:
-		v.errorf(path+".type", "unknown type %q (expected powerdns or rfc2136)", b.Type)
+		v.errorf(path+".type", "unknown type %q (expected powerdns, rfc2136 or webhook)", b.Type)
+		return backend
+	}
+	for _, section := range slices.Sorted(maps.Keys(settings)) {
+		switch {
+		case section == b.Type && !settings[section]:
+			v.errorf(path+"."+section, "missing the settings of the %s backend", section)
+		case section != b.Type && settings[section]:
+			v.errorf(path+"."+section, "%s settings on a backend of type %s", section, b.Type)
+		}
 	}
 	return backend
 }
@@ -306,7 +316,7 @@ func (v *validator) powerDNS(path string, raw *filePowerDNS) *PowerDNS {
 		p.ServerID = defaultPowerDNSServerID
 	}
 
-	if u, err := url.Parse(raw.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	if u, err := url.Parse(raw.URL); err != nil || (u.Scheme != httpScheme && u.Scheme != httpsScheme) || u.Host == "" {
 		v.errorf(path+".url", "invalid URL %q: expected http(s)://host[:port]", raw.URL)
 	}
 	if apiKey, ok := v.secret(path, "apiKey", raw.APIKey, raw.APIKeyFile, raw.APIKeyEnv); ok {
@@ -336,6 +346,130 @@ func (v *validator) rfc2136(path string, raw *fileRFC2136) *RFC2136 {
 		r.Key, _ = v.key(path+".key", raw.Key, serverKey)
 	}
 	return r
+}
+
+// webhook validates the settings of a webhook backend, and warns about the
+// settings that expose the requests.
+func (v *validator) webhook(path string, raw *fileWebhook) *Webhook {
+	w := &Webhook{
+		URL:                raw.URL,
+		Timeout:            v.backendTimeout(path+".timeout", raw.Timeout),
+		CAFile:             raw.CAFile,
+		InsecureSkipVerify: raw.InsecureSkipVerify,
+		FollowRedirects:    raw.FollowRedirects,
+	}
+	u, err := url.Parse(raw.URL)
+	if err != nil || (u.Scheme != httpScheme && u.Scheme != httpsScheme) || u.Host == "" {
+		v.errorf(path+".url", "invalid URL %q: expected http(s)://host[:port][/path]", raw.URL)
+	}
+	if raw.CAFile != "" {
+		if _, readErr := v.options.ReadFile(raw.CAFile); readErr != nil {
+			v.errorf(path+".caFile", "%v", readErr)
+		}
+	}
+	v.webhookAuthentication(path, raw, w)
+	v.webhookHeaders(path, raw, w)
+	v.webhookWarnings(path, w, u != nil && u.Scheme == httpScheme)
+	return w
+}
+
+// webhookWarnings warns about the settings of a webhook that expose its
+// requests.
+func (v *validator) webhookWarnings(path string, w *Webhook, plainHTTP bool) {
+	credentials := w.Username != "" || w.BearerToken != ""
+	switch {
+	case w.SignatureSecret == "" && !credentials:
+		v.warnf(path, "the requests carry neither a signature nor credentials: the endpoint must authenticate them otherwise")
+	case credentials && plainHTTP:
+		v.warnf(path, "sends its credentials in clear text over http")
+	}
+	if w.InsecureSkipVerify {
+		exposure := "read the requests"
+		if credentials {
+			exposure += ", steal the credentials"
+		}
+		if w.SignatureSecret == "" {
+			exposure += " and change the requests"
+		}
+		v.warnf(path+".insecureSkipVerify", "accepts any certificate: someone in the middle may %s", exposure)
+	}
+}
+
+// validHeaderName reports whether a header name is a token of RFC 9110
+// 5.6.2.
+func validHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, c := range name {
+		isAlphanumeric := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+		if !isAlphanumeric && !strings.ContainsRune("!#$%&'*+-.^_`|~", c) {
+			return false
+		}
+	}
+	return true
+}
+
+// webhookAuthentication validates the signature and the credentials of a
+// webhook: basic authentication and a bearer token both take the
+// Authorization header.
+func (v *validator) webhookAuthentication(path string, raw *fileWebhook, w *Webhook) {
+	if s := raw.Signature; s != nil {
+		if secret, ok := v.secret(path+".signature", "secret", s.Secret, s.SecretFile, s.SecretEnv); ok {
+			w.SignatureSecret = secret
+		}
+	}
+	if raw.BasicAuth != nil && raw.Bearer != nil {
+		v.errorf(path+".bearer", "set basicAuth or bearer, not both: both take the Authorization header")
+		return
+	}
+	if b := raw.BasicAuth; b != nil {
+		if b.Username == "" || strings.Contains(b.Username, ":") {
+			v.errorf(path+".basicAuth.username", "missing username, or one with a colon")
+		}
+		w.Username = b.Username
+		if password, ok := v.secret(path+".basicAuth", "password", b.Password, b.PasswordFile, b.PasswordEnv); ok {
+			w.Password = password
+		}
+	}
+	if b := raw.Bearer; b != nil {
+		if token, ok := v.secret(path+".bearer", "token", b.Token, b.TokenFile, b.TokenEnv); ok {
+			w.BearerToken = token
+		}
+	}
+}
+
+// webhookHeaders validates the headers of a webhook, which may not take the
+// place of those that tsigoat sets.
+func (v *validator) webhookHeaders(path string, raw *fileWebhook, w *Webhook) {
+	reserved := []string{
+		"Connection", "Content-Length", "Content-Type", "Host", "Transfer-Encoding", "User-Agent",
+		"X-Tsigoat-Signature", "X-Tsigoat-Timestamp",
+	}
+	if raw.BasicAuth != nil || raw.Bearer != nil {
+		reserved = append(reserved, "Authorization")
+	}
+	seen := map[string]bool{}
+	for i := range raw.Headers {
+		itemPath := fmt.Sprintf("%s.headers[%d]", path, i)
+		h := &raw.Headers[i]
+		name := http.CanonicalHeaderKey(h.Name)
+		switch {
+		case !validHeaderName(h.Name):
+			v.errorf(itemPath+".name", "invalid header name %q", h.Name)
+		case slices.Contains(reserved, name):
+			v.errorf(itemPath+".name", "tsigoat sets the %s header itself", name)
+		case seen[name]:
+			v.errorf(itemPath+".name", "duplicate header %s", name)
+		}
+		seen[name] = true
+		value, ok := v.secret(itemPath, "value", h.Value, h.ValueFile, h.ValueEnv)
+		if ok && strings.ContainsAny(value, "\r\n") {
+			v.errorf(itemPath, "the value of header %s holds a line break", name)
+			continue
+		}
+		w.Headers = append(w.Headers, Header{Name: name, Value: value})
+	}
 }
 
 // backendTimeout validates the timeout of the calls to a backend;

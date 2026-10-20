@@ -1,0 +1,19 @@
+keys:
+  - name: e2e.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: hook
+    type: webhook
+    webhook:
+      url: https://hooks.example.test/tsigoat
+      headers:
+        - name: "X Tenant"
+          value: dns
+        - name: X-Tenant
+          value: dns
+        - name: x-tenant
+          value: other
+        - name: X-Empty
+zones:
+  - name: example.test.
+    keys: [e2e.]

@@ -82,10 +82,14 @@ func TestBackend(t *testing.T) {
 	}
 }
 
-// stubRelay turns every update down with NXRRSET, and fails the SOA queries.
+// stubRelay turns updates down, with NXRRSET or with a rejection for those
+// of rejected., and fails the SOA queries and the checks.
 type stubRelay struct{}
 
-func (stubRelay) Update(context.Context, string, []dns.RR, []dns.RR) (int, error) {
+func (stubRelay) Update(_ context.Context, zone, _ string, _, _ []dns.RR) (int, error) {
+	if zone == "rejected." {
+		return 0, &backend.RejectionError{Rcode: dns.RcodeRefused, Reason: "rejected"}
+	}
 	return dns.RcodeNXRrset, nil
 }
 
@@ -93,20 +97,33 @@ func (stubRelay) SOA(context.Context, string) (dns.RR, error) {
 	return nil, errors.New("unreachable")
 }
 
+func (stubRelay) Check(context.Context, string) error {
+	return errors.New("unreachable")
+}
+
 func TestRelay(t *testing.T) {
 	t.Parallel()
 	m := newMetrics(t)
 	r := m.Relay("bind", stubRelay{})
 
-	if rcode, err := r.Update(t.Context(), "example.test.", nil, nil); rcode != dns.RcodeNXRrset || err != nil {
+	if rcode, err := r.Update(t.Context(), "example.test.", "", nil, nil); rcode != dns.RcodeNXRrset || err != nil {
 		t.Errorf("Update() = %d, %v, want the answer of the relay", rcode, err)
+	}
+	if _, err := r.Update(t.Context(), "rejected.", "", nil, nil); err == nil {
+		t.Error("Update() succeeded, want the rejection of the relay")
 	}
 	if _, err := r.SOA(t.Context(), "example.test."); err == nil {
 		t.Error("SOA() succeeded, want the error of the relay")
 	}
-	for _, call := range []struct{ operation, result string }{{"relay", "success"}, {"lookup", "error"}} {
-		if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("bind", call.operation, call.result)); got != 1 {
-			t.Errorf("%s calls with result %s = %v, want 1", call.operation, call.result, got)
+	if err := r.Check(t.Context(), "example.test."); err == nil {
+		t.Error("Check() succeeded, want the error of the relay")
+	}
+	for _, call := range []struct {
+		operation, result string
+		count             float64
+	}{{"relay", "success", 2}, {"lookup", "error", 1}, {"check", "error", 1}} {
+		if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("bind", call.operation, call.result)); got != call.count {
+			t.Errorf("%s calls with result %s = %v, want %v", call.operation, call.result, got, call.count)
 		}
 	}
 }

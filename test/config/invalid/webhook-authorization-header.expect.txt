@@ -1,0 +1,2 @@
+# Substrings the error must contain, anchored on the configuration path.
+backends[0].webhook.headers[0].name: tsigoat sets the Authorization header itself

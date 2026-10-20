@@ -8,7 +8,7 @@ DNS provider. ACME DNS-01 clients such as cert-manager, lego or certbot can then
 solve their challenges without ever holding the provider credentials, even when
 the provider does not speak RFC 2136. In front of a name server that does,
 such as BIND, tsigoat relays the updates with its own key, and brings the keys
-and the policy.
+and the policy. For any other provider, a webhook of yours applies them.
 
 ```text
 cert-manager, lego,     DNS UPDATE              HTTP API
@@ -16,12 +16,14 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
                                              DNS UPDATE
                                      tsigoat ───────────► BIND, Knot DNS...
                                              + its TSIG
+                                             HTTP POST
+                                     tsigoat ───────────► your webhook
 ```
 
 > [!WARNING]
-> tsigoat has no release yet. Its backends are PowerDNS and the name servers
-> that implement RFC 2136; tsigoat runs as a single instance, but in front of
-> name servers alone.
+> tsigoat has no release yet. Its backends are PowerDNS, the name servers that
+> implement RFC 2136 and webhooks; tsigoat runs as a single instance, but in
+> front of name servers alone.
 
 ## Features
 
@@ -40,6 +42,9 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
 - **Relay to RFC 2136 servers**: in front of BIND or another name server,
   tsigoat checks the keys and the policy, then relays the updates signed with
   its own key, and the server applies them.
+- **Webhooks** for the other providers: tsigoat posts every update, as JSON,
+  to an HTTP endpoint of yours, signed; a Python example is the starting
+  point.
 - **SOA queries** for the zones that tsigoat serves, which lego, certbot and
   nsupdate send to find the zone of a name.
 - **Operations**: one structured log entry per update, Prometheus metrics,
@@ -91,6 +96,7 @@ cert-manager or for clients out of the cluster.
 | [Clients](docs/clients.md) | Setting up cert-manager, lego and Traefik, certbot and nsupdate |
 | [PowerDNS](docs/powerdns.md) | What tsigoat needs from PowerDNS, and how it writes to it |
 | [RFC 2136 servers](docs/rfc2136.md) | Relaying the updates to BIND or another name server, with the keys and the policy of tsigoat |
+| [Webhooks](docs/webhook.md) | Applying the updates with a script of yours, for the providers that tsigoat does not support |
 | [Operations](docs/operations.md) | Command line, images, Kubernetes, logs, metrics and alerts |
 | [Helm chart](chart/README.md) | Installing tsigoat in Kubernetes, and the values of the chart |
 | [Security](docs/security.md) | What tsigoat protects, its limits, and how to harden a deployment |

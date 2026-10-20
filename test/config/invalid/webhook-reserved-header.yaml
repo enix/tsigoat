@@ -1,0 +1,14 @@
+keys:
+  - name: e2e.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: hook
+    type: webhook
+    webhook:
+      url: https://hooks.example.test/tsigoat
+      headers:
+        - name: x-tsigoat-signature
+          value: forged
+zones:
+  - name: example.test.
+    keys: [e2e.]

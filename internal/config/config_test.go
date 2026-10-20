@@ -136,6 +136,14 @@ func TestParseFull(t *testing.T) {
 		t.Errorf("RFC 2136 settings = %+v", relay)
 	}
 
+	hook := c.Backends[3].Webhook
+	if hook.URL != "https://hooks.example.test/tsigoat" || hook.Timeout != 2*time.Second || !hook.FollowRedirects ||
+		!hook.InsecureSkipVerify || hook.SignatureSecret != "test-api-key" ||
+		hook.Username != "tsigoat" || hook.Password != "dGhpcyBpcyBub3QgYSBzZWNyZXQgYXQgYWxsIQ==" || hook.BearerToken != "" ||
+		!slices.Equal(hook.Headers, []config.Header{{Name: "X-Tenant", Value: "dns"}, {Name: "X-Api-Key", Value: "test-api-key"}}) {
+		t.Errorf("webhook settings = %+v", hook)
+	}
+
 	zone := c.Zones[0]
 	if zone.Name != "example.test." || zone.Backend != "pdns" || !slices.Equal(zone.Keys, []string{"admin."}) {
 		t.Errorf("zone = %+v", zone)
@@ -162,6 +170,8 @@ func TestParseFull(t *testing.T) {
 		"keys[1].secret: 28 bytes is shorter than the 32-byte output of hmac-sha256",
 		"keys[2].algorithm: RFC 8945 forbids HMAC-MD5",
 		"backends[2].rfc2136.key.algorithm: RFC 8945 recommends against HMAC-SHA1: switch the name server",
+		"backends[3].webhook.insecureSkipVerify: accepts any certificate: someone in the middle may read the requests, " +
+			"steal the credentials",
 		"zones[1]: accepts unauthenticated updates",
 	} {
 		if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, want) }) {

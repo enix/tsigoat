@@ -1,0 +1,35 @@
+# A webhook endpoint that applies the updates, signed with a secret of the
+# chart, with basic authentication and a header from an environment variable.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: hook
+      type: webhook
+      webhook:
+        url: https://hooks.example.test/tsigoat
+        signature:
+          secretFile: /run/secrets/tsigoat/webhook-signature
+        basicAuth:
+          username: tsigoat
+          passwordFile: /run/secrets/tsigoat/webhook-password
+        headers:
+          - name: X-Tenant
+            value: dns
+          - name: X-Api-Key
+            valueEnv: TSIGOAT_WEBHOOK_API_KEY
+  zones:
+    - name: example.test.
+      policy:
+        - key: acme.
+          acme: [example.test., "**.example.test."]
+secret:
+  files:
+    acme: c2hhMjU2LXNlY3JldC1mb3ItdGhlLWNoYXJ0LXRlc3Q= # gitleaks:allow (fixture)
+    webhook-signature: signature-secret-of-the-chart-test # gitleaks:allow (fixture)
+    webhook-password: password-of-the-chart-test # gitleaks:allow (fixture)
+extraEnv:
+  - name: TSIGOAT_WEBHOOK_API_KEY
+    valueFrom:
+      secretKeyRef: {name: webhook-api-key, key: key}

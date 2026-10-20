@@ -15,7 +15,7 @@ development workflow.
 | `internal/auth` | TSIG keyring, one algorithm per key; update policy |
 | `internal/update` | The RFC 2136 engine: parsing, prerequisites, update section |
 | `internal/zone` | Working view of a zone: lazy reads, changes in memory, diff |
-| `internal/backend` | Backend and relay contracts; `memory` for the tests, `powerdns` for production, `rfc2136` to relay to a name server |
+| `internal/backend` | Backend and relay contracts; `memory` for the tests, `powerdns` for production, `rfc2136` to relay to a name server, `webhook` to an HTTP endpoint; `httpclient` for the HTTP clients |
 | `internal/metrics`, `internal/admin` | Prometheus collectors; `/healthz`, `/readyz` and `/metrics` |
 | `internal/logging` | `log/slog` setup |
 
@@ -85,18 +85,23 @@ applies in one transaction.
 
 ```go
 type Relay interface {
-    // Update relays an update of the zone, and returns the rcode that the
-    // client gets.
-    Update(ctx context.Context, zone string, prerequisites, updates []dns.RR) (int, error)
+    // Update relays an update of the zone, signed by key, and returns the
+    // rcode that the client gets.
+    Update(ctx context.Context, zone, key string, prerequisites, updates []dns.RR) (int, error)
     // SOA returns the SOA record of the zone.
     SOA(ctx context.Context, zone string) (dns.RR, error)
+    // Check checks that the relay reaches the zone, without changing it.
+    Check(ctx context.Context, zone string) error
 }
 ```
 
 A relay evaluates the updates itself: the `rfc2136` backend sends them to a
-name server, which applies them. Its errors are those of the server or of the
-configuration, which the client gets as SERVFAIL. tsigoat takes no lock for
-the zones of a relay.
+name server, the `webhook` backend to an HTTP endpoint, which apply them. A
+`*backend.RejectionError` turns an update down, such as the prerequisites
+that a webhook cannot evaluate; other errors are those of the server or of
+the configuration, which the client gets as SERVFAIL. The server takes no lock
+for the zones of a relay; the webhook backend sends the updates of a zone one
+at a time itself.
 
 ## Queries
 
@@ -115,7 +120,8 @@ those of other zones REFUSED.
 | Fuzzing | Configuration, engine, whole request handling, name patterns | `Fuzz*` targets, `task test:fuzz`; ten minutes each, nightly |
 | Scenarios in process | Each scenario of `test/scenario/scenarios` against tsigoat on the in-memory backend | `internal/app` |
 | Scenarios end to end | The same scenarios against a tsigoat binary and PowerDNS 4.9 and 5.0; faults injected with toxiproxy | `test/e2e`, `task test:e2e` |
-| Scenarios relayed | The same scenarios through a tsigoat that relays the updates to another tsigoat on the in-memory backend | `internal/app` |
+| Scenarios relayed | The same scenarios through a tsigoat that relays the updates to another tsigoat on the in-memory backend, and through a webhook that applies them with the engine, but those with prerequisites | `internal/app` |
+| Webhook example | nsupdate through tsigoat to `examples/webhook/webhook.py`, with each authentication | `task test:webhook` |
 | Differential | The same scenarios against BIND 9, the reference implementation, with the intended divergences listed with their reason; and through tsigoat relaying to BIND, where every scenario passes | `test/differential`, `task test:differential` |
 | Real clients | nsupdate; lego and certbot getting certificates from Pebble | `task test:clients`, `task test:acme` |
 | Helm chart | The chart rendered with every example and fixture: the configuration valid in the pod, ports, probes, mounts and selectors in agreement, invalid values refused, the alerts unit-tested with promtool, the objects valid for kubeconform | `test/chart`, `task test:helm` |

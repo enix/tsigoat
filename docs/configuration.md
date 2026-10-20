@@ -75,7 +75,7 @@ ignored.
 | Setting | Meaning |
 | --- | --- |
 | `name` | Name of the backend, which zones refer to |
-| `type` | `powerdns`, or `rfc2136` for a name server that tsigoat relays the updates to; the settings of the type follow |
+| `type` | `powerdns`; `rfc2136` for a name server that tsigoat relays the updates to; `webhook` for an HTTP endpoint that applies them; the settings of the type follow |
 
 A `powerdns` backend writes to the HTTP API of PowerDNS, see
 [PowerDNS](powerdns.md):
@@ -97,6 +97,26 @@ servers](rfc2136.md):
 | `rfc2136.server` | Address of the name server, as `host:port` |
 | `rfc2136.key` | The TSIG key that tsigoat signs with, which the server accepts: `name`, `algorithm` and the secret, as a key of `keys` |
 | `rfc2136.timeout` | Timeout of every exchange with the server, up to one minute; `5s` by default |
+
+A `webhook` backend posts the updates to an HTTP endpoint, as JSON, which
+applies them; see [Webhooks](webhook.md):
+
+| Setting | Meaning |
+| --- | --- |
+| `webhook.url` | Address of the endpoint, `http(s)://host[:port][/path]` |
+| `webhook.signature.secret`, `secretFile`, `secretEnv` | Secret that signs every request with HMAC-SHA256 |
+| `webhook.basicAuth.username`, and `password`, `passwordFile` or `passwordEnv` | Credentials of HTTP basic authentication |
+| `webhook.bearer.token`, `tokenFile`, `tokenEnv` | Bearer token |
+| `webhook.headers` | Headers of every request: a `name`, and `value`, `valueFile` or `valueEnv` |
+| `webhook.timeout` | Timeout of every request, from the connection to the end of the response, up to one minute; `5s` by default |
+| `webhook.caFile` | PEM bundle trusted for the certificate of the endpoint, on top of the system roots |
+| `webhook.insecureSkipVerify` | Accept any certificate of the endpoint; draws a warning |
+| `webhook.followRedirects` | Follow the 307 and 308 redirects of the endpoint, which keep the request whole; tsigoat follows none by default |
+
+`basicAuth` and `bearer` exclude each other, since both take the
+`Authorization` header; `signature` goes with either. A webhook without any of
+them draws a warning, as do credentials sent over plain HTTP. Headers may not
+take the place of those that tsigoat sets.
 
 ## Zones
 

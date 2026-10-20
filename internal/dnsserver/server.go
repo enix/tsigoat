@@ -282,13 +282,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// CheckZones reads the SOA of every zone through its backend, and returns an
-// error for every zone that fails.
+// CheckZones checks every zone through its backend, and returns an error for
+// every zone that fails: it reads the SOA of a zone of the update engine, and
+// lets a relay check its zones.
 func (s *Server) CheckZones(ctx context.Context) []error {
 	var errs []error
 	for _, name := range s.served {
 		z := s.zones[name]
-		if _, err := lookupSOA(ctx, z); err != nil {
+		var err error
+		if z.Relay != nil {
+			err = z.Relay.Check(ctx, name)
+		} else {
+			_, err = lookupSOA(ctx, z)
+		}
+		if err != nil {
 			errs = append(errs, fmt.Errorf("zone %s on backend %s: %w", name, z.BackendName, err))
 		}
 	}
