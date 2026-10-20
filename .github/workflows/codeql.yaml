@@ -30,7 +30,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [actions, go]
+        include:
+          - language: actions
+            build-mode: none
+          # A manual build analyzes the tsigoat module only: the automatic one
+          # also builds the Dagger module, whose bindings are generated rather
+          # than committed, and which asks for another Go version.
+          - language: go
+            build-mode: manual
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -39,10 +46,17 @@ jobs:
         if: matrix.language == 'go'
         with:
           go-version-file: go.mod
+          cache: false
       - uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
         with:
           languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
           config-file: ./.github/codeql/codeql-config.yml
+      - name: Build
+        if: matrix.language == 'go'
+        env:
+          GOTOOLCHAIN: auto
+        run: go build ./...
       - uses: github/codeql-action/analyze@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
         with:
           category: "/language:${{ matrix.language }}"
