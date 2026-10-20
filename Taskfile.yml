@@ -54,12 +54,18 @@ tasks:
     desc: Formatting and module tidiness
     cmds:
       - task: check:fmt
+      - task: check:fmt:dagger
       - task: check:tidy
 
   check:fmt:
     desc: Fail when Go files are not formatted (gofumpt, gci)
     cmds:
       - "{{.DAGGER}} call check-fmt"
+
+  check:fmt:dagger:
+    desc: Fail when Go files of the Dagger module are not formatted (gofmt)
+    cmds:
+      - "{{.DAGGER}} call check-dagger-fmt"
 
   check:tidy:
     desc: Fail when go.mod or go.sum is not tidy

@@ -92,6 +92,9 @@ jobs:
           args: check-fmt
       - uses: ./.github/actions/dagger
         with:
+          args: check-dagger-fmt
+      - uses: ./.github/actions/dagger
+        with:
           args: check-tidy
 
   markdown:
