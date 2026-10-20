@@ -84,7 +84,13 @@ A change replaces a whole RRset, or deletes one. A backend must apply the
 changes of a call atomically, or not at all; `ErrZoneNotFound` reports a
 missing zone. A `*backend.RejectionError` turns the update down before
 anything changes, such as a record that the provider cannot hold: the client
-gets its rcode, and the metrics count no backend error. A backend whose
+gets its rcode, and the metrics count no backend error. Atomicity does not
+make the outcome certain: a write that times out, or whose connection breaks,
+may have committed. A backend that cannot establish the outcome, by reading the
+records back or by undoing what it wrote, returns a
+`*backend.IndeterminateError`: the client gets SERVFAIL, the metrics count the
+call as `indeterminate`, and the TsigoatUncertainUpdates alert fires. Any
+other error means that nothing changed. A backend whose
 provider holds no TTL below a minimum implements `backend.TTLFloor`: it turns
 lower TTLs down, and the server raises the TTLs of an update to the minimum,
 which the update log reports. The PowerDNS backend sends one PATCH request,

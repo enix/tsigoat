@@ -121,6 +121,7 @@ tsigoat, and `prometheusRules.enabled` adds its alerts:
 | Alert | Fires when | Severity |
 | --- | --- | --- |
 | `TsigoatBackendErrors` | Calls to a backend fail for 10 minutes | warning |
+| `TsigoatUncertainUpdates` | An update may have applied in part, within 15 minutes | warning |
 | `TsigoatUpdatesFailing` | Updates of a zone fail with SERVFAIL for 10 minutes | warning |
 | `TsigoatSignatureFailures` | Requests fail TSIG verification more than once every ten seconds, for 15 minutes | info |
 | `TsigoatLegacyAlgorithm` | A key signed with HMAC-MD5 or HMAC-SHA1 within a day | info |
@@ -184,7 +185,7 @@ covers the images and the binaries.
 | prometheusRules.extraLabels | object | `{}` | Labels of the PrometheusRule, such as those that Prometheus selects |
 | prometheusRules.alertLabels | object | `{}` | Labels added to every alert, which override the severity of the alerts too |
 | prometheusRules.selector | string | `""` | PromQL label matchers that select the metrics of the release, such as `job="tsigoat"`; the namespace of the release and the job of the ServiceMonitor by default |
-| prometheusRules.disabledAlerts | list | `[]` | Alerts to leave out, by name: `TsigoatBackendErrors`, `TsigoatUpdatesFailing`, `TsigoatSignatureFailures`, `TsigoatLegacyAlgorithm` |
+| prometheusRules.disabledAlerts | list | `[]` | Alerts to leave out, by name: `TsigoatBackendErrors`, `TsigoatUncertainUpdates`, `TsigoatUpdatesFailing`, `TsigoatSignatureFailures`, `TsigoatLegacyAlgorithm` |
 | serviceAccount.create | bool | `true` | Create a ServiceAccount; tsigoat makes no call to the Kubernetes API |
 | serviceAccount.name | string | `""` | Name of the ServiceAccount; the name of the release by default |
 | serviceAccount.annotations | object | `{}` | Annotations of the ServiceAccount |

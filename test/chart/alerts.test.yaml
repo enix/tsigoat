@@ -109,3 +109,32 @@ tests:
               summary: Key old-client. still signs with hmac-md5
               description: Move the clients of this key to hmac-sha256, then the key.
               runbook_url: https://github.com/enix/tsigoat/blob/main/docs/operations.md#tsigoatlegacyalgorithm
+
+  - name: uncertain updates
+    interval: 1m
+    input_series:
+      - series: tsigoat_backend_calls_total{namespace="tsigoat", job="tsigoat-admin", backend="ovh", operation="apply", result="indeterminate"}
+        values: 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+      - series: tsigoat_backend_calls_total{namespace="other", job="tsigoat-admin", backend="ovh", operation="apply", result="indeterminate"}
+        values: 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: TsigoatUncertainUpdates
+        exp_alerts: []
+      # At once, without a pending period.
+      - eval_time: 5m
+        alertname: TsigoatUncertainUpdates
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              team: dns
+              namespace: tsigoat
+              backend: ovh
+            exp_annotations:
+              summary: An update through backend ovh may have applied in part
+              description: tsigoat could not tell whether an update applied; the logs (msg=update, error "outcome unknown") name its records, which the zone may hold in part.
+              runbook_url: https://github.com/enix/tsigoat/blob/main/docs/operations.md#tsigoatuncertainupdates
+      # Fifteen minutes later, the alert resolves.
+      - eval_time: 25m
+        alertname: TsigoatUncertainUpdates
+        exp_alerts: []

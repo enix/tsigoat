@@ -55,7 +55,8 @@ func New(info *product.Info) *Metrics {
 			Namespace: namespace,
 			Name:      "backend_calls_total",
 			Help: "Calls to the backends, by backend, operation (lookup or apply, relay for the updates " +
-				"that a relay evaluates) and result (success or error).",
+				"that a relay evaluates) and result (success, error, or indeterminate when the outcome " +
+				"of a write is unknown).",
 		}, []string{"backend", "operation", "result"}),
 		backendCallTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
@@ -117,7 +118,10 @@ func (m *Metrics) Relay(name string, r backend.Relay) backend.Relay {
 
 func (m *Metrics) observeCall(backendName, operation string, start time.Time, err error) {
 	result := "success"
-	if err != nil {
+	switch {
+	case backend.IsIndeterminate(err):
+		result = "indeterminate"
+	case err != nil:
 		result = "error"
 	}
 	m.backendCalls.WithLabelValues(backendName, operation, result).Inc()

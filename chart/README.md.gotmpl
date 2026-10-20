@@ -121,6 +121,7 @@ tsigoat, and `prometheusRules.enabled` adds its alerts:
 | Alert | Fires when | Severity |
 | --- | --- | --- |
 | `TsigoatBackendErrors` | Calls to a backend fail for 10 minutes | warning |
+| `TsigoatUncertainUpdates` | An update may have applied in part, within 15 minutes | warning |
 | `TsigoatUpdatesFailing` | Updates of a zone fail with SERVFAIL for 10 minutes | warning |
 | `TsigoatSignatureFailures` | Requests fail TSIG verification more than once every ten seconds, for 15 minutes | info |
 | `TsigoatLegacyAlgorithm` | A key signed with HMAC-MD5 or HMAC-SHA1 within a day | info |

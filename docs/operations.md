@@ -94,7 +94,7 @@ With `admin.listen` set, tsigoat serves over HTTP:
 | `tsigoat_dns_responses_total` | `opcode`, `rcode`, `zone`, `key`, `algorithm` |
 | `tsigoat_dns_response_duration_seconds` | `opcode` |
 | `tsigoat_tsig_failures_total` | `error`: BADKEY, BADSIG or BADTIME |
-| `tsigoat_backend_calls_total` | `backend`, `operation` (lookup, apply; relay and check for the `rfc2136` and `webhook` backends), `result` (success or error) |
+| `tsigoat_backend_calls_total` | `backend`, `operation` (lookup, apply; relay and check for the `rfc2136` and `webhook` backends), `result` (success, error, or indeterminate when tsigoat could not tell whether a write applied) |
 | `tsigoat_backend_call_duration_seconds` | `backend`, `operation` |
 | `tsigoat_build_info` | `version`, `revision`, `goversion` |
 
@@ -120,6 +120,17 @@ resolution and TLS, and that its API key is valid: `tsigoat check-config
 also check that the server knows the key of tsigoat and grants it the
 updates, see [RFC 2136 servers](rfc2136.md#setting-up-the-server); for a
 `webhook` backend, the status that the endpoint answers, in the logs.
+
+### TsigoatUncertainUpdates
+
+tsigoat could not tell whether an update applied: a write timed out, or the
+connection broke after the request left, and reading the records back did
+not tell either; or undoing a failed update at OVHcloud failed. The client got
+SERVFAIL, but the zone may hold all of the update, part of it, or none. The
+`msg=update` log entry, whose `error` starts with `outcome unknown`, names the
+changes: compare them with the zone, through the provider, and fix it by hand
+if needed. A client that retries its update brings the RRsets to their wanted
+content anyway, since tsigoat reads them again.
 
 ### TsigoatUpdatesFailing
 

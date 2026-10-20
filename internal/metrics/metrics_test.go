@@ -91,6 +91,17 @@ func TestBackend(t *testing.T) {
 	if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("provider", "apply", "success")); got != 1 {
 		t.Errorf("turned down apply calls with result success = %v, want 1", got)
 	}
+
+	// An update whose outcome is unknown counts apart.
+	uncertain := memory.New()
+	uncertain.FailApply(backend.Indeterminate(errors.New("timeout")))
+	b = m.Backend("uncertain", uncertain)
+	if err := b.Apply(context.Background(), "example.test.", nil); !backend.IsIndeterminate(err) {
+		t.Errorf("Apply() = %v, want the indeterminate error of the backend", err)
+	}
+	if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("uncertain", "apply", "indeterminate")); got != 1 {
+		t.Errorf("apply calls with result indeterminate = %v, want 1", got)
+	}
 }
 
 // stubRelay turns updates down, with NXRRSET or with a rejection for those

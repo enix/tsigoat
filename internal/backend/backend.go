@@ -28,9 +28,39 @@ type Backend interface {
 	Lookup(ctx context.Context, zone, name string) ([]RRset, error)
 	// Apply applies the changes to the zone, all or nothing. A
 	// *RejectionError turns the update down before anything changes, such
-	// as a record that the provider cannot hold; other errors are failures,
-	// which the client cannot fix.
+	// as a record that the provider cannot hold. An *IndeterminateError
+	// tells that the outcome is unknown: the zone may hold all of the
+	// changes, part of them, or none. Other errors are failures that changed
+	// nothing, which the client cannot fix.
 	Apply(ctx context.Context, zone string, changes []Change) error
+}
+
+// IndeterminateError reports a write whose outcome tsigoat could not
+// establish, as after a timeout whose effect it could not read back, or a
+// recovery that failed: the backend may hold all of the update, part of it,
+// or none of it.
+type IndeterminateError struct {
+	Err error
+}
+
+func (e *IndeterminateError) Error() string {
+	return "outcome unknown: " + e.Err.Error()
+}
+
+func (e *IndeterminateError) Unwrap() error {
+	return e.Err
+}
+
+// Indeterminate returns err as an *IndeterminateError.
+func Indeterminate(err error) error {
+	return &IndeterminateError{Err: err}
+}
+
+// IsIndeterminate reports whether err tells that the outcome of a write is
+// unknown.
+func IsIndeterminate(err error) bool {
+	_, ok := errors.AsType[*IndeterminateError](err)
+	return ok
 }
 
 // TTLFloor is implemented by the backends whose provider holds no TTL below
@@ -46,8 +76,9 @@ type TTLFloor interface {
 type Relay interface {
 	// Update relays an update of the zone, signed by key, "" when unsigned,
 	// and returns the rcode that the client gets. A *RejectionError turns the
-	// update down; other errors are failures of the relay, of its server or
-	// of their configuration, which the client cannot fix.
+	// update down; an *IndeterminateError tells that the server may have
+	// applied the update or not; other errors are failures of the relay, of
+	// its server or of their configuration, which the client cannot fix.
 	Update(ctx context.Context, zone, key string, prerequisites, updates []dns.RR) (int, error)
 	// SOA returns the SOA record of the zone.
 	SOA(ctx context.Context, zone string) (dns.RR, error)

@@ -211,6 +211,7 @@
           "items": {
             "enum": [
               "TsigoatBackendErrors",
+              "TsigoatUncertainUpdates",
               "TsigoatUpdatesFailing",
               "TsigoatSignatureFailures",
               "TsigoatLegacyAlgorithm"

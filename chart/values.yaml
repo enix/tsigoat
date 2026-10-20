@@ -203,11 +203,11 @@ prometheusRules:
   # uniqueItems: true
   # items:
   #   type: string
-  #   enum: [TsigoatBackendErrors, TsigoatUpdatesFailing, TsigoatSignatureFailures, TsigoatLegacyAlgorithm]
+  #   enum: [TsigoatBackendErrors, TsigoatUncertainUpdates, TsigoatUpdatesFailing, TsigoatSignatureFailures, TsigoatLegacyAlgorithm]
   # @schema
   # -- Alerts to leave out, by name: `TsigoatBackendErrors`,
-  # `TsigoatUpdatesFailing`, `TsigoatSignatureFailures`,
-  # `TsigoatLegacyAlgorithm`
+  # `TsigoatUncertainUpdates`, `TsigoatUpdatesFailing`,
+  # `TsigoatSignatureFailures`, `TsigoatLegacyAlgorithm`
   disabledAlerts: []
 
 serviceAccount:
