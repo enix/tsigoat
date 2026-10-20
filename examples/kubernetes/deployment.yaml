@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tsigoat
+  labels:
+    app.kubernetes.io/name: tsigoat
+spec:
+  # tsigoat serializes the updates of a zone within one process: run a single
+  # replica, and never two at once.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: tsigoat
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tsigoat
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: tsigoat
+          # Pin a released version.
+          image: ghcr.io/enix/tsigoat:latest
+          args: [serve, --config, /etc/tsigoat/config.yaml, --log-format, json]
+          ports:
+            - name: dns-udp
+              containerPort: 5353
+              protocol: UDP
+            - name: dns-tcp
+              containerPort: 5353
+              protocol: TCP
+            - name: admin
+              containerPort: 9153
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: admin
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tsigoat
+              readOnly: true
+            - name: secrets
+              mountPath: /run/secrets/tsigoat
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: tsigoat
+        - name: secrets
+          secret:
+            secretName: tsigoat

@@ -1,0 +1,35 @@
+# A cert-manager ClusterIssuer that solves the ACME DNS-01 challenges through
+# tsigoat. Apply it apart from the kustomization: the Secret goes to the
+# namespace of cert-manager.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tsigoat-tsig-key
+  namespace: cert-manager
+type: Opaque
+stringData:
+  # The same secret as the cert-manager. key of tsigoat.
+  secret: REPLACE-WITH-THE-BASE64-TSIG-SECRET
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: hostmaster@example.com
+    privateKeySecretRef:
+      name: letsencrypt-account-key
+    solvers:
+      - selector:
+          dnsZones: [example.com]
+        dns01:
+          rfc2136:
+            nameserver: tsigoat.tsigoat.svc.cluster.local:53
+            tsigKeyName: cert-manager.
+            # cert-manager defaults to HMACMD5, which the key does not allow.
+            tsigAlgorithm: HMACSHA256
+            tsigSecretSecretRef:
+              name: tsigoat-tsig-key
+              key: secret

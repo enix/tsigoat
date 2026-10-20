@@ -1,0 +1,21 @@
+# The configuration of tsigoat, mounted in /etc/tsigoat. The secrets come from
+# the tsigoat Secret, mounted in /run/secrets/tsigoat.
+listen: ["[::]:5353"]
+admin:
+  listen: "[::]:9153"
+keys:
+  - name: cert-manager.
+    algorithm: hmac-sha256
+    secretFile: /run/secrets/tsigoat/cert-manager
+backends:
+  - name: pdns
+    type: powerdns
+    powerdns:
+      url: http://pdns-api.powerdns.svc.cluster.local:8081
+      apiKeyFile: /run/secrets/tsigoat/powerdns-api-key
+zones:
+  - name: example.com.
+    policy:
+      - key: cert-manager.
+        names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
+        types: [TXT]

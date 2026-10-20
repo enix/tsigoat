@@ -187,3 +187,25 @@ func TestParseEmpty(t *testing.T) {
 		t.Errorf("Parse(nil) error = %v, want an empty configuration error", err)
 	}
 }
+
+// TestExamples keeps the example configurations valid. Their files and
+// variables do not exist here: every one reads as a valid secret.
+func TestExamples(t *testing.T) {
+	t.Parallel()
+
+	const secret = "dGhpcyBpcyBhIHRlc3Qgc2VjcmV0LCB0aGlydHktdHdvIQ==" // gitleaks:allow (fixture)
+	options := config.Options{
+		LookupEnv: func(string) (string, bool) { return secret, true },
+		ReadFile:  func(string) ([]byte, error) { return []byte(secret), nil },
+	}
+	paths := append(fixtures(t, "../../examples/*.yaml"), "../../examples/kubernetes/config.yaml")
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := config.Parse(data, options); err != nil {
+			t.Errorf("%s: %v", path, err)
+		}
+	}
+}

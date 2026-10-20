@@ -1,0 +1,70 @@
+# tsigoat configuration, with every setting.
+#
+# `tsigoat check-config --config config.yaml` validates it and prints the
+# warnings about risky settings.
+
+# Addresses to listen on for DNS, over both UDP and TCP. Default: "[::]:5353".
+listen:
+  - "[::]:5353"
+
+# Administration HTTP server: /healthz, /readyz and /metrics. Disabled when
+# absent.
+admin:
+  listen: "[::]:9153"
+
+# TSIG keys. A key has one algorithm, hmac-sha256 by default; a request signed
+# with another algorithm is refused with BADKEY. hmac-sha224, hmac-sha384 and
+# hmac-sha512 are also available, and the legacy hmac-sha1 and hmac-md5 must
+# be named explicitly, which draws a warning.
+#
+# The secret is base64-encoded, as `tsig-keygen` and `openssl rand -base64 32`
+# print it, and comes from exactly one of secret, secretFile and secretEnv.
+keys:
+  - name: cert-manager.
+    algorithm: hmac-sha256
+    secretFile: /run/secrets/tsigoat/cert-manager
+  - name: admin.
+    secretEnv: TSIGOAT_ADMIN_SECRET
+  - name: legacy-dhcp.
+    algorithm: hmac-md5
+    secretFile: /run/secrets/tsigoat/legacy-dhcp
+
+# DNS providers that tsigoat applies the updates to.
+backends:
+  - name: pdns
+    type: powerdns
+    powerdns:
+      # Base URL of the PowerDNS HTTP API.
+      url: https://pdns.example.com:8081
+      # Server of the API. Default: localhost.
+      serverId: localhost
+      # API key: exactly one of apiKey, apiKeyFile and apiKeyEnv.
+      apiKeyFile: /run/secrets/tsigoat/powerdns-api-key
+      # Timeout of every call to the API. Default: 5s.
+      timeout: 5s
+      # PEM bundle trusted for the API certificate, on top of the system roots.
+      caFile: /etc/tsigoat/powerdns-ca.pem
+
+# Zones that tsigoat accepts updates for. They must exist in their backend.
+zones:
+  - name: example.com.
+    # Backend of the zone; optional when there is only one.
+    backend: pdns
+    # Keys allowed to update every record of the zone, but the SOA.
+    keys: [admin.]
+    # Narrower rights. In name patterns, "*" stands for one label and "**"
+    # for one or more. Types restrict the record types, every type but SOA
+    # when absent; ANY allows deleting every record of a name, and SOA must
+    # be listed to allow SOA updates.
+    policy:
+      - key: cert-manager.
+        names: ["_acme-challenge.example.com.", "_acme-challenge.**.example.com."]
+        types: [TXT]
+      - key: legacy-dhcp.
+        names: ["*.dhcp.example.com."]
+        types: [A, AAAA, ANY]
+
+  # A zone open to unsigned updates from anyone who can reach tsigoat. It
+  # draws a warning: prefer keys.
+  - name: lab.example.com.
+    allowUnauthenticated: true
