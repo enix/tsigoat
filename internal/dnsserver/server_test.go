@@ -54,6 +54,12 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
+	return newFixtureWith(t, func(*Zone) {})
+}
+
+// newFixtureWith returns a fixture whose zone has the settings of configure.
+func newFixtureWith(t *testing.T, configure func(*Zone)) *fixture {
+	t.Helper()
 
 	keyring, err := auth.NewKeyring([]config.Key{{Name: keyName, Algorithm: config.HMACSHA256, Secret: secret}})
 	if err != nil {
@@ -70,10 +76,12 @@ func newFixture(t *testing.T) *fixture {
 	)...)
 
 	logs := &syncBuffer{}
+	zone := Zone{Name: "Example.Test", Backend: b, BackendName: "memory", Policy: policy}
+	configure(&zone)
 	server, err := New(&Options{
 		Listen:  []string{"127.0.0.1:0"},
 		Keyring: keyring,
-		Zones:   []Zone{{Name: "Example.Test", Backend: b, BackendName: "memory", Policy: policy}},
+		Zones:   []Zone{zone},
 		Logger:  slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Timeout: time.Second,
 	})
@@ -342,6 +350,40 @@ func TestBackendRejections(t *testing.T) {
 	}
 	if strings.Contains(logs, "level=ERROR") {
 		t.Errorf("a rejection is logged as an error:\n%s", logs)
+	}
+}
+
+// TestTTLFloor checks that the server raises the TTLs below the minimum of
+// the backend, and logs it.
+func TestTTLFloor(t *testing.T) {
+	t.Parallel()
+	f := newFixtureWith(t, func(z *Zone) { z.MinTTL = 60 })
+
+	m := new(dns.Msg)
+	m.SetUpdate(testZone)
+	m.Insert(records(t, `low.example.test. 0 IN TXT "low"`, `high.example.test. 120 IN TXT "high"`))
+	resp, err := f.exchange(t, "udp", m, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Rcode != dns.RcodeSuccess {
+		t.Fatalf("rcode %s, want NOERROR", dns.RcodeToString[resp.Rcode])
+	}
+	for name, want := range map[string]uint32{"low.example.test.": 60, "high.example.test.": 120} {
+		sets, err := f.backend.Lookup(t.Context(), testZone, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sets) != 1 || sets[0].TTL != want || sets[0].Records[0].Header().Ttl != want {
+			t.Errorf("Lookup(%s) = %v, want TTL %d", name, sets, want)
+		}
+	}
+	logs := f.logs.String()
+	if !strings.Contains(logs, "ttl_raised=") || !strings.Contains(logs, "low.example.test. TXT 0 to 60") {
+		t.Errorf("the raised TTL is missing from the logs:\n%s", logs)
+	}
+	if strings.Contains(logs, "high.example.test. TXT 120 to") {
+		t.Errorf("a TTL above the minimum is logged as raised:\n%s", logs)
 	}
 }
 

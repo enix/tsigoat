@@ -193,6 +193,9 @@ type outcome struct {
 	// err is a failure of tsigoat or of the backend, answered SERVFAIL.
 	err     error
 	changes []backend.Change
+	// raised lists the RRsets whose TTL the server raised to the minimum
+	// of the backend.
+	raised []string
 	// relayed holds the updates relayed to the relay of the zone, whose
 	// effect tsigoat does not know.
 	relayed []dns.RR
@@ -234,6 +237,9 @@ func (s *Server) update(ctx context.Context, ex *exchange) *dns.Msg {
 			changes = append(changes, change.String())
 		}
 		attrs = append(attrs, "changes", changes)
+	}
+	if len(out.raised) > 0 {
+		attrs = append(attrs, "ttl_raised", out.raised)
 	}
 	if len(out.relayed) > 0 {
 		updates := make([]string, 0, len(out.relayed))
@@ -302,6 +308,7 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		return
 	}
 	out.changes = view.Changes()
+	out.raised = raiseTTLs(out.changes, z.MinTTL)
 	if len(out.changes) > 0 {
 		err := z.Backend.Apply(ctx, zoneName, out.changes)
 		if rejection, ok := errors.AsType[*backend.RejectionError](err); ok {
@@ -314,6 +321,25 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		}
 	}
 	out.rcode = dns.RcodeSuccess
+}
+
+// raiseTTLs raises the TTLs of the RRsets that the changes replace to the
+// minimum of the backend, and returns those it raised, such as
+// "www.example.org. TXT 0 to 60".
+func raiseTTLs(changes []backend.Change, minTTL uint32) []string {
+	var raised []string
+	for i := range changes {
+		set := &changes[i].RRset
+		if changes[i].Op != backend.Replace || set.TTL >= minTTL {
+			continue
+		}
+		raised = append(raised, fmt.Sprintf("%s %s %d to %d", set.Name, dns.Type(set.Type), set.TTL, minTTL))
+		set.TTL = minTTL
+		for _, rr := range set.Records {
+			rr.Header().Ttl = minTTL
+		}
+	}
+	return raised
 }
 
 // relay hands an authorized update over to the relay of its zone, which

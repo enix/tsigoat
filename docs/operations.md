@@ -66,9 +66,10 @@ Every update ends with one entry, `msg=update`:
 | `key` | Key that signed the update; absent when unsigned |
 | `zone` | Zone of the update |
 | `rcode` | Response code |
-| `reason` | Why the update was rejected, for REFUSED, FORMERR, NOTZONE and failed prerequisites |
+| `reason` | Why the update was rejected, for REFUSED, FORMERR, NOTZONE and failed prerequisites, or why the backend turned it down |
 | `error` | Why it failed, for SERVFAIL |
 | `changes` | RRset changes applied, such as `replace _acme-challenge.www.example.com. TXT 60 ["challenge-value"]` |
+| `ttl_raised` | RRsets whose TTL tsigoat raised to the minimum of the provider, such as `www.example.com. TXT 30 to 60` |
 | `updates` | Updates relayed to an `rfc2136` or `webhook` backend, as requested, such as `add _acme-challenge.www.example.com. 60 TXT "challenge-value"` |
 | `duration` | Time to process the update |
 

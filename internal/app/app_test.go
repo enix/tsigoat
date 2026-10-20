@@ -173,3 +173,70 @@ func TestAdminServer(t *testing.T) {
 		t.Errorf("Run() = %v", err)
 	}
 }
+
+// flooredBackend is an in-memory backend with a minimum TTL.
+type flooredBackend struct {
+	*memory.Backend
+}
+
+func (flooredBackend) MinTTL() uint32 {
+	return 60
+}
+
+// TestTTLFloor checks that the zones of a backend with a minimum TTL get it,
+// with the metrics on, which wrap the backend.
+func TestTTLFloor(t *testing.T) {
+	t.Parallel()
+
+	b := memory.New()
+	b.SetZone("example.test.",
+		mustRR(t, "example.test. 3600 IN SOA ns1.example.test. hostmaster.example.test. 1 7200 900 1209600 300"),
+		mustRR(t, "example.test. 3600 IN NS ns1.example.test."),
+	)
+	c := minimalConfig(t)
+	c.AdminListen = "127.0.0.1:0"
+	c.Zones[0].AllowUnauthenticated = true
+	a, err := app.New(c, slog.New(slog.DiscardHandler), func(*config.Backend) (backend.Backend, error) {
+		return flooredBackend{b}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if startErr := a.Server.Start(t.Context()); startErr != nil {
+		t.Fatal(startErr)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if shutdownErr := a.Server.Shutdown(ctx); shutdownErr != nil {
+			t.Errorf("shutting down: %v", shutdownErr)
+		}
+	})
+
+	m := new(dns.Msg)
+	m.SetUpdate("example.test.")
+	m.Insert([]dns.RR{mustRR(t, `www.example.test. 0 IN TXT "zero"`)})
+	resp, err := dns.ExchangeContext(t.Context(), m, a.Server.Addrs()[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Rcode != dns.RcodeSuccess {
+		t.Fatalf("rcode %s, want NOERROR", dns.RcodeToString[resp.Rcode])
+	}
+	sets, err := b.Lookup(t.Context(), "example.test.", "www.example.test.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sets) != 1 || sets[0].TTL != 60 {
+		t.Errorf("Lookup() = %v, want the TTL raised to 60", sets)
+	}
+}
+
+func mustRR(t *testing.T, text string) dns.RR {
+	t.Helper()
+	rr, err := dns.NewRR(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rr
+}

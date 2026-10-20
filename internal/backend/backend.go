@@ -33,6 +33,14 @@ type Backend interface {
 	Apply(ctx context.Context, zone string, changes []Change) error
 }
 
+// TTLFloor is implemented by the backends whose provider holds no TTL below
+// a minimum: they turn lower TTLs down, and the server raises the lower TTLs
+// of an update to the minimum, which it logs.
+type TTLFloor interface {
+	// MinTTL returns the lowest TTL that the backend writes.
+	MinTTL() uint32
+}
+
 // Relay evaluates the updates of its zones itself: it checks their
 // prerequisites and applies them atomically, as RFC 2136 says.
 type Relay interface {

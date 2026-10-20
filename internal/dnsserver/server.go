@@ -40,6 +40,9 @@ type Zone struct {
 	// BackendName names the backend in messages.
 	BackendName string
 	Policy      *auth.Policy
+	// MinTTL is the lowest TTL that Backend writes, which the server raises
+	// the lower TTLs of an update to; zero when it writes any TTL.
+	MinTTL uint32
 }
 
 // Options configure a server.

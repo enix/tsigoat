@@ -64,7 +64,7 @@ func New(c *config.Config, logger *slog.Logger, newBackend BackendFactory) (*App
 		a.admin = admin.New(c.AdminListen, m.Gatherer(), a.ready)
 	}
 
-	backends, relays, err := newBackends(c.Backends, newBackend, m)
+	backends, relays, floors, err := newBackends(c.Backends, newBackend, m)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,9 @@ func New(c *config.Config, logger *slog.Logger, newBackend BackendFactory) (*App
 		if policyErr != nil {
 			return nil, policyErr
 		}
-		zones = append(zones, dnsserver.Zone{Name: z.Name, Backend: b, Relay: relay, BackendName: z.Backend, Policy: policy})
+		zones = append(zones, dnsserver.Zone{
+			Name: z.Name, Backend: b, Relay: relay, BackendName: z.Backend, Policy: policy, MinTTL: floors[z.Backend],
+		})
 	}
 
 	options := &dnsserver.Options{
@@ -100,17 +102,18 @@ func New(c *config.Config, logger *slog.Logger, newBackend BackendFactory) (*App
 }
 
 // newBackends builds the backends of the configuration, by name: those of the
-// update engine, and the relays. Their calls feed the metrics, when m is set.
+// update engine, with the minimum TTL of those that have one, and the relays.
+// Their calls feed the metrics, when m is set.
 func newBackends(entries []config.Backend, newBackend BackendFactory, m *metrics.Metrics) (
-	backends map[string]backend.Backend, relays map[string]backend.Relay, err error,
+	backends map[string]backend.Backend, relays map[string]backend.Relay, floors map[string]uint32, err error,
 ) {
-	backends, relays = map[string]backend.Backend{}, map[string]backend.Relay{}
+	backends, relays, floors = map[string]backend.Backend{}, map[string]backend.Relay{}, map[string]uint32{}
 	for i := range entries {
 		entry := &entries[i]
 		if entry.Type == "rfc2136" || entry.Type == "webhook" {
 			relay, relayErr := newRelay(entry)
 			if relayErr != nil {
-				return nil, nil, fmt.Errorf("backend %s: %w", entry.Name, relayErr)
+				return nil, nil, nil, fmt.Errorf("backend %s: %w", entry.Name, relayErr)
 			}
 			if m != nil {
 				relay = m.Relay(entry.Name, relay)
@@ -120,14 +123,17 @@ func newBackends(entries []config.Backend, newBackend BackendFactory, m *metrics
 		}
 		b, backendErr := newBackend(entry)
 		if backendErr != nil {
-			return nil, nil, fmt.Errorf("backend %s: %w", entry.Name, backendErr)
+			return nil, nil, nil, fmt.Errorf("backend %s: %w", entry.Name, backendErr)
+		}
+		if floor, ok := b.(backend.TTLFloor); ok {
+			floors[entry.Name] = floor.MinTTL()
 		}
 		if m != nil {
 			b = m.Backend(entry.Name, b)
 		}
 		backends[entry.Name] = b
 	}
-	return backends, relays, nil
+	return backends, relays, floors, nil
 }
 
 // newRelay builds the relay of a configuration entry of type rfc2136 or
