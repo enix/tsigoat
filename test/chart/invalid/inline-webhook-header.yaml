@@ -1,0 +1,17 @@
+# The value of an Authorization header would land in the ConfigMap; the
+# chart refuses every inline header value, since it cannot tell a secret one.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: hook
+      type: webhook
+      webhook:
+        url: https://hooks.example.test/tsigoat
+        headers:
+          - name: Authorization
+            value: Bearer inline-marker # gitleaks:allow (fixture)
+  zones:
+    - name: example.test.
+      keys: [acme.]

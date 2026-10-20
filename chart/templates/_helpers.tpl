@@ -139,6 +139,11 @@ the secrets out of the ConfigMap: they belong in the Secret mounted in
 {{- fail (printf "config.backends[%d].ovh.oauth2.clientSecret would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with clientSecretFile" $i) -}}
 {{- end -}}
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.webhook) -}}
+{{- range $j, $header := $backend.webhook.headers -}}
+{{- if and (kindIs "map" $header) (hasKey $header "value") -}}
+{{- fail (printf "config.backends[%d].webhook.headers[%d].value would store a header in a ConfigMap, where the chart cannot tell a secret header from another: put it in the Secret, see secret.files and secret.existingSecret, and read it with valueFile" $i $j) -}}
+{{- end -}}
+{{- end -}}
 {{- range $setting := list "signature.secret" "basicAuth.password" "bearer.token" -}}
 {{- $section := index (splitList "." $setting) 0 -}}
 {{- $field := index (splitList "." $setting) 1 -}}

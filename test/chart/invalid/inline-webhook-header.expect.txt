@@ -1,0 +1,2 @@
+config.backends[0].webhook.headers[0].value would store a header in a ConfigMap
+read it with valueFile

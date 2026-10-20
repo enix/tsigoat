@@ -68,7 +68,9 @@ complete values files.
 [its reference](https://github.com/enix/tsigoat/blob/main/docs/configuration.md)
 describes it, without `listen` and `admin`: the chart sets the listen
 addresses. The chart refuses a configuration without zones or backends, and
-one that writes a secret inline, which would land in a ConfigMap.
+one that writes a secret inline, which would land in a ConfigMap: the values
+of the headers of a webhook too, since the chart cannot tell a secret header
+from another.
 
 The secrets, the TSIG secrets of the clients and those of the backends, come
 from one of:

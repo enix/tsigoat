@@ -1,5 +1,6 @@
 # A webhook endpoint that applies the updates, signed with a secret of the
-# chart, with basic authentication and a header from an environment variable.
+# chart, with basic authentication, a header from a file of the chart and one
+# from an environment variable.
 config:
   keys:
     - name: acme.
@@ -16,7 +17,7 @@ config:
           passwordFile: /run/secrets/tsigoat/webhook-password
         headers:
           - name: X-Tenant
-            value: dns
+            valueFile: /run/secrets/tsigoat/webhook-tenant
           - name: X-Api-Key
             valueEnv: TSIGOAT_WEBHOOK_API_KEY
   zones:
@@ -29,6 +30,7 @@ secret:
     acme: c2hhMjU2LXNlY3JldC1mb3ItdGhlLWNoYXJ0LXRlc3Q= # gitleaks:allow (fixture)
     webhook-signature: signature-secret-of-the-chart-test # gitleaks:allow (fixture)
     webhook-password: password-of-the-chart-test # gitleaks:allow (fixture)
+    webhook-tenant: dns
 extraEnv:
   - name: TSIGOAT_WEBHOOK_API_KEY
     valueFrom:
