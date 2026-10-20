@@ -136,10 +136,11 @@ tasks:
 
   # ─── Tests ───────────────────────────────────────────────────────────────
   test:
-    desc: Run all tests (unit + end-to-end)
+    desc: Run all tests (unit, end-to-end scenarios, real clients)
     cmds:
       - task: test:unit
       - task: test:e2e
+      - task: test:clients
 
   test:unit:
     desc: Unit tests with the race detector, a shuffled order and coverage
@@ -147,9 +148,22 @@ tasks:
       - "{{.DAGGER}} call test"
 
   test:e2e:
-    desc: "End-to-end tests against PowerDNS, inside Dagger (PDNS_VERSION=4.9|5.0)"
+    desc: "End-to-end scenarios against PowerDNS, inside Dagger (PDNS_VERSION=4.9|5.0)"
     cmds:
       - "{{.DAGGER}} call test-end-to-end --pdns-version={{.PDNS_VERSION | default \"5.0\"}}"
+
+  test:e2e:dev:
+    desc: End-to-end scenarios against the `task dev` backend, without Dagger
+    env:
+      TSIGOAT_E2E_PDNS_URL: http://127.0.0.1:8081
+      TSIGOAT_E2E_PDNS_API_KEY: "{{.DEV_PDNS_API_KEY}}"
+    cmds:
+      - go test -tags e2e -count=1 ./test/e2e/ {{.CLI_ARGS}}
+
+  test:clients:
+    desc: "Real DNS clients (nsupdate) against tsigoat and PowerDNS, inside Dagger (PDNS_VERSION=4.9|5.0)"
+    cmds:
+      - "{{.DAGGER}} call test-clients --pdns-version={{.PDNS_VERSION | default \"5.0\"}}"
 
   # ─── Quality ─────────────────────────────────────────────────────────────
   lint:

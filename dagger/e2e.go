@@ -20,12 +20,40 @@ const (
 	pdnsAPIPort  = 8081
 )
 
-// TestEndToEnd runs the end-to-end smoke test. tsigoat is built from the source
-// tree and placed in front of a PowerDNS server; a client container then
-// sends a TSIG-signed update with nsupdate and checks, through the PowerDNS
-// API, that the record landed in the zone. Everything runs inside the
-// private Dagger network: no port is published on the host.
+// TestEndToEnd runs the scenarios of test/scenario against tsigoat placed in
+// front of a PowerDNS server. The Go test suite builds tsigoat, runs it with a
+// configuration serving the zone of every scenario, and checks the outcome
+// of each scenario through the PowerDNS API.
 func (m *Tsigoat) TestEndToEnd(
+	ctx context.Context,
+	// PowerDNS release line to test against: "4.9" or "5.0".
+	// +optional
+	// +default="5.0"
+	pdnsVersion string,
+) (string, error) {
+	server, err := powerDNS(pdnsVersion, e2eAPIKey)
+	if err != nil {
+		return "", err
+	}
+
+	return goBase(m.Source).
+		WithExec([]string{"go", "install", "gotest.tools/gotestsum@" + gotestsumModule}).
+		WithServiceBinding("pdns", asPowerDNSService(server)).
+		WithEnvVariable("TSIGOAT_E2E_PDNS_URL", fmt.Sprintf("http://pdns:%d", pdnsAPIPort)).
+		WithEnvVariable("TSIGOAT_E2E_PDNS_API_KEY", e2eAPIKey).
+		WithExec([]string{
+			"gotestsum", "--format=testname", "--",
+			"-tags=e2e", "-count=1", "./test/e2e/...",
+		}).
+		Stdout(ctx)
+}
+
+// TestClients runs real DNS clients against tsigoat. tsigoat is built from
+// the source tree and placed in front of a PowerDNS server; a client
+// container then sends a TSIG-signed update with nsupdate and checks, through
+// the PowerDNS API, that the record landed in the zone. Everything runs
+// inside the private Dagger network: no port is published on the host.
+func (m *Tsigoat) TestClients(
 	ctx context.Context,
 	// PowerDNS release line to test against: "4.9" or "5.0".
 	// +optional

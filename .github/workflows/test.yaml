@@ -62,7 +62,7 @@ jobs:
           args: test
 
   e2e:
-    name: E2E tests (PowerDNS ${{ matrix.pdns }})
+    name: E2E scenarios (PowerDNS ${{ matrix.pdns }})
     needs: changes
     if: |
       always() &&
@@ -82,3 +82,25 @@ jobs:
       - uses: ./.github/actions/dagger
         with:
           args: test-end-to-end --pdns-version=${{ matrix.pdns }}
+
+  clients:
+    name: Real clients (PowerDNS ${{ matrix.pdns }})
+    needs: changes
+    if: |
+      always() &&
+      !inputs.skip-e2e &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        pdns: ["4.9", "5.0"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: test-clients --pdns-version=${{ matrix.pdns }}

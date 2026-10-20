@@ -51,7 +51,8 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | Quick loop | `task check:quick` | fmt, golangci-lint, unit tests |
 | Go lint | `task lint:go` | `dagger call lint-go` (golangci-lint built against the project toolchain) |
 | Unit tests | `task test:unit` | `dagger call test` (gotestsum, `-race`, `-shuffle=on`, coverage) |
-| E2E tests | `task test:e2e` | `dagger call test-end-to-end --pdns-version=5.0` |
+| E2E scenarios | `task test:e2e` | `dagger call test-end-to-end --pdns-version=5.0`; `task test:e2e:dev` against `task dev` |
+| Real clients | `task test:clients` | `dagger call test-clients`: nsupdate in a container |
 | Security | `task security` | gitleaks, govulncheck, Trivy |
 | Dev backend | `task dev` + `task dev:run` | PowerDNS on :8081 (API) and :5300 (DNS); tsigoat on 127.0.0.1:10053 |
 
@@ -70,6 +71,18 @@ Dagger specifics:
   UDP clients reach it directly.
 - Generated bindings (`dagger/dagger.gen.go`, `dagger/internal/`) are not
   committed; run `task dagger:develop` after changing `dagger.json`.
+
+## Test scenarios
+
+`test/scenario/scenarios/<group>/<name>.yaml` describe a zone, the requests
+sent to tsigoat (prerequisites and updates in nsupdate syntax) and the
+expected outcome. `test/scenario` loads them (unit-tested, no network) and
+`test/e2e` (build tag `e2e`) runs them against tsigoat and PowerDNS, one zone
+per scenario. A scenario failing because of a legacy defect carries
+`knownDefect: <id>`: its failure is reported as skipped, and the suite fails
+when it starts passing, so the marker must be removed with the fix. The tsigoat
+configuration of the e2e tests is rendered by `legacyConfig` in
+`test/e2e/tsigoat_test.go`, the one place to update when the format changes.
 
 ## Conventions
 

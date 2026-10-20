@@ -51,7 +51,8 @@ Single sources of truth:
 | Every gate CI runs | `task check` |
 | Short loop before pushing | `task check:quick` |
 | Unit tests | `task test:unit` |
-| End-to-end tests | `task test:e2e` (`PDNS_VERSION=4.9` for the other PowerDNS line) |
+| End-to-end scenarios | `task test:e2e` (`PDNS_VERSION=4.9` for the other PowerDNS line), or `task test:e2e:dev` against `task dev` |
+| Real DNS clients | `task test:clients` |
 | Linters | `task lint`, or `task lint:go`, `lint:markdown`, `lint:actions`... |
 | Security scans | `task security` |
 | Development backend | `task dev`, then `task dev:run` in another terminal |
@@ -60,6 +61,34 @@ Single sources of truth:
 The end-to-end tests run entirely inside Dagger: tsigoat, PowerDNS and the DNS
 clients are containers on a private network, so no port is published on the
 host and parallel runs do not collide.
+
+### Test scenarios
+
+Each file of `test/scenario/scenarios/` is a scenario: the zone before the
+test, the requests sent to tsigoat and the expected outcome. Adding a test
+case usually means adding a file. Prerequisites and updates follow the syntax
+of `nsupdate`:
+
+```yaml
+description: The "name is not in use" prerequisite holds, so the update applies.
+refs: ["RFC 2136 2.4.5", "RFC 2136 3.2.1"]
+zone:
+  records:
+    - www 300 IN A 192.0.2.1
+requests:
+  - prerequisites:
+      - nxdomain new
+    updates:
+      - add new 300 IN TXT "fresh"
+expect:
+  records:
+    - www 300 IN A 192.0.2.1
+    - new 300 IN TXT "fresh"
+```
+
+A scenario that fails because of a known defect carries `knownDefect`: the
+end-to-end suite reports it as skipped while it fails, and fails as soon as it
+passes, so that the marker is removed together with the fix.
 
 ## Conventions
 
