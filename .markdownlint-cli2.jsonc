@@ -16,5 +16,7 @@
     // AI assistant notes.
     "CLAUDE.md",
     "AGENTS.md",
+    // Local working notes, never committed.
+    "docs/local/",
   ],
 }

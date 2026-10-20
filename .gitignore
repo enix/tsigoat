@@ -12,3 +12,6 @@
 /.direnv
 .keyring
 .ropeproject
+
+# Local working notes, never committed
+/docs/local/
