@@ -249,6 +249,10 @@ changes applied.
 - tsigoat serializes the updates of a zone within its process: run a single
   instance. Other writers of the same zones, through the PowerDNS API, race
   with it.
+- tsigoat does not detect replayed requests: within the validity of its
+  signature, five minutes for most clients, a captured update can be sent
+  again. Updates are mostly idempotent, and clients resend the very same
+  message when a UDP answer is lost, which a replay check would refuse.
 
 See [SECURITY.md](SECURITY.md) to report a vulnerability.
 

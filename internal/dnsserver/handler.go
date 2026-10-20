@@ -298,9 +298,9 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 }
 
 // admit returns the zone that an update names, or the rcode and the reason
-// that turn the update down. Unsigned requests get the same answer for
-// unknown zones and forbidden zones, which does not tell which zones tsigoat
-// serves.
+// that turn the update down. Unsigned updates get the same answer for unknown
+// zones and forbidden zones; the SOA queries tell which zones tsigoat serves
+// anyway, as lego and certbot need.
 func (s *Server) admit(identity, zoneName string, class uint16) (z *servedZone, rcode int, reason string) {
 	z = s.zones[zoneName]
 	switch {
