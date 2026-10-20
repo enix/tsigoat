@@ -28,6 +28,9 @@ internal/backend/memory/    in-memory backend for tests and dry runs
 internal/backend/rfc2136/   relay to a name server that implements RFC 2136, signed with tsigoat's key
 internal/backend/webhook/   relay to an HTTP endpoint: one signed JSON POST per update
 internal/backend/httpclient/  HTTP clients of the backends: CA bundle, no redirect by default
+internal/backend/hosted/    shared by the hosted providers: RRsets from records, Diff, Limits, API client
+internal/backend/cloudflare/, ovh/, scaleway/  hosted providers, each with a simulated API (*test)
+internal/backend/backendtest/  conformance suite of the backends (memory, PowerDNS, simulations)
 internal/metrics/      Prometheus collectors: responses, TSIG failures, backend calls
 internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
 chart/                 Helm chart; README.md and values.schema.json generated
@@ -47,6 +50,19 @@ chart/                 Helm chart; README.md and values.schema.json generated
   FORMERR and NOTZONE pass through; anything else is an error, SERVFAIL for
   the client. miekg/dns decodes RDATA-less records into typed empty structs
   that would re-encode with RDATA: the relay rewrites them (`withoutRDATA`).
+- The hosted providers (Cloudflare, OVHcloud, Scaleway) store records with
+  identifiers: their backends read the records of the touched names again in
+  Apply, and `hosted.Diff` turns each RRset change into deletions, creations
+  and TTL changes. `hosted.Limits` turns down, with a `RejectionError`, what a
+  provider would not keep intact (types, TXT contents, SOA and apex NS,
+  locked records such as Cloudflare's proxied ones); a provider error is
+  SERVFAIL. Cloudflare and Scaleway write in one request; OVHcloud writes one
+  record at a time, undoes on failure and refreshes once. Backends with a
+  minimum TTL implement `backend.TTLFloor`, and the server raises lower TTLs
+  (`ttl_raised` in the update log). Records read from a provider are made
+  canonical (wire round trip) so that they compare with the records of an
+  update. In-house HTTP clients only, no provider SDK and no libdns
+  (decision D12).
 - Names are canonicalised (lowercase FQDN) at the edge.
 - miekg/dns v1 stays, confined to the DNS-facing packages (depguard checks it).
 - Logging is `log/slog`.
@@ -116,7 +132,9 @@ the runner, which drives a `Target`: tsigoat in front of a backend it can
 reset and read. The scenarios run twice, one zone per scenario:
 
 - in-process on the in-memory backend, in `internal/app` (plain `go test`,
-  part of the unit tests), directly and through a relaying tsigoat;
+  part of the unit tests), directly, through a relaying tsigoat, and on the
+  simulated APIs of Cloudflare, OVHcloud and Scaleway, whose intended
+  divergences are listed in `Divergences()` of each `*test` package;
 - against a tsigoat binary and PowerDNS in `test/e2e` (build tag `e2e`).
 
 `scenario.Config` renders the tsigoat configuration of both runs, the one
@@ -142,7 +160,8 @@ removed with the fix.
 ## Documentation
 
 `README.md` presents tsigoat and links to `docs/`: `configuration.md`,
-`clients.md`, `powerdns.md`, `rfc2136.md`, `webhook.md`, `operations.md`,
+`clients.md`, `powerdns.md`, `providers.md` with `cloudflare.md`, `ovh.md`
+and `scaleway.md`, `rfc2136.md`, `webhook.md`, `operations.md`,
 `security.md`, and
 `architecture.md` for contributors; and to `chart/README.md` for Kubernetes.
 A change of behavior updates the page that describes it. `docs/local/` is ignored by git: it holds the French working

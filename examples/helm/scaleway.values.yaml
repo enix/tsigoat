@@ -1,0 +1,28 @@
+# tsigoat in front of Scaleway, for cert-manager: cert-manager signs its
+# updates with a TSIG key restricted to the ACME challenges, and never sees
+# the API key. docs/scaleway.md tells how to create the API key, restricted to
+# the Project of the zone.
+#
+# The Secret holds the TSIG secret of the cert-manager. key and the secret key
+# of the API key; create it before installing the chart:
+#
+#   kubectl -n tsigoat create secret generic tsigoat-secrets \
+#     --from-literal=cert-manager="$(openssl rand -base64 32)" \
+#     --from-file=scaleway=./secret-key
+config:
+  keys:
+    - name: cert-manager.
+      secretFile: /run/secrets/tsigoat/cert-manager
+  backends:
+    - name: scaleway
+      type: scaleway
+      scaleway:
+        secretKeyFile: /run/secrets/tsigoat/scaleway
+  zones:
+    - name: example.com.
+      policy:
+        - key: cert-manager.
+          acme: ["example.com.", "**.example.com."]
+
+secret:
+  existingSecret: tsigoat-secrets

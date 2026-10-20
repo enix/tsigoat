@@ -1,0 +1,2 @@
+# Substrings the error must contain, anchored on the configuration path.
+backends[0].ovh.oauth2: OAuth2 service accounts need the endpoint ovh-eu, ovh-ca or ovh-us

@@ -1,0 +1,64 @@
+# The backends of the hosted DNS providers, with each way to give their
+# credentials.
+keys:
+  - name: cert-manager.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: cloudflare
+    type: cloudflare
+    cloudflare:
+      apiTokenEnv: TSIGOAT_TEST_API_KEY
+      zoneIds:
+        Cloudflare.Test: 023e105f4ecef8ad9ca31a8372d0c353
+      timeout: 10s
+  - name: ovh
+    type: ovh
+    ovh:
+      endpoint: ovh-eu
+      applicationKey: 7kbG7Bk7S9Nt7ZSV
+      applicationSecretFile: ../../test/config/secret.txt
+      consumerKeyEnv: TSIGOAT_TEST_API_KEY
+  - name: ovh-service-account
+    type: ovh
+    ovh:
+      endpoint: ovh-ca
+      oauth2:
+        clientId: EU.a1b2c3d4e5f6
+        clientSecretEnv: TSIGOAT_TEST_API_KEY
+  - name: ovh-url
+    type: ovh
+    ovh:
+      endpoint: https://eu.api.ovh.com/1.0/
+      applicationKey: 7kbG7Bk7S9Nt7ZSV
+      applicationSecretEnv: TSIGOAT_TEST_API_KEY
+      consumerKeyEnv: TSIGOAT_TEST_API_KEY
+  - name: scaleway
+    type: scaleway
+    scaleway:
+      secretKeyEnv: TSIGOAT_TEST_API_KEY
+zones:
+  - name: cloudflare.test.
+    backend: cloudflare
+    policy:
+      - key: cert-manager.
+        acme: [cloudflare.test.]
+  - name: ovh.test.
+    backend: ovh
+    policy:
+      - key: cert-manager.
+        acme: [ovh.test.]
+  - name: account.ovh.test.
+    backend: ovh-service-account
+    policy:
+      - key: cert-manager.
+        acme: [account.ovh.test.]
+  - name: url.ovh.test.
+    backend: ovh-url
+    policy:
+      - key: cert-manager.
+        acme: [url.ovh.test.]
+  - name: scaleway.test.
+    backend: scaleway
+    policy:
+      - key: cert-manager.
+        acme: [scaleway.test.]

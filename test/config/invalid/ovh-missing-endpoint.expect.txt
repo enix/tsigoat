@@ -1,0 +1,2 @@
+# Substrings the error must contain, anchored on the configuration path.
+backends[0].ovh.endpoint: missing endpoint: ovh-eu, ovh-ca, ovh-us, or the https URL of the API

@@ -1,0 +1,14 @@
+keys:
+  - name: e2e.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: provider
+    type: cloudflare
+    cloudflare:
+      apiTokenEnv: TSIGOAT_TEST_API_KEY
+      zoneIds:
+        example.test.: not-an-identifier
+zones:
+  - name: example.test.
+    backend: provider
+    keys: [e2e.]

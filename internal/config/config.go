@@ -57,12 +57,15 @@ type Key struct {
 // Backend is a DNS provider that tsigoat applies the updates to.
 type Backend struct {
 	Name string
-	// Type is "powerdns", "rfc2136" or "webhook"; the settings of that type
-	// are set.
-	Type     string
-	PowerDNS *PowerDNS
-	RFC2136  *RFC2136
-	Webhook  *Webhook
+	// Type is "powerdns", "rfc2136", "webhook", "cloudflare", "ovh" or
+	// "scaleway"; the settings of that type are set.
+	Type       string
+	PowerDNS   *PowerDNS
+	RFC2136    *RFC2136
+	Webhook    *Webhook
+	Cloudflare *Cloudflare
+	OVH        *OVH
+	Scaleway   *Scaleway
 }
 
 // PowerDNS holds the settings of a PowerDNS backend.
@@ -111,6 +114,42 @@ type Webhook struct {
 	BearerToken string
 	// Headers come with every request.
 	Headers []Header
+}
+
+// Cloudflare holds the settings of a cloudflare backend: the API of
+// Cloudflare.
+type Cloudflare struct {
+	// APIToken authenticates the requests.
+	APIToken string
+	// ZoneIDs holds the identifiers of zones, by canonical name; tsigoat
+	// finds the others by name.
+	ZoneIDs map[string]string
+	// Timeout bounds every call to the API.
+	Timeout time.Duration
+}
+
+// OVH holds the settings of an ovh backend: the API of OVHcloud.
+type OVH struct {
+	// Endpoint is the base URL of the API.
+	Endpoint string
+	// ApplicationKey, ApplicationSecret and ConsumerKey sign the requests,
+	// when ApplicationKey is set.
+	ApplicationKey, ApplicationSecret, ConsumerKey string
+	// ClientID and ClientSecret are the credentials of an OAuth2 service
+	// account, which authenticates the requests when ClientID is set.
+	ClientID, ClientSecret string
+	// Timeout bounds every call to the API.
+	Timeout time.Duration
+}
+
+// Scaleway holds the settings of a scaleway backend: the Domains and DNS API
+// of Scaleway.
+type Scaleway struct {
+	// SecretKey is the secret key of the API key that authenticates the
+	// requests.
+	SecretKey string
+	// Timeout bounds every call to the API.
+	Timeout time.Duration
 }
 
 // Header is an HTTP header.
@@ -235,11 +274,49 @@ type fileKey struct {
 }
 
 type fileBackend struct {
-	Name     string        `yaml:"name"`
-	Type     string        `yaml:"type"`
-	PowerDNS *filePowerDNS `yaml:"powerdns"`
-	RFC2136  *fileRFC2136  `yaml:"rfc2136"`
-	Webhook  *fileWebhook  `yaml:"webhook"`
+	Name       string          `yaml:"name"`
+	Type       string          `yaml:"type"`
+	PowerDNS   *filePowerDNS   `yaml:"powerdns"`
+	RFC2136    *fileRFC2136    `yaml:"rfc2136"`
+	Webhook    *fileWebhook    `yaml:"webhook"`
+	Cloudflare *fileCloudflare `yaml:"cloudflare"`
+	OVH        *fileOVH        `yaml:"ovh"`
+	Scaleway   *fileScaleway   `yaml:"scaleway"`
+}
+
+type fileOVH struct {
+	Endpoint              string      `yaml:"endpoint"`
+	ApplicationKey        string      `yaml:"applicationKey"`
+	ApplicationSecret     string      `yaml:"applicationSecret"`
+	ApplicationSecretFile string      `yaml:"applicationSecretFile"`
+	ApplicationSecretEnv  string      `yaml:"applicationSecretEnv"`
+	ConsumerKey           string      `yaml:"consumerKey"`
+	ConsumerKeyFile       string      `yaml:"consumerKeyFile"`
+	ConsumerKeyEnv        string      `yaml:"consumerKeyEnv"`
+	OAuth2                *fileOAuth2 `yaml:"oauth2"`
+	Timeout               string      `yaml:"timeout"`
+}
+
+type fileOAuth2 struct {
+	ClientID         string `yaml:"clientId"`
+	ClientSecret     string `yaml:"clientSecret"`
+	ClientSecretFile string `yaml:"clientSecretFile"`
+	ClientSecretEnv  string `yaml:"clientSecretEnv"`
+}
+
+type fileScaleway struct {
+	SecretKey     string `yaml:"secretKey"`
+	SecretKeyFile string `yaml:"secretKeyFile"`
+	SecretKeyEnv  string `yaml:"secretKeyEnv"`
+	Timeout       string `yaml:"timeout"`
+}
+
+type fileCloudflare struct {
+	APIToken     string            `yaml:"apiToken"`
+	APITokenFile string            `yaml:"apiTokenFile"`
+	APITokenEnv  string            `yaml:"apiTokenEnv"`
+	ZoneIDs      map[string]string `yaml:"zoneIds"`
+	Timeout      string            `yaml:"timeout"`
 }
 
 type fileWebhook struct {

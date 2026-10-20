@@ -15,7 +15,9 @@ development workflow.
 | `internal/auth` | TSIG keyring, one algorithm per key; update policy |
 | `internal/update` | The RFC 2136 engine: parsing, prerequisites, update section |
 | `internal/zone` | Working view of a zone: lazy reads, changes in memory, diff |
-| `internal/backend` | Backend and relay contracts; `memory` for the tests, `powerdns` for production, `rfc2136` to relay to a name server, `webhook` to an HTTP endpoint; `httpclient` for the HTTP clients |
+| `internal/backend` | Backend and relay contracts; `memory` for the tests, `powerdns` for production, `rfc2136` to relay to a name server, `webhook` to an HTTP endpoint; `httpclient` for the HTTP clients; `backendtest`, the conformance suite of the backends |
+| `internal/backend/hosted` | What the backends of hosted providers share: RRsets from records, records from RRset changes, the limits of a provider, the HTTP client of the APIs; `hostedtest` for their simulations |
+| `internal/backend/cloudflare`, `ovh`, `scaleway` | The backends of the hosted providers; `cloudflaretest`, `ovhtest` and `scalewaytest` simulate their APIs |
 | `internal/metrics`, `internal/admin` | Prometheus collectors; `/healthz`, `/readyz` and `/metrics` |
 | `internal/logging` | `log/slog` setup |
 
@@ -86,7 +88,19 @@ gets its rcode, and the metrics count no backend error. A backend whose
 provider holds no TTL below a minimum implements `backend.TTLFloor`: it turns
 lower TTLs down, and the server raises the TTLs of an update to the minimum,
 which the update log reports. The PowerDNS backend sends one PATCH request,
-which PowerDNS applies in one transaction.
+which PowerDNS applies in one transaction, as the Cloudflare and Scaleway
+backends send one batch, or PATCH, request. The API of OVHcloud has no
+transaction: its backend writes one record at a time, undoes what it wrote
+when a request fails, and publishes the zone once, at the end.
+
+The backends of the hosted providers share `internal/backend/hosted`. They read
+the records of a name, with their identifiers, and group them into RRsets; to
+apply a change, they read the records of its RRset again, then `hosted.Diff`
+tells which records to delete, to create, or whose TTL changes, so that the
+records that stay keep their identifier. `hosted.Limits` turns down, before any
+request, what a provider cannot hold intact. When a write fails without telling
+whether it applied, as after a timeout, the backend reads the records again and
+reports a success if they show the update.
 
 ```go
 type Relay interface {
@@ -123,8 +137,9 @@ those of other zones REFUSED.
 | --- | --- | --- |
 | Unit tests | Every package, with `-race` and a shuffled order; coverage floors on `update`, `zone` and `auth` | `go test ./...`, `task test:unit` |
 | Fuzzing | Configuration, engine, whole request handling, name patterns | `Fuzz*` targets, `task test:fuzz`; ten minutes each, nightly |
-| Backend conformance | The contract of a backend: RRsets replaced and deleted whole, the others left alone, TXT contents and every record type kept intact, atomicity, and what the backend cannot hold turned down without any change | `internal/backend/backendtest`, on the in-memory backend and PowerDNS |
+| Backend conformance | The contract of a backend: RRsets replaced and deleted whole, the others left alone, TXT contents and every record type kept intact, atomicity, and what the backend cannot hold turned down without any change | `internal/backend/backendtest`, on the in-memory backend, PowerDNS and the simulated APIs of the hosted providers |
 | Scenarios in process | Each scenario of `test/scenario/scenarios` against tsigoat on the in-memory backend | `internal/app` |
+| Scenarios on the providers | The same scenarios on the simulated APIs of Cloudflare, OVHcloud and Scaleway, with the divergences of each provider listed with their reason | `internal/app` |
 | Scenarios end to end | The same scenarios against a tsigoat binary and PowerDNS 4.9 and 5.0; faults injected with toxiproxy | `test/e2e`, `task test:e2e` |
 | Scenarios relayed | The same scenarios through a tsigoat that relays the updates to another tsigoat on the in-memory backend, and through a webhook that applies them with the engine, but those with prerequisites | `internal/app` |
 | Webhook example | nsupdate through tsigoat to `examples/webhook/webhook.py`, with each authentication | `task test:webhook` |

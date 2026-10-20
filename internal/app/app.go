@@ -15,8 +15,11 @@ import (
 	"github.com/enix/tsigoat/internal/admin"
 	"github.com/enix/tsigoat/internal/auth"
 	"github.com/enix/tsigoat/internal/backend"
+	"github.com/enix/tsigoat/internal/backend/cloudflare"
+	"github.com/enix/tsigoat/internal/backend/ovh"
 	"github.com/enix/tsigoat/internal/backend/powerdns"
 	"github.com/enix/tsigoat/internal/backend/rfc2136"
+	"github.com/enix/tsigoat/internal/backend/scaleway"
 	"github.com/enix/tsigoat/internal/backend/webhook"
 	"github.com/enix/tsigoat/internal/config"
 	"github.com/enix/tsigoat/internal/dnsserver"
@@ -167,7 +170,7 @@ func newRelay(entry *config.Backend) (backend.Relay, error) {
 			Password:           w.Password,
 			BearerToken:        w.BearerToken,
 			Header:             header,
-			UserAgent:          product.Slug + "/" + product.BuildInfo().Version,
+			UserAgent:          userAgent(),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("configuring the webhook: %w", err)
@@ -193,9 +196,50 @@ func NewBackend(b *config.Backend) (backend.Backend, error) {
 			return nil, fmt.Errorf("configuring PowerDNS: %w", err)
 		}
 		return pdns, nil
+	case b.Type == "cloudflare" && b.Cloudflare != nil:
+		cf, err := cloudflare.New(&cloudflare.Options{
+			APIToken:  b.Cloudflare.APIToken,
+			ZoneIDs:   b.Cloudflare.ZoneIDs,
+			Timeout:   b.Cloudflare.Timeout,
+			UserAgent: userAgent(),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configuring Cloudflare: %w", err)
+		}
+		return cf, nil
+	case b.Type == "ovh" && b.OVH != nil:
+		o, err := ovh.New(&ovh.Options{
+			Endpoint:          b.OVH.Endpoint,
+			ApplicationKey:    b.OVH.ApplicationKey,
+			ApplicationSecret: b.OVH.ApplicationSecret,
+			ConsumerKey:       b.OVH.ConsumerKey,
+			ClientID:          b.OVH.ClientID,
+			ClientSecret:      b.OVH.ClientSecret,
+			Timeout:           b.OVH.Timeout,
+			UserAgent:         userAgent(),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configuring OVHcloud: %w", err)
+		}
+		return o, nil
+	case b.Type == "scaleway" && b.Scaleway != nil:
+		s, err := scaleway.New(&scaleway.Options{
+			SecretKey: b.Scaleway.SecretKey,
+			Timeout:   b.Scaleway.Timeout,
+			UserAgent: userAgent(),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configuring Scaleway: %w", err)
+		}
+		return s, nil
 	default:
 		return nil, fmt.Errorf("unsupported backend type %q", b.Type)
 	}
+}
+
+// userAgent identifies tsigoat to the HTTP APIs.
+func userAgent() string {
+	return product.Slug + "/" + product.BuildInfo().Version
 }
 
 // ready tells whether tsigoat serves DNS, for the readiness probe.

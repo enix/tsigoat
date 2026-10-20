@@ -75,7 +75,7 @@ ignored.
 | Setting | Meaning |
 | --- | --- |
 | `name` | Name of the backend, which zones refer to |
-| `type` | `powerdns`; `rfc2136` for a name server that tsigoat relays the updates to; `webhook` for an HTTP endpoint that applies them; the settings of the type follow |
+| `type` | `powerdns`; `cloudflare`, `ovh` or `scaleway` for a hosted provider; `rfc2136` for a name server that tsigoat relays the updates to; `webhook` for an HTTP endpoint that applies them; the settings of the type follow |
 
 A `powerdns` backend writes to the HTTP API of PowerDNS, see
 [PowerDNS](powerdns.md):
@@ -87,6 +87,38 @@ A `powerdns` backend writes to the HTTP API of PowerDNS, see
 | `powerdns.apiKey`, `apiKeyFile`, `apiKeyEnv` | The API key: inline, in a file, or in an environment variable; exactly one of them |
 | `powerdns.timeout` | Timeout of every API call, up to one minute; `5s` by default |
 | `powerdns.caFile` | PEM bundle trusted for the certificate of the API, on top of the system roots |
+
+A `cloudflare` backend writes to the API of Cloudflare, see
+[Cloudflare](cloudflare.md):
+
+| Setting | Meaning |
+| --- | --- |
+| `cloudflare.apiToken`, `apiTokenFile`, `apiTokenEnv` | The API token |
+| `cloudflare.zoneIds` | Identifiers of zones, by name, for a token that cannot find them by name |
+| `cloudflare.timeout` | Timeout of every API call, up to one minute; `5s` by default |
+
+An `ovh` backend writes to the API of OVHcloud, see [OVHcloud](ovh.md):
+
+| Setting | Meaning |
+| --- | --- |
+| `ovh.endpoint` | `ovh-eu`, `ovh-ca`, `ovh-us`, or the `https` URL of the API |
+| `ovh.applicationKey` | The application key, with the two settings below |
+| `ovh.applicationSecret`, `applicationSecretFile`, `applicationSecretEnv` | The secret of the application |
+| `ovh.consumerKey`, `consumerKeyFile`, `consumerKeyEnv` | The consumer key, which holds the rights |
+| `ovh.oauth2.clientId` | In place of an application key: the identifier of an OAuth2 service account, with the setting below |
+| `ovh.oauth2.clientSecret`, `clientSecretFile`, `clientSecretEnv` | The secret of the service account |
+| `ovh.timeout` | Timeout of every API call, up to one minute; `5s` by default |
+
+A `scaleway` backend writes to the Domains and DNS API of Scaleway, see
+[Scaleway](scaleway.md):
+
+| Setting | Meaning |
+| --- | --- |
+| `scaleway.secretKey`, `secretKeyFile`, `secretKeyEnv` | The secret key of the API key |
+| `scaleway.timeout` | Timeout of every API call, up to one minute; `5s` by default |
+
+The [hosted providers](providers.md) hold no TTL below 60 seconds: tsigoat
+raises lower TTLs, and turns down what a provider would not keep intact.
 
 An `rfc2136` backend relays the updates to a name server that implements RFC
 2136 itself, such as BIND, which applies them, see [RFC 2136

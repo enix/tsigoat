@@ -85,6 +85,13 @@ To move a client off a legacy algorithm:
   does.
 - Restrict the PowerDNS API to tsigoat, and serve it over HTTPS when it
   crosses a network.
+- Give tsigoat credentials of a hosted provider restricted to the zones that it
+  serves, and to its addresses when the provider allows: a DNS Edit API token
+  for the zones at [Cloudflare](cloudflare.md#the-api-token), a consumer key
+  with the rights of the zones at [OVHcloud](ovh.md#credentials), an API key
+  of a Project that holds the zones alone at [Scaleway](scaleway.md#the-api-key).
+  tsigoat then narrows these rights down to names and types, with its
+  policy.
 - Let a name server behind an `rfc2136` backend grant the key of tsigoat only
   what its clients need, and keep the server out of reach of the clients. TSIG
   authenticates the relayed updates without encrypting them.

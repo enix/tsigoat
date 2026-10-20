@@ -1,0 +1,14 @@
+keys:
+  - name: e2e.
+    secretEnv: TSIGOAT_TEST_SECRET
+backends:
+  - name: provider
+    type: ovh
+    ovh:
+      applicationKey: key
+      applicationSecretEnv: TSIGOAT_TEST_API_KEY
+      consumerKeyEnv: TSIGOAT_TEST_API_KEY
+zones:
+  - name: example.test.
+    backend: provider
+    keys: [e2e.]

@@ -128,6 +128,16 @@ the secrets out of the ConfigMap: they belong in the Secret mounted in
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.rfc2136) (kindIs "map" $backend.rfc2136.key) (hasKey $backend.rfc2136.key "secret") -}}
 {{- fail (printf "config.backends[%d].rfc2136.key.secret would store a TSIG secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with secretFile" $i) -}}
 {{- end -}}
+{{- range $setting := list "cloudflare.apiToken" "ovh.applicationSecret" "ovh.consumerKey" "scaleway.secretKey" -}}
+{{- $section := index (splitList "." $setting) 0 -}}
+{{- $field := index (splitList "." $setting) 1 -}}
+{{- if and (kindIs "map" $backend) (kindIs "map" (index $backend $section)) (hasKey (index $backend $section) $field) -}}
+{{- fail (printf "config.backends[%d].%s would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with %sFile" $i $setting $field) -}}
+{{- end -}}
+{{- end -}}
+{{- if and (kindIs "map" $backend) (kindIs "map" $backend.ovh) (kindIs "map" $backend.ovh.oauth2) (hasKey $backend.ovh.oauth2 "clientSecret") -}}
+{{- fail (printf "config.backends[%d].ovh.oauth2.clientSecret would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with clientSecretFile" $i) -}}
+{{- end -}}
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.webhook) -}}
 {{- range $setting := list "signature.secret" "basicAuth.password" "bearer.token" -}}
 {{- $section := index (splitList "." $setting) 0 -}}

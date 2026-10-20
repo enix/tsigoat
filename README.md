@@ -10,15 +10,17 @@
 
 tsigoat receives DNS UPDATE messages ([RFC 2136][rfc2136]), authenticates them
 with TSIG ([RFC 8945][rfc8945]) and applies the changes through the API of a
-DNS provider. ACME DNS-01 clients such as cert-manager, lego or certbot can then
-solve their challenges without ever holding the provider credentials, even when
-the provider does not speak RFC 2136. In front of a name server that does,
-such as BIND, tsigoat relays the updates with its own key, and brings the keys
-and the policy. For any other provider, a webhook of yours applies them.
+DNS provider: PowerDNS, Cloudflare, OVHcloud or Scaleway. ACME DNS-01 clients
+such as cert-manager, lego or certbot can then solve their challenges without
+ever holding the provider credentials, even when the provider does not speak
+RFC 2136. In front of a name server that does, such as BIND, tsigoat relays
+the updates with its own key, and brings the keys and the policy. For any
+other provider, a webhook of yours applies them.
 
 ```text
 cert-manager, lego,     DNS UPDATE              HTTP API
-certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────────► PowerDNS
+certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────────► PowerDNS, Cloudflare,
+                                                          OVHcloud, Scaleway
                                              DNS UPDATE
                                      tsigoat ───────────► BIND, Knot DNS...
                                              + its TSIG
@@ -27,9 +29,9 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
 ```
 
 > [!WARNING]
-> tsigoat has no release yet. Its backends are PowerDNS, the name servers that
-> implement RFC 2136 and webhooks; tsigoat runs as a single instance, but in
-> front of name servers alone.
+> tsigoat has no release yet. Its backends are PowerDNS, Cloudflare,
+> OVHcloud, Scaleway, the name servers that implement RFC 2136 and webhooks;
+> tsigoat runs as a single instance, but in front of name servers alone.
 
 ## Features
 
@@ -45,6 +47,11 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
   restrict other keys to some names and record types, with bounds on the TTL
   and the number of the records. An `acme` rule lets a key write the values of
   the DNS-01 challenges of its certificates, and nothing else.
+- **Hosted DNS providers**: Cloudflare, OVHcloud and Scaleway, through their
+  APIs, with credentials that tsigoat narrows down to names and types. An
+  update applies whole, in one request where the API allows; tsigoat turns
+  down what a provider would not keep intact, rather than writing it
+  approximately.
 - **Relay to RFC 2136 servers**: in front of BIND or another name server,
   tsigoat checks the keys and the policy, then relays the updates signed with
   its own key, and the server applies them.
@@ -101,6 +108,8 @@ cert-manager or for clients out of the cluster.
 | [Configuration](docs/configuration.md) | Every setting of the configuration file, and the update policy |
 | [Clients](docs/clients.md) | Setting up cert-manager, lego and Traefik, certbot and nsupdate |
 | [PowerDNS](docs/powerdns.md) | What tsigoat needs from PowerDNS, and how it writes to it |
+| [Hosted DNS providers](docs/providers.md) | How tsigoat writes to the APIs of hosted providers, and what it turns down |
+| [Cloudflare](docs/cloudflare.md), [OVHcloud](docs/ovh.md), [Scaleway](docs/scaleway.md) | The credentials to create for each provider, and what it does its own way |
 | [RFC 2136 servers](docs/rfc2136.md) | Relaying the updates to BIND or another name server, with the keys and the policy of tsigoat |
 | [Webhooks](docs/webhook.md) | Applying the updates with a script of yours, for the providers that tsigoat does not support |
 | [Operations](docs/operations.md) | Command line, images, Kubernetes, logs, metrics and alerts |

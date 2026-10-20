@@ -1,0 +1,13 @@
+# The API token of Cloudflare would land in the ConfigMap.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: cloudflare
+      type: cloudflare
+      cloudflare:
+        apiToken: inline-token # gitleaks:allow (fixture)
+  zones:
+    - name: example.test.
+      keys: [acme.]

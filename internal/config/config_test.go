@@ -234,3 +234,35 @@ func TestExamples(t *testing.T) {
 		}
 	}
 }
+
+func TestParseProviders(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile("../../test/config/valid/providers.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := config.Parse(data, testOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cf := c.Backends[0].Cloudflare; cf.APIToken != "test-api-key" || cf.Timeout != 10*time.Second ||
+		len(cf.ZoneIDs) != 1 || cf.ZoneIDs["cloudflare.test."] != "023e105f4ecef8ad9ca31a8372d0c353" {
+		t.Errorf("Cloudflare settings = %+v", cf)
+	}
+	if o := c.Backends[1].OVH; o.Endpoint != "https://eu.api.ovh.com/1.0" || o.ApplicationKey != "7kbG7Bk7S9Nt7ZSV" ||
+		o.ApplicationSecret != "dGhpcyBpcyBub3QgYSBzZWNyZXQgYXQgYWxsIQ==" || o.ConsumerKey != "test-api-key" ||
+		o.ClientID != "" || o.Timeout != 5*time.Second {
+		t.Errorf("OVH settings = %+v", o)
+	}
+	if o := c.Backends[2].OVH; o.Endpoint != "https://ca.api.ovh.com/1.0" || o.ApplicationKey != "" ||
+		o.ClientID != "EU.a1b2c3d4e5f6" || o.ClientSecret != "test-api-key" {
+		t.Errorf("OVH settings with a service account = %+v", o)
+	}
+	if o := c.Backends[3].OVH; o.Endpoint != "https://eu.api.ovh.com/1.0" {
+		t.Errorf("OVH endpoint given as a URL = %q", o.Endpoint)
+	}
+	if s := c.Backends[4].Scaleway; s.SecretKey != "test-api-key" || s.Timeout != 5*time.Second {
+		t.Errorf("Scaleway settings = %+v", s)
+	}
+}

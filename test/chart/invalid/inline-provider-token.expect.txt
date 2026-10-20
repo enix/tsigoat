@@ -1,0 +1,2 @@
+config.backends[0].cloudflare.apiToken would store a secret in a ConfigMap
+read it with apiTokenFile

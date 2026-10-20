@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+
+	"github.com/enix/tsigoat/internal/backend/ovh"
 )
 
 // Backend defaults.
@@ -37,6 +39,10 @@ const (
 	// httpScheme and httpsScheme are the schemes of the URLs of the backends.
 	httpScheme  = "http"
 	httpsScheme = "https"
+	// ovhEndpoints describes the endpoints of an ovh backend.
+	ovhEndpoints = "ovh-eu, ovh-ca, ovh-us, or the https URL of the API"
+	// backendTypes lists the types of backends, for the messages.
+	backendTypes = "powerdns, rfc2136, webhook, cloudflare, ovh or scaleway"
 )
 
 // keyHolder tells who shares a TSIG key with tsigoat, for the advice of the
@@ -273,27 +279,19 @@ func (v *validator) backends(raw []fileBackend) []Backend {
 // backend validates the type of a backend and its settings, which must match.
 func (v *validator) backend(path string, b *fileBackend) Backend {
 	backend := Backend{Name: b.Name, Type: b.Type}
-	settings := map[string]bool{"powerdns": b.PowerDNS != nil, "rfc2136": b.RFC2136 != nil, "webhook": b.Webhook != nil}
-	switch b.Type {
-	case "powerdns":
-		if b.PowerDNS != nil {
-			backend.PowerDNS = v.powerDNS(path+".powerdns", b.PowerDNS)
-		}
-	case "rfc2136":
-		if b.RFC2136 != nil {
-			backend.RFC2136 = v.rfc2136(path+".rfc2136", b.RFC2136)
-		}
-	case "webhook":
-		if b.Webhook != nil {
-			backend.Webhook = v.webhook(path+".webhook", b.Webhook)
-		}
-	case "":
-		v.errorf(path+".type", "missing type (expected powerdns, rfc2136 or webhook)")
+	settings := map[string]bool{
+		"powerdns": b.PowerDNS != nil, "rfc2136": b.RFC2136 != nil, "webhook": b.Webhook != nil,
+		"cloudflare": b.Cloudflare != nil, "ovh": b.OVH != nil, "scaleway": b.Scaleway != nil,
+	}
+	switch _, known := settings[b.Type]; {
+	case b.Type == "":
+		v.errorf(path+".type", "missing type (expected %s)", backendTypes)
 		return backend
-	default:
-		v.errorf(path+".type", "unknown type %q (expected powerdns, rfc2136 or webhook)", b.Type)
+	case !known:
+		v.errorf(path+".type", "unknown type %q (expected %s)", b.Type, backendTypes)
 		return backend
 	}
+	v.backendSettings(path, b, &backend)
 	for _, section := range slices.Sorted(maps.Keys(settings)) {
 		switch {
 		case section == b.Type && !settings[section]:
@@ -303,6 +301,24 @@ func (v *validator) backend(path string, b *fileBackend) Backend {
 		}
 	}
 	return backend
+}
+
+// backendSettings validates the settings of the type of a backend, when set.
+func (v *validator) backendSettings(path string, b *fileBackend, backend *Backend) {
+	switch {
+	case b.Type == "powerdns" && b.PowerDNS != nil:
+		backend.PowerDNS = v.powerDNS(path+".powerdns", b.PowerDNS)
+	case b.Type == "rfc2136" && b.RFC2136 != nil:
+		backend.RFC2136 = v.rfc2136(path+".rfc2136", b.RFC2136)
+	case b.Type == "webhook" && b.Webhook != nil:
+		backend.Webhook = v.webhook(path+".webhook", b.Webhook)
+	case b.Type == "cloudflare" && b.Cloudflare != nil:
+		backend.Cloudflare = v.cloudflare(path+".cloudflare", b.Cloudflare)
+	case b.Type == "ovh" && b.OVH != nil:
+		backend.OVH = v.ovh(path+".ovh", b.OVH)
+	case b.Type == "scaleway" && b.Scaleway != nil:
+		backend.Scaleway = v.scaleway(path+".scaleway", b.Scaleway)
+	}
 }
 
 func (v *validator) powerDNS(path string, raw *filePowerDNS) *PowerDNS {
@@ -470,6 +486,85 @@ func (v *validator) webhookHeaders(path string, raw *fileWebhook, w *Webhook) {
 		}
 		w.Headers = append(w.Headers, Header{Name: name, Value: value})
 	}
+}
+
+func (v *validator) cloudflare(path string, raw *fileCloudflare) *Cloudflare {
+	c := &Cloudflare{Timeout: v.backendTimeout(path+".timeout", raw.Timeout)}
+	if token, ok := v.secret(path, "apiToken", raw.APIToken, raw.APITokenFile, raw.APITokenEnv); ok {
+		c.APIToken = token
+	}
+	for _, zone := range slices.Sorted(maps.Keys(raw.ZoneIDs)) {
+		id := raw.ZoneIDs[zone]
+		name, ok := v.domainName(path+".zoneIds", zone)
+		switch {
+		case !ok:
+		case len(id) != 32 || strings.Trim(id, "0123456789abcdef") != "":
+			v.errorf(path+".zoneIds."+zone, "invalid zone identifier %q: 32 lower-case hexadecimal digits", id)
+		default:
+			if c.ZoneIDs == nil {
+				c.ZoneIDs = map[string]string{}
+			}
+			c.ZoneIDs[name] = id
+		}
+	}
+	return c
+}
+
+// ovh validates the settings of an ovh backend: an endpoint, and either an
+// application key with its secret and a consumer key, or an OAuth2 service
+// account, which only the endpoints of OVHcloud know.
+func (v *validator) ovh(path string, raw *fileOVH) *OVH {
+	o := &OVH{Timeout: v.backendTimeout(path+".timeout", raw.Timeout)}
+	endpoint, named := ovh.EndpointURL(raw.Endpoint)
+	switch u, err := url.Parse(raw.Endpoint); {
+	case raw.Endpoint == "":
+		v.errorf(path+".endpoint", "missing endpoint: %s", ovhEndpoints)
+	case named:
+		o.Endpoint = endpoint
+	case err == nil && u.Scheme == httpsScheme && u.Host != "":
+		o.Endpoint = strings.TrimRight(raw.Endpoint, "/")
+	default:
+		v.errorf(path+".endpoint", "unknown endpoint %q: %s", raw.Endpoint, ovhEndpoints)
+	}
+
+	switch {
+	case raw.ApplicationKey != "" && raw.OAuth2 != nil:
+		v.errorf(path+".oauth2", "set applicationKey or oauth2, not both")
+	case raw.ApplicationKey != "":
+		o.ApplicationKey = raw.ApplicationKey
+		if secret, ok := v.secret(path, "applicationSecret", raw.ApplicationSecret, raw.ApplicationSecretFile, raw.ApplicationSecretEnv); ok {
+			o.ApplicationSecret = secret
+		}
+		if key, ok := v.secret(path, "consumerKey", raw.ConsumerKey, raw.ConsumerKeyFile, raw.ConsumerKeyEnv); ok {
+			o.ConsumerKey = key
+		}
+	case raw.OAuth2 != nil:
+		v.ovhOAuth2(path+".oauth2", raw.OAuth2, o)
+	default:
+		v.errorf(path, "missing credentials: set applicationKey, applicationSecret and consumerKey, or oauth2")
+	}
+	return o
+}
+
+func (v *validator) ovhOAuth2(path string, raw *fileOAuth2, o *OVH) {
+	if raw.ClientID == "" {
+		v.errorf(path+".clientId", "missing clientId: the identifier of the service account")
+	}
+	o.ClientID = raw.ClientID
+	if secret, ok := v.secret(path, "clientSecret", raw.ClientSecret, raw.ClientSecretFile, raw.ClientSecretEnv); ok {
+		o.ClientSecret = secret
+	}
+	if o.Endpoint != "" && !ovh.SupportsOAuth2(o.Endpoint) {
+		v.errorf(path, "OAuth2 service accounts need the endpoint ovh-eu, ovh-ca or ovh-us")
+	}
+}
+
+func (v *validator) scaleway(path string, raw *fileScaleway) *Scaleway {
+	s := &Scaleway{Timeout: v.backendTimeout(path+".timeout", raw.Timeout)}
+	if key, ok := v.secret(path, "secretKey", raw.SecretKey, raw.SecretKeyFile, raw.SecretKeyEnv); ok {
+		s.SecretKey = key
+	}
+	return s
 }
 
 // backendTimeout validates the timeout of the calls to a backend;
