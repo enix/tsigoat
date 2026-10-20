@@ -113,6 +113,16 @@
       datasourceTemplate: "github-releases",
     },
     {
+      // The Helm of the release, in step with helmImage of dagger/base.go.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/release\\.ya?ml$/"],
+      matchStrings: [
+        "setup-helm[^\\n]+\\n\\s+with:\\n\\s+version:\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
+      ],
+      depNameTemplate: "helm/helm",
+      datasourceTemplate: "github-releases",
+    },
+    {
       customType: "regex",
       managerFilePatterns: ["/^flake\\.nix$/"],
       matchStrings: [

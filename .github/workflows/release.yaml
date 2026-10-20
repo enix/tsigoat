@@ -4,7 +4,17 @@ name: Release
 # first; GoReleaser then builds the binaries and images, signs everything
 # with cosign keyless, and leaves a draft GitHub Release with a changelog
 # generated from the Conventional Commits. The maintainer reviews and
-# publishes it.
+# publishes it. The Helm chart follows the images, with the same version.
+#
+# Settings of the `release` environment for the chart:
+#   - variable CHART_REGISTRY: OCI repository of the chart, without oci://;
+#     ghcr.io/enix/charts by default, pushed with the GITHUB_TOKEN;
+#   - secrets CHART_REGISTRY_USERNAME and CHART_REGISTRY_TOKEN: credentials
+#     of another registry than ghcr.io;
+#   - secret GH_TOKEN_PUBLISH_HELM_CHART: with a CHART_REGISTRY on quay.io, a
+#     token allowed to run the helmchart-publish.yml workflow of
+#     enix/helm-charts, which adds the chart to the classic repository of
+#     charts.enix.io; that workflow reads charts from quay.io only.
 on:
   push:
     tags:
@@ -119,3 +129,85 @@ jobs:
                 rm -f /tmp/sbom.json
                 echo "::endgroup::"
               done
+
+  chart:
+    name: Chart publish and sign
+    needs: goreleaser # the chart points to the images just pushed
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: read
+      packages: write # push to ghcr.io
+      id-token: write # OIDC for cosign keyless
+    env:
+      CHART_REGISTRY: ${{ vars.CHART_REGISTRY || 'ghcr.io/enix/charts' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: "v4.3.1"
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      # helm and cosign keep their own credentials.
+      - name: Login to the chart registry
+        env:
+          REGISTRY_USERNAME: ${{ secrets.CHART_REGISTRY_USERNAME || github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.CHART_REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          host="${CHART_REGISTRY%%/*}"
+          echo "$REGISTRY_TOKEN" | helm registry login --username "$REGISTRY_USERNAME" --password-stdin "$host"
+          echo "$REGISTRY_TOKEN" | cosign login --username "$REGISTRY_USERNAME" --password-stdin "$host"
+      # The version of the tag, for the chart and for the images; Artifact
+      # Hub marks the release candidates as prereleases.
+      - name: Package
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+          sed -i "s|^  artifacthub.io/prerelease:.*|  artifacthub.io/prerelease: \"${prerelease}\"|" chart/Chart.yaml
+          cp LICENSE chart/LICENSE
+          helm package chart --destination dist --version "$version" --app-version "$version"
+      - name: Push
+        id: push
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          out=$(helm push "dist/tsigoat-${version}.tgz" "oci://${CHART_REGISTRY}" 2>&1 | tee /dev/stderr)
+          digest=$(printf '%s\n' "$out" | grep -oE 'sha256:[a-f0-9]{64}' | head -1)
+          if [ -z "$digest" ]; then
+            echo "::error::helm push printed no digest"
+            exit 1
+          fi
+          echo "ref=${CHART_REGISTRY}/tsigoat@${digest}" >> "$GITHUB_OUTPUT"
+      - name: Sign
+        env:
+          COSIGN_YES: "true"
+          CHART_REF: ${{ steps.push.outputs.ref }}
+        run: cosign sign "$CHART_REF"
+      # The classic repository of charts.enix.io, for `helm repo add`: an
+      # index pointing to the OCI chart, which enix/helm-charts publishes.
+      - uses: oras-project/setup-oras@005458ad77f1c8facd38a094e4af2e69e5607ff4 # v2.0.2
+        if: startsWith(env.CHART_REGISTRY, 'quay.io/')
+      - name: Publish to charts.enix.io
+        if: startsWith(env.CHART_REGISTRY, 'quay.io/')
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN_PUBLISH_HELM_CHART }}
+          REGISTRY_USERNAME: ${{ secrets.CHART_REGISTRY_USERNAME }}
+          REGISTRY_TOKEN: ${{ secrets.CHART_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          echo "$REGISTRY_TOKEN" | oras login --username "$REGISTRY_USERNAME" --password-stdin quay.io
+          helm repo index dist
+          yq -i ".entries.tsigoat[0].urls = [\"oci://${CHART_REGISTRY}/tsigoat:${version}\"]" dist/index.yaml
+          mv dist/index.yaml dist/index-latest.yaml
+          (cd dist && oras push "${CHART_REGISTRY}/tsigoat:index-latest.yaml" \
+            --artifact-type application/yaml index-latest.yaml:application/yaml)
+          gh workflow run helmchart-publish.yml --repo enix/helm-charts \
+            -f "index_path=${CHART_REGISTRY#quay.io/}/tsigoat:index-latest.yaml"

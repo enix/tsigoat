@@ -18,12 +18,16 @@ the latest minor release.
 
 ## Verifying releases
 
-Releases sign every image, and the checksums of their archives, with cosign
-keyless. GitHub attests the build provenance of the archives, and every image
-carries a CycloneDX SBOM as a cosign attestation. Before deploying a release:
+Releases sign every image, the Helm chart, and the checksums of their
+archives, with cosign keyless. GitHub attests the build provenance of the
+archives, and every image carries a CycloneDX SBOM as a cosign attestation.
+Before deploying a release:
 
 ```sh
 cosign verify ghcr.io/enix/tsigoat:<version> \
+  --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify ghcr.io/enix/charts/tsigoat:<version> \
   --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \

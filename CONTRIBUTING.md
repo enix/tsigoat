@@ -159,7 +159,9 @@ for working notes that stay on one machine.
 
 A maintainer pushes a `vX.Y.Z` tag. The release workflow runs the quality
 gates, then GoReleaser builds and signs the binaries and images and leaves a
-draft GitHub Release, which the maintainer reviews and publishes.
+draft GitHub Release, which the maintainer reviews and publishes. The Helm
+chart takes the version of the tag, and is pushed to its OCI registry and
+signed after the images.
 
 [nix]: https://nixos.org/
 [direnv]: https://direnv.net/
