@@ -35,9 +35,10 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
 
 ## Features
 
-- **RFC 2136 updates**, prerequisites included, applied atomically: tsigoat
+- **RFC 2136 updates**, prerequisites included, applied whole: tsigoat
   computes the whole update before it calls the backend once, so that a
-  failure leaves the zone untouched. The rules of the RFC hold: CNAME
+  failure leaves the zone untouched, or is reported as an unknown outcome
+  when the provider cannot tell. The rules of the RFC hold: CNAME
   exclusivity, SOA serial ordering, protection of the apex SOA and NS.
 - **TSIG**: one algorithm per key, HMAC-SHA256 by default, HMAC-SHA224,
   SHA384 and SHA512 too, and the legacy HMAC-SHA1 and HMAC-MD5 for the keys

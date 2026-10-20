@@ -4,11 +4,13 @@ tsigoat reads one YAML file, `/etc/tsigoat/config.yaml` unless `--config`
 names another. [examples/config.yaml](../examples/config.yaml) shows every
 setting with comments.
 
-The file is strict: an unknown setting is an error, and every error names its
-place, such as `zones[0].policy[1].names[0]`. `tsigoat check-config` validates
-a file without starting anything, prints the warnings about risky settings,
-and exits with code 1 when the file is invalid; `--backends` also reads every
-zone through its backend.
+The file is strict: an unknown setting is an error, as is a second YAML
+document, after `---`, and every error names its place, such as
+`zones[0].policy[1].names[0]`. Names, of keys, zones and rules, take no escape
+such as `\101` or `\.`, which would spell one name in two ways.
+`tsigoat check-config` validates a file without starting anything, prints the
+warnings about risky settings, and exits with code 1 when the file is invalid;
+`--backends` also reads every zone through its backend.
 
 ## A minimal configuration
 

@@ -40,7 +40,8 @@ with depguard rules.
    zone from a forbidden one.
 4. **Structure**: the prerequisite section and the prescan of the update
    section (RFC 2136 3.2, 3.4.1): FORMERR or NOTZONE, or REFUSED beyond 256
-   records.
+   records. A record added, or tested by value, without the RDATA that its
+   type requires gets FORMERR.
 5. **Policy**: every record of the update section must be allowed, those
    that it adds within the bounds of their rule (TTL, content, number), and
    every name of the prerequisite section updatable by the key, or REFUSED.
@@ -55,7 +56,8 @@ with depguard rules.
    CNAME exclusivity, SOA serial ordering, apex SOA and NS protection, one TTL
    per RRset.
 9. **One call to the backend** with the RRset changes of the view; a failure
-   gets SERVFAIL, and nothing is applied.
+   gets SERVFAIL, and nothing is applied, unless the backend tells that the
+   outcome is unknown, see [the backend contract](#the-backend-contract).
 10. **Response**, signed with the key of the request; one log entry; metrics.
 
 ## The engine and the view
