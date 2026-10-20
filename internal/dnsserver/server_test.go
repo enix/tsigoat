@@ -284,6 +284,34 @@ func TestMalformedRequests(t *testing.T) {
 	}
 }
 
+// TestRecordWithoutRDATA checks that a signed addition of an A record without
+// address, which miekg/dns decodes into an empty record, gets FORMERR, and
+// reaches no backend.
+func TestRecordWithoutRDATA(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+
+	m := new(dns.Msg)
+	m.SetUpdate(testZone)
+	// The generic form of RFC 3597 writes an RDLENGTH of zero.
+	m.Ns = []dns.RR{&dns.RFC3597{Hdr: dns.RR_Header{Name: "empty." + testZone, Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 60}}}
+	m.SetTsig(keyName, dns.HmacSHA256, 300, time.Now().Unix())
+	data, _, err := dns.TsigGenerateWithProvider(m, f.keyring, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp := f.exchangeRaw(t, data)
+	if resp.Rcode != dns.RcodeFormatError {
+		t.Errorf("rcode %s, want FORMERR", dns.RcodeToString[resp.Rcode])
+	}
+	if f.backend.Applied() != 0 {
+		t.Error("an A record without address was applied")
+	}
+	if logs := f.logs.String(); !strings.Contains(logs, "without RDATA") {
+		t.Errorf("the reason is missing from the logs:\n%s", logs)
+	}
+}
+
 func TestResponsesAreDropped(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)

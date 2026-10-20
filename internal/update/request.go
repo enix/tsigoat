@@ -128,6 +128,9 @@ func checkPrerequisite(rr dns.RR, zone string, class uint16, served []string) er
 		if h.Rrtype == dns.TypeANY || isMetaType(h.Rrtype) {
 			return reject(dns.RcodeFormatError, "prerequisite %s names a meta type", Describe(rr))
 		}
+		if missingRDATA(rr) {
+			return reject(dns.RcodeFormatError, "prerequisite %s has no RDATA, which its type requires", Describe(rr))
+		}
 	default:
 		return reject(dns.RcodeFormatError, "prerequisite %s has an invalid class", Describe(rr))
 	}
@@ -163,6 +166,9 @@ func checkUpdate(rr dns.RR, zone string, class uint16, served []string) error {
 	case class:
 		if h.Rrtype == dns.TypeANY || isMetaType(h.Rrtype) {
 			return reject(dns.RcodeFormatError, "update %s adds a meta type", Describe(rr))
+		}
+		if missingRDATA(rr) {
+			return reject(dns.RcodeFormatError, "update %s adds a record without RDATA, which its type requires", Describe(rr))
 		}
 	case dns.ClassANY:
 		if h.Ttl != 0 || h.Rdlength != 0 || isMetaType(h.Rrtype) {
@@ -200,6 +206,33 @@ func Operation(rr dns.RR) string {
 	default:
 		return fmt.Sprintf("add %s %d %s %s", h.Name, h.Ttl, dns.Type(h.Rrtype), backend.RData(rr))
 	}
+}
+
+// missingRDATA reports whether a record came without the RDATA that its type
+// requires, such as an A record without an address. miekg/dns decodes an
+// RDLENGTH of zero into a record whose fields keep their zero value, as the
+// deletions of RFC 2136 need: such a record carries no data, even when it
+// encodes again into some bytes, as an MX record into its preference. The
+// header of a record built otherwise, as in the tests, has an RDLENGTH of zero
+// too, but its fields hold data. A few types may hold empty RDATA: NULL, APL,
+// EID, NIMLOC, and the types that miekg/dns does not know, in the generic
+// form of RFC 3597.
+func missingRDATA(rr dns.RR) bool {
+	h := rr.Header()
+	if h.Rdlength != 0 {
+		return false
+	}
+	switch h.Rrtype {
+	case dns.TypeNULL, dns.TypeAPL, dns.TypeEID, dns.TypeNIMLOC:
+		return false
+	}
+	newRR, known := dns.TypeToRR[h.Rrtype]
+	if !known {
+		return false
+	}
+	empty := newRR()
+	*empty.Header() = *h
+	return dns.IsDuplicate(empty, rr)
 }
 
 // isMetaType reports the types that only exist in messages, ANY aside.
