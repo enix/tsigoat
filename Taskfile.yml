@@ -136,11 +136,12 @@ tasks:
 
   # ─── Tests ───────────────────────────────────────────────────────────────
   test:
-    desc: Run all tests (unit, end-to-end scenarios, real clients)
+    desc: Run all tests (unit, end-to-end scenarios, real clients, ACME flow)
     cmds:
       - task: test:unit
       - task: test:e2e
       - task: test:clients
+      - task: test:acme
 
   test:unit:
     desc: Unit tests with the race detector, a shuffled order and coverage
@@ -164,6 +165,11 @@ tasks:
     desc: "Real DNS clients (nsupdate) against tsigoat and PowerDNS, inside Dagger (PDNS_VERSION=4.9|5.0)"
     cmds:
       - "{{.DAGGER}} call test-clients --pdns-version={{.PDNS_VERSION | default \"5.0\"}}"
+
+  test:acme:
+    desc: "ACME DNS-01 flow: lego and certbot get certificates from Pebble through tsigoat, inside Dagger (PDNS_VERSION=4.9|5.0)"
+    cmds:
+      - "{{.DAGGER}} call test-acme --pdns-version={{.PDNS_VERSION | default \"5.0\"}}"
 
   # ─── Quality ─────────────────────────────────────────────────────────────
   lint:
