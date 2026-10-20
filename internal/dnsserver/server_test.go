@@ -529,3 +529,83 @@ func TestQueries(t *testing.T) {
 		t.Errorf("two questions: rcode %s, want FORMERR", dns.RcodeToString[resp.Rcode])
 	}
 }
+
+// blockingBackend holds every lookup until released.
+type blockingBackend struct {
+	*memory.Backend
+	started chan struct{}
+	release chan struct{}
+}
+
+func (b *blockingBackend) Lookup(ctx context.Context, zone, name string) ([]backend.RRset, error) {
+	b.started <- struct{}{}
+	<-b.release
+	return b.Backend.Lookup(ctx, zone, name)
+}
+
+func TestShutdownStopsEveryListener(t *testing.T) {
+	t.Parallel()
+
+	keyring, err := auth.NewKeyring(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := auth.NewPolicy(&config.Zone{Name: testZone, AllowUnauthenticated: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inner := memory.New()
+	inner.SetZone(testZone, records(t,
+		"example.test. 3600 IN SOA ns1.example.test. hostmaster.example.test. 1 7200 900 1209600 300",
+		"example.test. 3600 IN NS ns1.example.test.",
+	)...)
+	blocking := &blockingBackend{Backend: inner, started: make(chan struct{}, 1), release: make(chan struct{})}
+	server, err := New(&Options{
+		Listen:  []string{"127.0.0.1:0"},
+		Keyring: keyring,
+		Zones:   []Zone{{Name: testZone, Backend: blocking, Policy: policy}},
+		Logger:  slog.New(slog.DiscardHandler),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	addr := server.Addrs()[0]
+
+	// An update over UDP stays in progress.
+	go func() {
+		client := &dns.Client{Net: "udp", Timeout: 5 * time.Second}
+		_, _, _ = client.ExchangeContext(context.Background(), updateMsg(t), addr)
+	}()
+	<-blocking.started
+
+	shutdown := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		shutdown <- server.Shutdown(ctx)
+	}()
+
+	// The TCP listener closes while the UDP update is still in progress.
+	var dialer net.Dialer
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		conn, err := dialer.DialContext(t.Context(), "tcp", addr)
+		if err != nil {
+			break
+		}
+		_ = conn.Close()
+		if time.Now().After(deadline) {
+			t.Error("the TCP listener still accepts while the UDP server shuts down")
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	close(blocking.release)
+	if err := <-shutdown; err != nil {
+		t.Errorf("Shutdown() = %v", err)
+	}
+}

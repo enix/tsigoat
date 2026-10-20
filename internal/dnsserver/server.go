@@ -256,18 +256,19 @@ func (s *Server) Addrs() []string {
 }
 
 // Shutdown stops listening, then waits for the requests in progress until
-// ctx is done.
+// ctx is done. Every listener stops at once: none may accept requests while
+// another one waits for its own.
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.mu.Lock()
 	servers := s.servers
 	s.mu.Unlock()
 
-	var errs []error
-	for _, server := range servers {
-		if err := server.ShutdownContext(ctx); err != nil {
-			errs = append(errs, err)
-		}
+	errs := make([]error, len(servers))
+	var wg sync.WaitGroup
+	for i, server := range servers {
+		wg.Go(func() { errs[i] = server.ShutdownContext(ctx) })
 	}
+	wg.Wait()
 	return errors.Join(errs...)
 }
 
