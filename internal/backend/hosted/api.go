@@ -23,8 +23,12 @@ const (
 	attempts = 3
 	// defaultBackoff is the default of API.Backoff.
 	defaultBackoff = 500 * time.Millisecond
-	// maxDelay bounds the delay before another attempt.
-	maxDelay = 5 * time.Second
+	// maxBackoff bounds the delay that tsigoat chooses before another
+	// attempt, when the API asks for none.
+	maxBackoff = 5 * time.Second
+	// maxRetryAfter bounds the delay that the API may ask for: a request
+	// that it asks to send later than that fails at once.
+	maxRetryAfter = time.Minute
 )
 
 // API calls the HTTP API of a provider, in JSON.
@@ -50,6 +54,9 @@ type API struct {
 	// doubles for the next one, when the API sets no Retry-After header;
 	// half a second when zero.
 	Backoff time.Duration
+
+	// wait replaces the waits between attempts, in tests.
+	wait func(ctx context.Context, delay time.Duration) error
 }
 
 // HTTPError is an error response of an API.
@@ -99,9 +106,11 @@ func CodeOf(err error) string {
 
 // Do sends a request, with in as its JSON body unless nil, and decodes the
 // JSON response into out unless nil. A request turned down with 429 Too Many
-// Requests goes again after the delay of its Retry-After header, as does a GET
-// request that failed on the way or got 408, 502, 503 or 504; no attempt
-// starts that the deadline of ctx would interrupt.
+// Requests goes again after the delay of its Retry-After header, or a short
+// backoff without one, as does a GET request that failed on the way or got
+// 408, 502, 503 or 504. A request that the deadline of ctx would interrupt
+// before its next attempt fails at once, rather than going earlier than the
+// API asks.
 func (a *API) Do(ctx context.Context, method, path string, in, out any) error {
 	var body []byte
 	if in != nil {
@@ -115,26 +124,44 @@ func (a *API) Do(ctx context.Context, method, path string, in, out any) error {
 		if err == nil || !retry.again || attempt == attempts {
 			return err
 		}
+		// The delay that the API asks for holds whole: when the deadline
+		// leaves no time for it, the request fails at once.
 		delay := retry.after
-		if delay == 0 {
-			delay = cmp.Or(a.Backoff, defaultBackoff) << (attempt - 1)
+		if !retry.asked {
+			delay = min(cmp.Or(a.Backoff, defaultBackoff)<<(attempt-1), maxBackoff)
 		}
-		delay = min(delay, maxDelay)
+		if delay > maxRetryAfter {
+			return err
+		}
 		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) < delay {
 			return err
 		}
-		select {
-		case <-ctx.Done():
+		if a.sleep(ctx, delay) != nil {
 			return err
-		case <-time.After(delay):
 		}
+	}
+}
+
+// sleep waits for a delay, unless ctx ends first.
+func (a *API) sleep(ctx context.Context, delay time.Duration) error {
+	if a.wait != nil {
+		return a.wait(ctx, delay)
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("waiting %s before another attempt: %w", delay, ctx.Err())
+	case <-timer.C:
+		return nil
 	}
 }
 
 // retry tells whether to send a request again, and when.
 type retry struct {
 	again bool
-	// after is the delay that the API asks for, 0 when it asks for none.
+	// asked tells that the API asked for a delay, after.
+	asked bool
 	after time.Duration
 }
 
@@ -213,8 +240,35 @@ func retryOf(method string, resp *http.Response) retry {
 		return retry{}
 	}
 	r := retry{again: true}
-	if seconds, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && seconds > 0 {
-		r.after = time.Duration(seconds) * time.Second
-	}
+	r.after, r.asked = retryAfter(resp.Header.Get("Retry-After"), time.Now())
 	return r
+}
+
+// retryAfter returns the delay of a Retry-After header, and whether it holds
+// one: a number of seconds, or an HTTP date (RFC 9110 10.2.3). A date in the
+// past asks for no delay; a delay beyond maxRetryAfter reads as one just
+// beyond it.
+func retryAfter(value string, now time.Time) (time.Duration, bool) {
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.ParseUint(value, 10, 64); err == nil {
+		if seconds > uint64(maxRetryAfter/time.Second) {
+			return maxRetryAfter + time.Second, true
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	date, err := http.ParseTime(value)
+	if err != nil {
+		return 0, false
+	}
+	delay := date.Sub(now)
+	switch {
+	case delay < 0:
+		return 0, true
+	case delay > maxRetryAfter:
+		return maxRetryAfter + time.Second, true
+	default:
+		return delay, true
+	}
 }
