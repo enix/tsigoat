@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -32,6 +33,9 @@ type fakeAPI struct {
 	patches []string
 	// ignoreFilter imitates the versions without rrset_name.
 	ignoreFilter bool
+	// canonical, when set, gives the form PowerDNS writes some contents in:
+	// a PATCH with another form is refused, as PowerDNS does.
+	canonical map[string]string
 	// failure, when set, answers every request.
 	failure func(w http.ResponseWriter)
 }
@@ -95,6 +99,22 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			a.t.Error(err)
 		}
 		a.patches = append(a.patches, string(body))
+		var patch struct {
+			RRsets []rrset `json:"rrsets"`
+		}
+		if err := json.Unmarshal(body, &patch); err != nil {
+			a.t.Error(err)
+		}
+		for _, set := range patch.RRsets {
+			for _, rec := range set.Records {
+				if canonical, ok := a.canonical[rec.Content]; ok && canonical != rec.Content {
+					w.WriteHeader(http.StatusUnprocessableEntity)
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf(
+						"Record %s/%s '%s': Not in expected format (parsed as '%s')", set.Name, set.Type, rec.Content, canonical)})
+					return
+				}
+			}
+		}
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "unexpected method", http.StatusMethodNotAllowed)
@@ -224,6 +244,67 @@ func TestApply(t *testing.T) {
 
 	if err := b.Apply(t.Context(), "example.test.", nil); err != nil || len(api.patches) != 1 {
 		t.Errorf("Apply() without changes: %v, %d requests", err, len(api.patches))
+	}
+}
+
+func TestApplyReformats(t *testing.T) {
+	t.Parallel()
+
+	const (
+		sent      = "48 51 24.000 N 02 21 3.000 E 35m 10m 100m 10m"
+		canonical = "48 51 24.000 N 2 21 3.000 E 35.00m 10.00m 100.00m 10.00m"
+	)
+	loc := func(text string) backend.Change {
+		rr, err := dns.NewRR("office.example.test. 300 IN LOC " + text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return backend.Change{Op: backend.Replace, RRset: backend.RRset{
+			Name: "office.example.test.", Type: dns.TypeLOC, TTL: 300, Records: []dns.RR{rr},
+		}}
+	}
+
+	api, server := newFakeAPI(t)
+	api.canonical = map[string]string{sent: canonical}
+	b := newBackend(t, server.URL)
+	if err := b.Apply(t.Context(), "example.test.", []backend.Change{loc(sent)}); err != nil {
+		t.Fatalf("Apply() = %v", err)
+	}
+	if len(api.patches) != 2 || !strings.Contains(api.patches[1], canonical) {
+		t.Errorf("PATCH requests %q, want a second one with the canonical form", api.patches)
+	}
+
+	// A form that is not the same RDATA is not sent again.
+	api, server = newFakeAPI(t)
+	api.canonical = map[string]string{sent: "48 51 24.000 N 2 21 3.000 E 99.00m 10.00m 100.00m 10.00m"}
+	b = newBackend(t, server.URL)
+	err := b.Apply(t.Context(), "example.test.", []backend.Change{loc(sent)})
+	if err == nil || len(api.patches) != 1 {
+		t.Errorf("Apply() = %v after %d requests, want the error of the first one", err, len(api.patches))
+	}
+}
+
+func TestContent(t *testing.T) {
+	t.Parallel()
+
+	for text, want := range map[string]string{
+		"x. 60 IN A 192.0.2.1":                        "192.0.2.1",
+		`x. 60 IN HTTPS 1 . alpn="h2,h3" port="8443"`: "1 . alpn=h2,h3 port=8443",
+		`x. 60 IN SVCB 1 svc.example. mandatory=alpn alpn=h2 no-default-alpn ipv4hint=192.0.2.1,192.0.2.2`: "1 svc.example. mandatory=alpn alpn=h2 no-default-alpn ipv4hint=192.0.2.1,192.0.2.2",
+		`x. 60 IN HTTPS 0 svc.example.`: "0 svc.example.",
+	} {
+		rr, err := dns.NewRR(text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := content(rr); got != want {
+			t.Errorf("content(%s) = %q, want %q", text, got, want)
+		}
+		// PowerDNS writes it back that way: it must parse to the same record.
+		back, err := parseContent("x.", 60, rr.Header().Rrtype, want)
+		if err != nil || !dns.IsDuplicate(rr, back) {
+			t.Errorf("parsing %q back: %v, %v", want, back, err)
+		}
 	}
 }
 

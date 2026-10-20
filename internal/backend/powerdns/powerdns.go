@@ -169,6 +169,10 @@ func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRse
 }
 
 // Apply implements backend.Backend with a single PATCH request.
+//
+// PowerDNS refuses content that it would write differently, telling how it
+// would. When that form is the same RDATA, Apply sends the PATCH again with
+// it: a refused PATCH applies nothing.
 func (b *Backend) Apply(ctx context.Context, zone string, changes []backend.Change) error {
 	if len(changes) == 0 {
 		return nil
@@ -176,14 +180,21 @@ func (b *Backend) Apply(ctx context.Context, zone string, changes []backend.Chan
 	body := struct {
 		RRsets []rrset `json:"rrsets"`
 	}{RRsets: make([]rrset, 0, len(changes))}
+	records := 0
 	for _, change := range changes {
 		set, err := toAPI(change)
 		if err != nil {
 			return fmt.Errorf("%s: %w", change, err)
 		}
 		body.RRsets = append(body.RRsets, set)
+		records += len(set.Records)
 	}
-	return b.do(ctx, http.MethodPatch, zonePath(zone), body, nil)
+	for attempt := 0; ; attempt++ {
+		err := b.do(ctx, http.MethodPatch, zonePath(zone), body, nil)
+		if err == nil || attempt == records || !reformat(err, body.RRsets) {
+			return err
+		}
+	}
 }
 
 // do calls the API, and decodes the response into out when not nil.

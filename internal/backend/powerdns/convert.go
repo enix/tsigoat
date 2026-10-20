@@ -4,6 +4,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -107,10 +109,102 @@ func toAPI(change backend.Change) (rrset, error) {
 		set.TTL = change.RRset.TTL
 		set.Records = make([]record, 0, len(change.RRset.Records))
 		for _, rr := range change.RRset.Records {
-			set.Records = append(set.Records, record{Content: backend.RData(rr)})
+			set.Records = append(set.Records, record{Content: content(rr)})
 		}
 		return set, nil
 	default:
 		return rrset{}, fmt.Errorf("unknown operation %d", change.Op)
 	}
+}
+
+// content returns the content of a record for the API: its RDATA in
+// presentation format, as PowerDNS writes it, since PowerDNS refuses content
+// that it would write differently. Only SVCB and HTTPS records need care:
+// miekg/dns quotes every value of their parameters, PowerDNS none.
+func content(rr dns.RR) string {
+	switch typed := rr.(type) {
+	case *dns.SVCB:
+		return svcbContent(typed)
+	case *dns.HTTPS:
+		return svcbContent(&typed.SVCB)
+	default:
+		return backend.RData(rr)
+	}
+}
+
+func svcbContent(rr *dns.SVCB) string {
+	var b strings.Builder
+	b.WriteString(strconv.Itoa(int(rr.Priority)))
+	b.WriteString(" ")
+	b.WriteString(rr.Target)
+	for _, pair := range rr.Value {
+		b.WriteString(" ")
+		b.WriteString(pair.Key().String())
+		switch value := pair.String(); {
+		case value == "":
+		case strings.ContainsAny(value, " \t\";"):
+			b.WriteString(`="` + value + `"`)
+		default:
+			b.WriteString("=" + value)
+		}
+	}
+	return b.String()
+}
+
+// notInExpectedFormat matches the message of PowerDNS about content that it
+// would write differently.
+var notInExpectedFormat = regexp.MustCompile(`^Record (.+)/([A-Z0-9-]+) '(.*)': Not in expected format \(parsed as '(.*)'\)$`)
+
+// reformat rewrites, in a refused PATCH, the content that PowerDNS would
+// write differently, provided its form is the same RDATA. It reports whether
+// it rewrote something.
+func reformat(err error, sets []rrset) bool {
+	apiErr, ok := errors.AsType[*APIError](err)
+	if !ok || apiErr.Status != http.StatusUnprocessableEntity {
+		return false
+	}
+	match := notInExpectedFormat.FindStringSubmatch(apiErr.Message)
+	if match == nil {
+		return false
+	}
+	name, typeName, sent, parsed := dns.CanonicalName(match[1]), match[2], match[3], match[4]
+	for i := range sets {
+		set := &sets[i]
+		if dns.CanonicalName(set.Name) != name || set.Type != typeName {
+			continue
+		}
+		for j := range set.Records {
+			if set.Records[j].Content == sent && sameContent(name, set.Type, sent, parsed) {
+				set.Records[j].Content = parsed
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sameContent reports whether two contents encode the same RDATA.
+func sameContent(name, typeName, a, b string) bool {
+	code, err := typeCode(typeName)
+	if err != nil || opaque(code) {
+		return false
+	}
+	first, errA := parseContent(name, 0, code, a)
+	second, errB := parseContent(name, 0, code, b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	wireA, errA := wire(first)
+	wireB, errB := wire(second)
+	return errA == nil && errB == nil && wireA == wireB
+}
+
+// wire returns the wire format of a record.
+func wire(rr dns.RR) (string, error) {
+	buf := make([]byte, dns.Len(rr)+1)
+	n, err := dns.PackRR(rr, buf, 0, nil, false)
+	if err != nil {
+		return "", fmt.Errorf("encoding %s: %w", rr, err)
+	}
+	return string(buf[:n]), nil
 }
