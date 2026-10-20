@@ -1,0 +1,215 @@
+// Package zone provides the working view of a zone used by the update engine.
+//
+// A View reads the RRsets of a name from the backend the first time the name
+// is touched, keeps every modification in memory, and finally computes the
+// RRset-level changes between the backend content and its own. Nothing
+// reaches the backend before the update is complete, which makes updates
+// atomic and lets the prerequisites see a consistent state.
+package zone
+
+import (
+	"cmp"
+	"context"
+	"fmt"
+	"maps"
+	"slices"
+
+	"github.com/miekg/dns"
+
+	"github.com/enix/tsigoat/internal/backend"
+)
+
+// View is the working view of a zone during one update. It is not safe for
+// concurrent use.
+type View struct {
+	backend backend.Backend
+	zone    string
+	// original and current hold, for every name read so far, its RRsets by
+	// type: as read from the backend, and as modified by the update.
+	original map[string]map[uint16][]dns.RR
+	current  map[string]map[uint16][]dns.RR
+}
+
+// NewView returns a view of the zone held by the backend.
+func NewView(b backend.Backend, zone string) *View {
+	return &View{
+		backend:  b,
+		zone:     dns.CanonicalName(zone),
+		original: map[string]map[uint16][]dns.RR{},
+		current:  map[string]map[uint16][]dns.RR{},
+	}
+}
+
+// Zone returns the canonical name of the zone.
+func (v *View) Zone() string {
+	return v.zone
+}
+
+// RRsets returns copies of the RRsets owned by name, by type.
+func (v *View) RRsets(ctx context.Context, name string) (map[uint16][]dns.RR, error) {
+	sets, err := v.load(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	copies := make(map[uint16][]dns.RR, len(sets))
+	for rrtype, records := range sets {
+		copies[rrtype] = copyRecords(records)
+	}
+	return copies, nil
+}
+
+// RRset returns copies of the records of one RRset, nil when it does not
+// exist.
+func (v *View) RRset(ctx context.Context, name string, rrtype uint16) ([]dns.RR, error) {
+	sets, err := v.load(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return copyRecords(sets[rrtype]), nil
+}
+
+// NameExists reports whether at least one record is owned by name. Empty
+// non-terminals do not count, as RFC 2136 2.4.4 requires.
+func (v *View) NameExists(ctx context.Context, name string) (bool, error) {
+	sets, err := v.load(ctx, name)
+	if err != nil {
+		return false, err
+	}
+	return len(sets) > 0, nil
+}
+
+// SetRRset replaces an RRset with copies of the records; no record deletes
+// the RRset. Every record takes the owner name, the type and the TTL of the
+// first one.
+func (v *View) SetRRset(ctx context.Context, name string, rrtype uint16, records []dns.RR) error {
+	sets, err := v.load(ctx, name)
+	if err != nil {
+		return err
+	}
+	if len(records) == 0 {
+		delete(sets, rrtype)
+		return nil
+	}
+	ttl := records[0].Header().Ttl
+	set := copyRecords(records)
+	for _, rr := range set {
+		rr.Header().Name = dns.CanonicalName(name)
+		rr.Header().Rrtype = rrtype
+		rr.Header().Ttl = ttl
+	}
+	sets[rrtype] = set
+	return nil
+}
+
+// Changes returns the changes from the backend content to the view, sorted
+// by name and type.
+func (v *View) Changes() []backend.Change {
+	var changes []backend.Change
+	for _, name := range slices.Sorted(maps.Keys(v.current)) {
+		before, after := v.original[name], v.current[name]
+		types := slices.Sorted(maps.Keys(before))
+		for rrtype := range after {
+			if _, ok := before[rrtype]; !ok {
+				types = append(types, rrtype)
+			}
+		}
+		slices.Sort(types)
+		for _, rrtype := range types {
+			records, kept := after[rrtype]
+			switch {
+			case !kept:
+				changes = append(changes, backend.Change{
+					Op:    backend.Delete,
+					RRset: backend.RRset{Name: name, Type: rrtype},
+				})
+			case !sameRRset(before[rrtype], records):
+				changes = append(changes, backend.Change{
+					Op: backend.Replace,
+					RRset: backend.RRset{
+						Name:    name,
+						Type:    rrtype,
+						TTL:     records[0].Header().Ttl,
+						Records: copyRecords(records),
+					},
+				})
+			}
+		}
+	}
+	return changes
+}
+
+// load reads the RRsets of a name from the backend, once.
+func (v *View) load(ctx context.Context, name string) (map[uint16][]dns.RR, error) {
+	name = dns.CanonicalName(name)
+	if sets, ok := v.current[name]; ok {
+		return sets, nil
+	}
+	if !dns.IsSubDomain(v.zone, name) {
+		return nil, fmt.Errorf("%s is outside zone %s", name, v.zone)
+	}
+
+	rrsets, err := v.backend.Lookup(ctx, v.zone, name)
+	if err != nil {
+		return nil, fmt.Errorf("looking up %s: %w", name, err)
+	}
+	original := make(map[uint16][]dns.RR, len(rrsets))
+	current := make(map[uint16][]dns.RR, len(rrsets))
+	for _, set := range rrsets {
+		if len(set.Records) == 0 {
+			continue
+		}
+		records := copyRecords(set.Records)
+		for _, rr := range records {
+			rr.Header().Name = name
+			rr.Header().Ttl = set.TTL
+		}
+		original[set.Type] = records
+		current[set.Type] = copyRecords(records)
+	}
+	v.original[name] = original
+	v.current[name] = current
+	return current, nil
+}
+
+// sameRRset reports whether two RRsets hold the same records with the same
+// TTL, in any order.
+func sameRRset(a, b []dns.RR) bool {
+	if len(a) != len(b) || len(a) == 0 {
+		return len(a) == len(b)
+	}
+	if a[0].Header().Ttl != b[0].Header().Ttl {
+		return false
+	}
+	return SameRecords(a, b)
+}
+
+// SameRecords reports whether two lists hold the same records, ignoring the
+// TTL, the order and repetitions.
+func SameRecords(a, b []dns.RR) bool {
+	contains := func(set []dns.RR, rr dns.RR) bool {
+		return slices.ContainsFunc(set, func(other dns.RR) bool { return dns.IsDuplicate(other, rr) })
+	}
+	for _, rr := range a {
+		if !contains(b, rr) {
+			return false
+		}
+	}
+	for _, rr := range b {
+		if !contains(a, rr) {
+			return false
+		}
+	}
+	return true
+}
+
+func copyRecords(records []dns.RR) []dns.RR {
+	if records == nil {
+		return nil
+	}
+	copies := make([]dns.RR, len(records))
+	for i, rr := range records {
+		copies[i] = dns.Copy(rr)
+	}
+	slices.SortStableFunc(copies, func(a, b dns.RR) int { return cmp.Compare(a.String(), b.String()) })
+	return copies
+}
