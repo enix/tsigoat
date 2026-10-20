@@ -13,7 +13,7 @@ import (
 // Acceptance fixtures. The secrets only exist inside the ephemeral Dagger
 // network of a test run.
 const (
-	acceptanceSHA256Secret = "c2hhMjU2LXNlY3JldC1mb3ItdGhlLWFjY2VwdGFuY2U=" // gitleaks:allow (throwaway)
+	acceptanceSHA256Secret = "c2hhMjU2LXNlY3JldC1mb3ItdGhlLWFjY2VwdGFuY2U="     // gitleaks:allow (throwaway)
 	acceptanceMD5Secret    = "bWQ1LXNlY3JldC1mb3ItdGhlLWFjY2VwdGFuY2UtdGVzdA==" // gitleaks:allow (throwaway)
 )
 
