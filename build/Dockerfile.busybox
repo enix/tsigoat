@@ -14,6 +14,8 @@ COPY $TARGETPLATFORM/tsigoat /tsigoat
 # has no /etc/passwd.
 USER 65534:65534
 
-EXPOSE 5353/udp 5353/tcp
+# DNS on 5353, administration server (when enabled) on 9153.
+EXPOSE 5353/udp 5353/tcp 9153/tcp
 
 ENTRYPOINT ["/tsigoat"]
+CMD ["serve"]
