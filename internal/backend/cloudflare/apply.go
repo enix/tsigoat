@@ -148,7 +148,7 @@ func (b *Backend) current(ctx context.Context, info *zoneInfo, zone string, chan
 // at a name whose addresses Cloudflare proxies, "" when it may: Cloudflare
 // would proxy the new records too.
 func addressBesideProxied(change *backend.Change, records []hosted.Record) string {
-	if change.Op != backend.Replace || !proxiable(change.RRset.Type) {
+	if (change.Op != backend.Replace && change.Op != backend.Add) || !proxiable(change.RRset.Type) {
 		return ""
 	}
 	for _, r := range records {

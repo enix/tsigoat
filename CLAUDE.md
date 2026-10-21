@@ -38,10 +38,15 @@ internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
 chart/                 Helm chart; README.md and values.schema.json generated
 ```
 
-- The engine computes RRset-level `Replace`/`Delete` changes on an in-memory
-  view and the backend applies them in one atomic call (one PowerDNS PATCH).
-- One mutex per zone serialises updates in the process; a single instance is
-  supported for now.
+- The engine computes the changes of each RRset on an in-memory view: `Remove`
+  and `Add` of the records lost and gained when its TTL stays, `Replace` when
+  it changes; the backend applies them in one atomic call (one PowerDNS
+  PATCH). `Add`/`Remove` apply to the records as they stand (PowerDNS EXTEND
+  and PRUNE, since 4.9.12 and 5.0.2; record creations and deletions at the
+  hosted providers), so that concurrent instances keep each other's records.
+- One mutex per zone serialises updates in the process; several instances may
+  run: TTL changes, prerequisites and CNAME transitions are only serialised
+  within one (`docs/operations.md#several-instances`, an assumed choice).
 - A zone on an `rfc2136` or `webhook` backend skips the engine: once the
   policy allows an update, `backend.Relay` sends it whole to the name server or
   the endpoint, which applies it; no zone lock in the server (the webhook

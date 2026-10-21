@@ -397,14 +397,14 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 	out.rcode = dns.RcodeSuccess
 }
 
-// raiseTTLs raises the TTLs of the RRsets that the changes replace to the
-// minimum of the backend, and returns those it raised, such as
+// raiseTTLs raises the TTLs of the RRsets that the changes replace or add to
+// the minimum of the backend, and returns those it raised, such as
 // "www.example.org. TXT 0 to 60".
 func raiseTTLs(changes []backend.Change, minTTL uint32) []string {
 	var raised []string
 	for i := range changes {
 		set := &changes[i].RRset
-		if changes[i].Op != backend.Replace || set.TTL >= minTTL {
+		if (changes[i].Op != backend.Replace && changes[i].Op != backend.Add) || set.TTL >= minTTL {
 			continue
 		}
 		raised = append(raised, fmt.Sprintf("%s %s %d to %d", set.Name, dns.Type(set.Type), set.TTL, minTTL))

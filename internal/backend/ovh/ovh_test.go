@@ -153,13 +153,19 @@ func TestRecovery(t *testing.T) {
 	committed := ovhtest.Failure{Status: http.StatusInternalServerError, Message: "lost response", AfterCommit: true}
 	refused := ovhtest.Failure{Status: http.StatusInternalServerError, Message: "refused"}
 	for _, c := range []struct {
-		label         string
-		change        string
+		label  string
+		change string
+		// op is the operation of the change, Replace when zero.
+		op            backend.Op
 		failures      []ovhtest.Failure
 		indeterminate bool
 	}{
 		// Delete "old", create "new", which applies but fails.
 		{label: "creation", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{pass, committed}},
+		// Add "new" beside "old", which applies but fails.
+		{label: "addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, failures: []ovhtest.Failure{committed}},
+		// Remove "old", which applies but fails.
+		{label: "removal", change: `www.example.test. 300 IN TXT "old"`, op: backend.Remove, failures: []ovhtest.Failure{committed}},
 		// Delete "old", which applies but fails.
 		{label: "deletion", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{committed}},
 		// Retime "old", which applies but fails.
@@ -193,7 +199,11 @@ func TestRecovery(t *testing.T) {
 			}
 			before := api.Records(testZone)
 			api.FailWrites(c.failures...)
-			err = b.Apply(t.Context(), testZone, []backend.Change{replace(t, c.change)})
+			change := replace(t, c.change)
+			if c.op != 0 {
+				change.Op = c.op
+			}
+			err = b.Apply(t.Context(), testZone, []backend.Change{change})
 			switch {
 			case err == nil:
 				t.Fatal("Apply() succeeded, want an error")

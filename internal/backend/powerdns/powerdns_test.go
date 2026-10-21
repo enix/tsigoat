@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -129,6 +130,20 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			a.t.Error(err)
 		}
 		for _, set := range patch.RRsets {
+			// Like PowerDNS, which wants one record and a TTL for EXTEND and
+			// PRUNE.
+			if set.ChangeType == "EXTEND" || set.ChangeType == "PRUNE" {
+				if set.TTL == nil {
+					w.WriteHeader(http.StatusUnprocessableEntity)
+					_, _ = io.WriteString(w, `{"error": "Submitted record is invalid: Key 'ttl' not an Integer or not present"}`)
+					return
+				}
+				if len(set.Records) != 1 {
+					w.WriteHeader(http.StatusUnprocessableEntity)
+					_, _ = io.WriteString(w, `{"error": "Exactly one record should be provided for PRUNE or EXTEND operation"}`)
+					return
+				}
+			}
 			for _, rec := range set.Records {
 				if canonical, ok := a.canonical[rec.Content]; ok && canonical != rec.Content {
 					w.WriteHeader(http.StatusUnprocessableEntity)
@@ -151,15 +166,45 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// patched returns the RRsets of a zone once a PATCH applied.
+// patched returns the RRsets of a zone once a PATCH applied, as PowerDNS
+// applies it: EXTEND and PRUNE compare contents as text, and drop the
+// disabled records that their RRset held before the PATCH.
 func patched(sets, patch []rrset) []rrset {
+	touched := map[string]bool{}
 	for _, change := range patch {
-		sets = slices.DeleteFunc(slices.Clone(sets), func(set rrset) bool {
-			return strings.EqualFold(set.Name, change.Name) && set.Type == change.Type
-		})
-		if change.ChangeType == "REPLACE" {
+		same := func(set rrset) bool { return strings.EqualFold(set.Name, change.Name) && set.Type == change.Type }
+		i := slices.IndexFunc(sets, same)
+		var held []record
+		ttl := change.TTL
+		if i >= 0 {
+			held, ttl = slices.Clone(sets[i].Records), sets[i].TTL
+		}
+		sets = slices.DeleteFunc(slices.Clone(sets), same)
+		key := strings.ToLower(change.Name) + " " + change.Type
+		switch change.ChangeType {
+		case "REPLACE":
 			change.ChangeType = ""
 			sets = append(sets, change)
+			continue
+		case "DELETE":
+			continue
+		}
+		if !touched[key] {
+			held = slices.DeleteFunc(held, func(r record) bool { return r.Disabled })
+			touched[key] = true
+		}
+		added := change.Records[0]
+		j := slices.IndexFunc(held, func(r record) bool { return r.Content == added.Content })
+		switch {
+		case change.ChangeType == "PRUNE":
+			held = slices.DeleteFunc(held, func(r record) bool { return r.Content == added.Content })
+		case j >= 0:
+			held[j] = added
+		default:
+			held = append(held, added)
+		}
+		if len(held) > 0 {
+			sets = append(sets, rrset{Name: change.Name, Type: change.Type, TTL: ttl, Records: held})
 		}
 	}
 	return sets
@@ -712,6 +757,129 @@ func TestUnansweredPatch(t *testing.T) {
 		err := newBackend(t, server.URL).Apply(t.Context(), "example.test.", changes(t))
 		if err == nil || backend.IsIndeterminate(err) {
 			t.Errorf("Apply() to a closed server = %v, want a plain error", err)
+		}
+	})
+}
+
+// TestRecordOps checks the versions of PowerDNS that take EXTEND and PRUNE.
+func TestRecordOps(t *testing.T) {
+	t.Parallel()
+	for version, want := range map[string]bool{
+		"4.8.4": false, "4.9.11": false, "4.9.12": true, "4.9.17": true,
+		"5.0.1": false, "5.0.2": true, "5.0.7": true, "5.1.0-alpha1": true, "6.0.0": true,
+		"4.9": false, "master": false,
+	} {
+		if got := recordOps(version); got != want {
+			t.Errorf("recordOps(%q) = %t, want %t", version, got, want)
+		}
+	}
+}
+
+// TestApplyRecords checks Add and Remove: one EXTEND or PRUNE per record,
+// PRUNE with the content as PowerDNS wrote it, the disabled records put back
+// last, and on servers without EXTEND and PRUNE, a REPLACE of the RRset.
+func TestApplyRecords(t *testing.T) {
+	t.Parallel()
+	txt := func(t *testing.T, name, value string) dns.RR {
+		t.Helper()
+		rr, err := dns.NewRR(name + " 60 IN TXT " + value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rr
+	}
+	address, err := dns.NewRR("www.example.test. 300 IN A 192.0.2.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes := func(t *testing.T) []backend.Change {
+		t.Helper()
+		return []backend.Change{
+			// PowerDNS wrote the record "a\032b", whose canonical form is "a b".
+			{Op: backend.Remove, RRset: backend.RRset{Name: "esc.example.test.", Type: dns.TypeTXT, TTL: 60, Records: []dns.RR{txt(t, "esc.example.test.", `"a b"`)}}},
+			{Op: backend.Add, RRset: backend.RRset{Name: "www.example.test.", Type: dns.TypeA, TTL: 300, Records: []dns.RR{address}}},
+		}
+	}
+	setup := func(t *testing.T, version string) (*fakeAPI, *Backend) {
+		t.Helper()
+		api, server := newFakeAPI(t)
+		api.version, api.commit = version, true
+		api.zones["example.test."] = append(api.zones["example.test."], rrset{
+			Name: "esc.example.test.", Type: "TXT", TTL: ttl(60), Records: []record{{Content: `"a\032b"`}, {Content: `"kept"`}},
+		})
+		b := newBackend(t, server.URL)
+		for _, name := range []string{"www.example.test.", "esc.example.test."} {
+			if _, err := b.Lookup(t.Context(), "example.test.", name); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return api, b
+	}
+
+	t.Run("EXTEND and PRUNE", func(t *testing.T) {
+		t.Parallel()
+		api, b := setup(t, "5.0.7")
+		if err := b.Apply(t.Context(), "example.test.", changes(t)); err != nil {
+			t.Fatal(err)
+		}
+		patch := api.patches[len(api.patches)-1]
+		for _, want := range []string{
+			`{"name":"esc.example.test.","type":"TXT","ttl":60,"changetype":"PRUNE","records":[{"content":"\"a\\032b\"","disabled":false}]}`,
+			`{"name":"www.example.test.","type":"A","ttl":300,"changetype":"EXTEND","records":[{"content":"192.0.2.2","disabled":false}]}`,
+			// The disabled record of the A RRset, put back last.
+			`{"name":"www.example.test.","type":"A","ttl":300,"changetype":"EXTEND","records":[{"content":"192.0.2.9","disabled":true}]}`,
+		} {
+			if !strings.Contains(patch, want) {
+				t.Errorf("the PATCH lacks %s:\n%s", want, patch)
+			}
+		}
+		if strings.Index(patch, `"192.0.2.9"`) < strings.Index(patch, `"192.0.2.2"`) {
+			t.Errorf("the disabled record is put back before the EXTEND:\n%s", patch)
+		}
+		want := map[string]bool{"192.0.2.1": false, "192.0.2.2": false, "192.0.2.9": true}
+		for _, set := range api.zones["example.test."] {
+			switch {
+			case set.Name == "esc.example.test." && (len(set.Records) != 1 || set.Records[0].Content != `"kept"`):
+				t.Errorf("esc TXT RRset %v, want the kept record alone", set.Records)
+			case set.Name == "www.example.test." && set.Type == "A":
+				got := map[string]bool{}
+				for _, r := range set.Records {
+					got[r.Content] = r.Disabled
+				}
+				if !maps.Equal(got, want) {
+					t.Errorf("A RRset %v, want %v", got, want)
+				}
+			}
+		}
+	})
+
+	t.Run("REPLACE before 4.9.12", func(t *testing.T) {
+		t.Parallel()
+		api, b := setup(t, "4.9.11")
+		if err := b.Apply(t.Context(), "example.test.", changes(t)); err != nil {
+			t.Fatal(err)
+		}
+		patch := api.patches[len(api.patches)-1]
+		for _, want := range []string{
+			`{"name":"esc.example.test.","type":"TXT","ttl":60,"changetype":"REPLACE","records":[{"content":"\"kept\"","disabled":false}]}`,
+			`{"name":"www.example.test.","type":"A","ttl":300,"changetype":"REPLACE","records":[{"content":"192.0.2.1","disabled":false},{"content":"192.0.2.2","disabled":false},{"content":"192.0.2.9","disabled":true}]}`,
+		} {
+			if !strings.Contains(patch, want) {
+				t.Errorf("the PATCH lacks %s:\n%s", want, patch)
+			}
+		}
+	})
+
+	t.Run("without a lookup", func(t *testing.T) {
+		t.Parallel()
+		api, server := newFakeAPI(t)
+		api.commit = true
+		b := newBackend(t, server.URL)
+		if err := b.Apply(t.Context(), "example.test.", changes(t)[1:]); err != nil {
+			t.Fatal(err)
+		}
+		if patch := api.patches[len(api.patches)-1]; !strings.Contains(patch, `"192.0.2.9","disabled":true`) {
+			t.Errorf("Apply() without a lookup does not put the disabled record back:\n%s", patch)
 		}
 	})
 }

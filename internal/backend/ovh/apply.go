@@ -178,17 +178,19 @@ func (b *Backend) recover(ctx context.Context, zone string, before map[string][]
 	return fmt.Errorf("%w; the records are as they were", cause)
 }
 
-// restore reads the records of the changes again, brings each RRset of the
-// changes back to its content before the update, and checks it. It reports
-// whether it had to change something.
+// restore reads the records of the changes again, takes back what each change
+// did, and checks it: an RRset replaced or deleted comes back as it was
+// before the update, the records added go, and the records removed come
+// back, so that the records that concurrent updates wrote meanwhile stay. It
+// reports whether it had to change something.
 func (b *Backend) restore(ctx context.Context, zone string, before map[string][]hosted.Record, changes []backend.Change) (bool, error) {
 	now, err := b.read(ctx, zone, changes)
 	if err != nil {
 		return false, err
 	}
 	var p plan
-	for _, key := range rrsets(changes) {
-		steps := hosted.Restore(hosted.OfType(now[key.name], key.rrtype), hosted.OfType(before[key.name], key.rrtype))
+	for i := range changes {
+		steps := undo(before, now, &changes[i])
 		p.add(b, zone, &steps)
 	}
 	steps := p.steps()
@@ -204,31 +206,19 @@ func (b *Backend) restore(ctx context.Context, zone string, before map[string][]
 	if err != nil {
 		return true, fmt.Errorf("reading the records restored: %w", err)
 	}
-	for _, key := range rrsets(changes) {
-		check := hosted.Restore(hosted.OfType(after[key.name], key.rrtype), hosted.OfType(before[key.name], key.rrtype))
-		if !check.Empty() {
-			return true, errors.New("the records read back differ from those before the update")
+	for i := range changes {
+		if check := undo(before, after, &changes[i]); !check.Empty() {
+			return true, errors.New("the records read back still hold part of the update")
 		}
 	}
 	return true, nil
 }
 
-// rrsetKey identifies an RRset.
-type rrsetKey struct {
-	name   string
-	rrtype uint16
-}
-
-// rrsets returns the RRsets of the changes, once each.
-func rrsets(changes []backend.Change) []rrsetKey {
-	var keys []rrsetKey
-	for i := range changes {
-		key := rrsetKey{name: dns.CanonicalName(changes[i].RRset.Name), rrtype: changes[i].RRset.Type}
-		if !slices.Contains(keys, key) {
-			keys = append(keys, key)
-		}
-	}
-	return keys
+// undo returns the steps that take back a change, from the records of its
+// name before the update and as they stand.
+func undo(before, now map[string][]hosted.Record, change *backend.Change) hosted.Steps {
+	name, rrtype := dns.CanonicalName(change.RRset.Name), change.RRset.Type
+	return hosted.Undo(hosted.OfType(before[name], rrtype), hosted.OfType(now[name], rrtype), change)
 }
 
 // refresh publishes the zone, as it stands, to the name servers.

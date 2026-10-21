@@ -32,6 +32,11 @@ type Backend interface {
 	// tells that the outcome is unknown: the zone may hold all of the
 	// changes, part of them, or none. Other errors are failures that changed
 	// nothing, which the client cannot fix.
+	//
+	// Add and Remove change the records that they name alone, whatever the
+	// RRset holds besides, so that the changes of concurrent updates by other
+	// instances survive: a backend applies them on the records as they stand
+	// when it writes, not as the update read them.
 	Apply(ctx context.Context, zone string, changes []Change) error
 }
 
@@ -200,26 +205,41 @@ const (
 	Replace Op = iota + 1
 	// Delete removes an RRset.
 	Delete
+	// Add adds the given records to an RRset, but those that it holds
+	// already. It creates the RRset with the TTL of the change; an RRset
+	// that exists keeps its TTL.
+	Add
+	// Remove removes the given records from an RRset, which goes with its
+	// last record; the records that it does not hold are no error.
+	Remove
 )
 
-// Change is an RRset-level change of a zone.
+// Change is a change of one RRset of a zone.
 type Change struct {
 	Op Op
-	// RRset holds the new content for Replace, only the name and the type
-	// for Delete.
+	// RRset holds the new content for Replace, the records to add for Add,
+	// the records to remove for Remove, and only the name and the type for
+	// Delete.
 	RRset RRset
 }
 
 // String describes the change for logs, for example
-// `replace www.example.org. TXT 60 ["a", "b"]`.
+// `replace www.example.org. TXT 60 ["a", "b"]` or
+// `remove www.example.org. TXT ["a"]`.
 func (c Change) String() string {
 	typeName := dns.TypeToString[c.RRset.Type]
-	if c.Op == Delete {
-		return fmt.Sprintf("delete %s %s", c.RRset.Name, typeName)
-	}
 	values := make([]string, 0, len(c.RRset.Records))
 	for _, rr := range c.RRset.Records {
 		values = append(values, RData(rr))
+	}
+	switch c.Op {
+	case Delete:
+		return fmt.Sprintf("delete %s %s", c.RRset.Name, typeName)
+	case Add:
+		return fmt.Sprintf("add %s %s %d [%s]", c.RRset.Name, typeName, c.RRset.TTL, strings.Join(values, ", "))
+	case Remove:
+		return fmt.Sprintf("remove %s %s [%s]", c.RRset.Name, typeName, strings.Join(values, ", "))
+	case Replace:
 	}
 	return fmt.Sprintf("replace %s %s %d [%s]", c.RRset.Name, typeName, c.RRset.TTL, strings.Join(values, ", "))
 }

@@ -76,17 +76,16 @@ func typeCases() []recordsCase {
 }
 
 // roundTrip writes the records of a case, reads them back, then deletes them;
-// or, for a case that the backend must turn down, checks that it does,
-// without writing anything.
+// then adds them, and removes them as they read back, as the engine does.
+// For a case that the backend must turn down, it checks that it turns down
+// both, without writing anything.
 func (s *Suite) roundTrip(t *testing.T, label, relative string, records []string) {
 	t.Helper()
 	name := s.name(relative)
 	sets := parse(t, name, ttl, records...)
-	changes := make([]backend.Change, 0, len(sets))
-	for _, set := range sets {
-		changes = append(changes, backend.Change{Op: backend.Replace, RRset: set})
-	}
-	if s.rejects(t, label, changes) {
+	if s.rejects(t, label, replace(sets...)) {
+		s.expect(t, name)
+		s.rejects(t, label, add(sets...))
 		s.expect(t, name)
 		return
 	}
@@ -97,6 +96,11 @@ func (s *Suite) roundTrip(t *testing.T, label, relative string, records []string
 		deletions = append(deletions, backend.Change{Op: backend.Delete, RRset: backend.RRset{Name: name, Type: set.Type}})
 	}
 	s.apply(t, deletions...)
+	s.expect(t, name)
+
+	s.apply(t, add(sets...)...)
+	s.expect(t, name, sets...)
+	s.apply(t, remove(s.lookup(t, name)...)...)
 	s.expect(t, name)
 }
 

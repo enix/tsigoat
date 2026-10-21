@@ -97,6 +97,14 @@ func TestDiff(t *testing.T) {
 		{label: "delete", change: &backend.Change{Op: backend.Delete, RRset: backend.RRset{Name: name, Type: dns.TypeTXT}}, want: []string{
 			"delete a", "delete b", "delete c",
 		}},
+		// Add creates the records missing alone, with the TTL of the RRset.
+		{label: "add", change: delta(t, backend.Add, 600, `"a"`, `"c"`, `"c"`), want: []string{
+			"create " + name + "\t300\tIN\tTXT\t\"c\"",
+		}},
+		// Remove deletes the records that it names, duplicates included.
+		{label: "remove", change: delta(t, backend.Remove, 300, `"b"`, `"missing"`), want: []string{
+			"delete b", "delete c",
+		}},
 	} {
 		steps := hosted.Diff(current, c.change)
 		if got, want := describe(&steps), strings.Join(c.want, "\n"); got != want {
@@ -141,6 +149,60 @@ func TestEscapes(t *testing.T) {
 	} {
 		if got := hosted.Printable(s); got != printable {
 			t.Errorf("Printable(%q) = %t, want %t", s, got, printable)
+		}
+	}
+}
+
+// delta returns a change of op, Add or Remove, of TXT records of
+// www.example.test.
+func delta(t *testing.T, op backend.Op, ttl uint32, values ...string) *backend.Change {
+	t.Helper()
+	const name = "www.example.test."
+	set := backend.RRset{Name: name, Type: dns.TypeTXT, TTL: ttl}
+	for _, value := range values {
+		set.Records = append(set.Records, rr(t, name+" 1 IN TXT "+value))
+	}
+	return &backend.Change{Op: op, RRset: set}
+}
+
+// TestUndo checks that taking back a change leaves alone the records that a
+// concurrent update wrote meanwhile.
+func TestUndo(t *testing.T) {
+	t.Parallel()
+	const name = "www.example.test."
+	for _, c := range []struct {
+		label       string
+		before, now []hosted.Record
+		change      *backend.Change
+		want        []string
+	}{
+		{
+			label:  "added",
+			before: records(t, name+` 300 IN TXT "a"`),
+			// "b" is the record of the change, "c" that of a concurrent
+			// update; "a" was there before.
+			now:    records(t, name+` 300 IN TXT "a"`, name+` 300 IN TXT "b"`, name+` 300 IN TXT "c"`),
+			change: delta(t, backend.Add, 300, `"a"`, `"b"`),
+			want:   []string{"delete b"},
+		},
+		{
+			label:  "removed",
+			before: records(t, name+` 300 IN TXT "a"`, name+` 120 IN TXT "b"`),
+			now:    records(t, name+` 300 IN TXT "a"`, name+` 300 IN TXT "c"`),
+			change: delta(t, backend.Remove, 300, `"b"`, `"missing"`),
+			want:   []string{"create " + name + "\t120\tIN\tTXT\t\"b\""},
+		},
+		{
+			label:  "replaced",
+			before: records(t, name+` 300 IN TXT "a"`),
+			now:    records(t, name+` 300 IN TXT "b"`),
+			change: &backend.Change{Op: backend.Replace, RRset: backend.RRset{Name: name, Type: dns.TypeTXT, TTL: 300, Records: []dns.RR{rr(t, name+` 300 IN TXT "b"`)}}},
+			want:   []string{"create " + name + "\t300\tIN\tTXT\t\"a\"", "delete a"},
+		},
+	} {
+		steps := hosted.Undo(c.before, c.now, c.change)
+		if got, want := describe(&steps), strings.Join(c.want, "\n"); got != want {
+			t.Errorf("%s: Undo() =\n%s\nwant\n%s", c.label, got, want)
 		}
 	}
 }

@@ -150,6 +150,10 @@ func (b *Backend) Apply(_ context.Context, zone string, changes []backend.Change
 			next[k] = set
 		case backend.Delete:
 			delete(next, k)
+		case backend.Add:
+			addRecords(next, k, &set)
+		case backend.Remove:
+			removeRecords(next, k, set.Records)
 		default:
 			return fmt.Errorf("unknown operation %d", change.Op)
 		}
@@ -157,6 +161,51 @@ func (b *Backend) Apply(_ context.Context, zone string, changes []backend.Change
 	b.zones[zone] = normalized(next)
 	b.applied++
 	return nil
+}
+
+// addRecords adds the records of set to an RRset, but those that it holds; a
+// new RRset takes the TTL of set.
+func addRecords(content map[rrsetKey]backend.RRset, k rrsetKey, set *backend.RRset) {
+	current, exists := content[k]
+	if !exists {
+		current = backend.RRset{Name: k.name, Type: k.rrtype, TTL: set.TTL}
+	}
+	records := copyRecords(current.Records)
+	for _, rr := range set.Records {
+		if !slices.ContainsFunc(records, func(held dns.RR) bool { return same(held, rr) }) {
+			records = append(records, dns.Copy(rr))
+		}
+	}
+	current.Records = records
+	content[k] = current
+}
+
+// removeRecords removes records from an RRset, which goes with its last
+// record.
+func removeRecords(content map[rrsetKey]backend.RRset, k rrsetKey, records []dns.RR) {
+	current, exists := content[k]
+	if !exists {
+		return
+	}
+	current.Records = slices.DeleteFunc(copyRecords(current.Records), func(held dns.RR) bool {
+		return slices.ContainsFunc(records, func(rr dns.RR) bool { return same(held, rr) })
+	})
+	if len(current.Records) == 0 {
+		delete(content, k)
+		return
+	}
+	content[k] = current
+}
+
+// same reports whether two records hold the same data, whatever the forms of
+// their presentation format, such as the escapes of TXT strings.
+func same(a, b dns.RR) bool {
+	canonicalA, errA := backend.Canonical(a)
+	canonicalB, errB := backend.Canonical(b)
+	if errA != nil || errB != nil {
+		return dns.IsDuplicate(a, b)
+	}
+	return dns.IsDuplicate(canonicalA, canonicalB)
 }
 
 // normalized gives every record the canonical name and the TTL of its RRset.

@@ -60,6 +60,33 @@ restricted Pod Security profile, and its probes use `/healthz` and `/readyz`.
 The DNS Service and the Service of the administration server are apart, so
 that exposing the first never exposes the second.
 
+## Several instances
+
+Several instances of tsigoat may serve the same zones, such as the replicas
+of the chart, so that one of them may stop. Each instance serializes the
+updates of a zone; between instances, the records that an update adds and
+removes apply to the records as they stand at the backend, so that concurrent
+updates keep each other's records: the challenges of a certificate and of its
+wildcard, sent at once to two instances, both stay. This is a deliberate
+choice, for availability, and of little consequence for ACME clients, whose
+updates add and remove values. A few guarantees of RFC 2136 hold within an
+instance alone:
+
+- an update that changes the TTL of an RRset replaces it whole, as its
+  instance read it, and drops a record that another instance added meanwhile;
+- the prerequisites of an update hold on what its instance read, not at the
+  time of its write;
+- an update that adds a CNAME where another instance adds other data, or the
+  reverse, may leave both;
+- two updates that change the same RRsets apply to each RRset in some order,
+  not each one whole before the other.
+
+To keep them all, run a single instance, or send the updates of each client
+to one instance: set `service.sessionAffinity` to `ClientIP` in the chart, or
+route by client in a CNI or an external load balancer. The
+relays need neither: an RFC 2136 name server applies each update whole, and a
+webhook endpoint applies the updates of a zone one at a time.
+
 ## Logs
 
 tsigoat logs to the standard error, one line per event, as text or JSON.

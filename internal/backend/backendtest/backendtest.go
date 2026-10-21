@@ -56,6 +56,8 @@ func (s *Suite) Run(t *testing.T) {
 	t.Run("replace/beside", s.replaceBeside)
 	t.Run("delete/rrset", s.deleteRRset)
 	t.Run("delete/missing", s.deleteMissing)
+	t.Run("add/beside", s.addBeside)
+	t.Run("add/new", s.addNew)
 	t.Run("apply/several", s.applySeveral)
 	t.Run("apply/atomic", s.applyAtomic)
 	t.Run("ttl/zero", s.ttlZero)
@@ -77,10 +79,10 @@ func (s *Suite) name(relative string) string {
 // usedNames returns every name that the cases write, below Base.
 func usedNames() []string {
 	txt, types := txtCases(), typeCases()
-	names := make([]string, 0, 13+len(txt)+len(types))
+	names := make([]string, 0, 15+len(txt)+len(types))
 	names = append(names,
 		"one", "several", "swap", "ttl", "beside", "rrset", "missing-rrset",
-		"first", "second", "third", "atomic", "failing", "zero",
+		"add", "add-new", "first", "second", "third", "atomic", "failing", "zero",
 	)
 	for _, c := range txt {
 		names = append(names, c.label+".txt")
@@ -188,6 +190,35 @@ func (s *Suite) deleteMissing(t *testing.T) {
 	s.expect(t, name)
 }
 
+// addBeside adds records to an RRset and removes others, which leaves the
+// rest of the RRset alone: the changes of concurrent updates survive.
+func (s *Suite) addBeside(t *testing.T) {
+	name := s.name("add")
+	s.replace(t, parse(t, name, ttl, `TXT "a"`)...)
+	s.apply(t, add(parse(t, name, ttl, `TXT "b"`)...)...)
+	s.expect(t, name, parse(t, name, ttl, `TXT "a"`, `TXT "b"`)...)
+	// A record held already, and a record missing, change nothing.
+	s.apply(t, add(parse(t, name, ttl, `TXT "a"`)...)...)
+	s.apply(t, remove(parse(t, name, ttl, `TXT "missing"`)...)...)
+	s.expect(t, name, parse(t, name, ttl, `TXT "a"`, `TXT "b"`)...)
+	s.apply(t, remove(parse(t, name, ttl, `TXT "a"`)...)...)
+	s.expect(t, name, parse(t, name, ttl, `TXT "b"`)...)
+	// An RRset that exists keeps its TTL.
+	s.apply(t, add(parse(t, name, 2*ttl, `TXT "c"`)...)...)
+	s.expect(t, name, parse(t, name, ttl, `TXT "b"`, `TXT "c"`)...)
+}
+
+// addNew adds records to an RRset that does not exist, which takes the TTL
+// of the change, then removes them, which deletes it.
+func (s *Suite) addNew(t *testing.T) {
+	name := s.name("add-new")
+	sets := parse(t, name, 2*ttl, `TXT "first"`, `TXT "second"`)
+	s.apply(t, add(sets...)...)
+	s.expect(t, name, sets...)
+	s.apply(t, remove(s.lookup(t, name)...)...)
+	s.expect(t, name)
+}
+
 // applySeveral applies changes of several names at once.
 func (s *Suite) applySeveral(t *testing.T) {
 	first, second, third := s.name("first"), s.name("second"), s.name("third")
@@ -275,6 +306,24 @@ func replace(sets ...backend.RRset) []backend.Change {
 	changes := make([]backend.Change, 0, len(sets))
 	for _, set := range sets {
 		changes = append(changes, backend.Change{Op: backend.Replace, RRset: set})
+	}
+	return changes
+}
+
+// add returns the changes that add the records of the RRsets.
+func add(sets ...backend.RRset) []backend.Change {
+	changes := make([]backend.Change, 0, len(sets))
+	for _, set := range sets {
+		changes = append(changes, backend.Change{Op: backend.Add, RRset: set})
+	}
+	return changes
+}
+
+// remove returns the changes that remove the records of the RRsets.
+func remove(sets ...backend.RRset) []backend.Change {
+	changes := make([]backend.Change, 0, len(sets))
+	for _, set := range sets {
+		changes = append(changes, backend.Change{Op: backend.Remove, RRset: set})
 	}
 	return changes
 }

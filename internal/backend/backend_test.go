@@ -43,6 +43,8 @@ func TestChangeString(t *testing.T) {
 	for change, want := range map[*backend.Change]string{
 		{Op: backend.Replace, RRset: backend.RRset{Name: "www.example.test.", Type: dns.TypeTXT, TTL: 60, Records: []dns.RR{a, b}}}: `replace www.example.test. TXT 60 ["a", "b"]`,
 		{Op: backend.Delete, RRset: backend.RRset{Name: "www.example.test.", Type: dns.TypeA}}:                                      "delete www.example.test. A",
+		{Op: backend.Add, RRset: backend.RRset{Name: "www.example.test.", Type: dns.TypeTXT, TTL: 60, Records: []dns.RR{a}}}:        `add www.example.test. TXT 60 ["a"]`,
+		{Op: backend.Remove, RRset: backend.RRset{Name: "www.example.test.", Type: dns.TypeTXT, Records: []dns.RR{b}}}:              `remove www.example.test. TXT ["b"]`,
 	} {
 		if got := change.String(); got != want {
 			t.Errorf("String() = %q, want %q", got, want)

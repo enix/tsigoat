@@ -2,7 +2,7 @@
 //
 // A View reads the RRsets of a name from the backend the first time the name
 // is touched, keeps every modification in memory, and finally computes the
-// RRset-level changes between the backend content and its own. Nothing
+// changes of each RRset between the backend content and its own. Nothing
 // reaches the backend before the update is complete, which makes updates
 // atomic and lets the prerequisites see a consistent state.
 package zone
@@ -101,13 +101,17 @@ func (v *View) SetRRset(ctx context.Context, name string, rrtype uint16, records
 	return nil
 }
 
-// Changes returns the changes from the backend content to the view: the
-// deletions first, then the replacements, each sorted by name and type. The
-// deletions come first for the backends that check every change against the
-// state that the previous ones leave, as PowerDNS does within a PATCH: an
-// update may then replace a CNAME with other data, or the reverse.
+// Changes returns the changes from the backend content to the view, by
+// RRset. An RRset that keeps its TTL, or that the update creates or deletes,
+// changes by the records that it loses and gains, Remove and Add, so that the
+// records that other instances write meanwhile survive; an RRset whose TTL
+// changes is replaced whole. The removals come first, then the replacements
+// and the additions, each sorted by name and type: for the backends that
+// check every change against the state that the previous ones leave, as
+// PowerDNS does within a PATCH, an update may then replace a CNAME with
+// other data, or the reverse.
 func (v *View) Changes() []backend.Change {
-	var deletions, replacements []backend.Change
+	var removals, others []backend.Change
 	for _, name := range slices.Sorted(maps.Keys(v.current)) {
 		before, after := v.original[name], v.current[name]
 		types := slices.Sorted(maps.Keys(before))
@@ -118,27 +122,41 @@ func (v *View) Changes() []backend.Change {
 		}
 		slices.Sort(types)
 		for _, rrtype := range types {
-			records, kept := after[rrtype]
-			switch {
-			case !kept:
-				deletions = append(deletions, backend.Change{
-					Op:    backend.Delete,
-					RRset: backend.RRset{Name: name, Type: rrtype},
+			old, now := before[rrtype], after[rrtype]
+			if len(old) > 0 && len(now) > 0 && old[0].Header().Ttl != now[0].Header().Ttl {
+				others = append(others, backend.Change{
+					Op:    backend.Replace,
+					RRset: backend.RRset{Name: name, Type: rrtype, TTL: now[0].Header().Ttl, Records: copyRecords(now)},
 				})
-			case !sameRRset(before[rrtype], records):
-				replacements = append(replacements, backend.Change{
-					Op: backend.Replace,
-					RRset: backend.RRset{
-						Name:    name,
-						Type:    rrtype,
-						TTL:     records[0].Header().Ttl,
-						Records: copyRecords(records),
-					},
+				continue
+			}
+			if gone := missing(old, now); len(gone) > 0 {
+				removals = append(removals, backend.Change{
+					Op:    backend.Remove,
+					RRset: backend.RRset{Name: name, Type: rrtype, TTL: old[0].Header().Ttl, Records: gone},
+				})
+			}
+			if added := missing(now, old); len(added) > 0 {
+				others = append(others, backend.Change{
+					Op:    backend.Add,
+					RRset: backend.RRset{Name: name, Type: rrtype, TTL: now[0].Header().Ttl, Records: added},
 				})
 			}
 		}
 	}
-	return append(deletions, replacements...)
+	return append(removals, others...)
+}
+
+// missing returns copies of the records of a that b does not hold, once each.
+func missing(a, b []dns.RR) []dns.RR {
+	var out []dns.RR
+	for _, rr := range a {
+		duplicate := func(other dns.RR) bool { return dns.IsDuplicate(other, rr) }
+		if !slices.ContainsFunc(b, duplicate) && !slices.ContainsFunc(out, duplicate) {
+			out = append(out, dns.Copy(rr))
+		}
+	}
+	return out
 }
 
 // load reads the RRsets of a name from the backend, once.
@@ -180,18 +198,6 @@ func (v *View) load(ctx context.Context, name string) (map[uint16][]dns.RR, erro
 	v.original[name] = original
 	v.current[name] = current
 	return current, nil
-}
-
-// sameRRset reports whether two RRsets hold the same records with the same
-// TTL, in any order.
-func sameRRset(a, b []dns.RR) bool {
-	if len(a) != len(b) || len(a) == 0 {
-		return len(a) == len(b)
-	}
-	if a[0].Header().Ttl != b[0].Header().Ttl {
-		return false
-	}
-	return SameRecords(a, b)
 }
 
 // SameRecords reports whether two lists hold the same records, ignoring the

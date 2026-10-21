@@ -65,9 +65,11 @@ with depguard rules.
 `zone.View` reads the RRsets of a name from the backend the first time the
 update touches it, and keeps every change in memory. Records are compared in
 their wire form, since miekg/dns may hold the same RDATA differently when
-parsed from text. `View.Changes` returns RRset-level changes: deletions first,
-then replacements, for the backends that check each change against the state
-left by the previous ones.
+parsed from text. `View.Changes` returns the changes of each RRset: the records
+that it loses and gains, `Remove` and `Add`, when it keeps its TTL, or when the
+update creates or deletes it; its replacement, `Replace`, when its TTL
+changes. The removals come first, for the backends that check each change
+against the state left by the previous ones.
 
 `update` holds the RFC 2136 logic on top of the view, and returns an
 `*update.Error` with the rcode and the reason of a rejection, which the server
@@ -84,7 +86,12 @@ type Backend interface {
 }
 ```
 
-A change replaces a whole RRset, or deletes one. A backend must apply the
+A change replaces or deletes a whole RRset, or adds or removes some of its
+records. `Add` and `Remove` apply to the records as they stand when the
+backend writes, not as the update read them, so that the records that other
+instances of tsigoat write meanwhile stay: the PowerDNS backend sends EXTEND
+and PRUNE, the hosted providers create and delete records, the in-memory
+backend changes its RRsets in place. A backend must apply the
 changes of a call atomically, or not at all; `ErrZoneNotFound` reports a
 missing zone. A `*backend.RejectionError` turns the update down before
 anything changes, such as a record that the provider cannot hold: the client
@@ -103,9 +110,10 @@ backends send one batch, or PATCH, request; when the request left whole but
 its answer did not come back, the PowerDNS backend reads the RRsets again, as
 the backends of the hosted providers do. The API of OVHcloud has no
 transaction: its backend writes one record at a time and publishes the zone
-once, at the end; when a request fails, it reads the records again and brings
-them back to their content before the update, whatever the failed request
-did.
+once, at the end; when a request fails, it reads the records again and takes
+back what the update did, whatever the failed request did: the RRsets that it
+replaced come back as they were, the records that it added go, and those that
+it removed come back.
 
 The backends of the hosted providers share `internal/backend/hosted`. They read
 the records of a name, with their identifiers, and group them into RRsets; to

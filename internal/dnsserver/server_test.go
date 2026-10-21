@@ -187,7 +187,7 @@ func TestUpdateOverUDPAndTCP(t *testing.T) {
 		t.Errorf("%d changes applied, want 1: the second update changes nothing", f.backend.Applied())
 	}
 	if logs := f.logs.String(); !strings.Contains(logs, `msg=update`) || !strings.Contains(logs, `key=key.example.`) ||
-		!strings.Contains(logs, `replace www.example.test. TXT 60`) {
+		!strings.Contains(logs, `add www.example.test. TXT 60`) {
 		t.Errorf("the update is missing from the logs:\n%s", logs)
 	}
 }

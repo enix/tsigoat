@@ -4,7 +4,8 @@
 // Records travel in presentation format, which is the content format of the
 // API, so that every type known to both miekg/dns and PowerDNS works without
 // type-specific code. An update is a single PATCH request, which PowerDNS
-// applies in one transaction.
+// applies in one transaction; the records that it adds and removes go as
+// EXTEND and PRUNE, which apply to the records as they stand.
 package powerdns
 
 import (
@@ -58,19 +59,26 @@ type Backend struct {
 	timeout time.Duration
 	client  *http.Client
 
-	// disabled holds the disabled records that the last lookup of a name
-	// found, by zone and name, then by type. PowerDNS replaces whole RRsets,
-	// and tsigoat does not see disabled records: Apply puts them back into
-	// the RRsets it replaces. Only the RRsets with disabled records have an
-	// entry.
-	disabledMu sync.Mutex
-	disabled   map[string]map[string][]record
+	// seen holds the RRsets of the names that lookups read, by zone and
+	// name, with every record as the API wrote it, disabled ones included:
+	// see Apply.
+	seenMu sync.Mutex
+	seen   map[string]seenName
 
-	// legacy tells whether the server is PowerDNS 4, whose lookups of a
-	// name leave out the disabled records, once read.
-	legacyMu    sync.Mutex
-	legacy      bool
-	legacyKnown bool
+	// info describes the server, once read.
+	infoMu    sync.Mutex
+	info      serverInfo
+	infoKnown bool
+}
+
+// serverInfo describes what a version of PowerDNS does.
+type serverInfo struct {
+	// legacy tells PowerDNS 4, whose lookups of a name leave out the
+	// disabled records.
+	legacy bool
+	// recordOps tells that PATCH requests take EXTEND and PRUNE, which add
+	// and remove one record, since PowerDNS 4.9.12 and 5.0.2.
+	recordOps bool
 }
 
 var _ backend.Backend = (*Backend)(nil)
@@ -119,11 +127,11 @@ func New(options *Options) (*Backend, error) {
 		return nil, fmt.Errorf("configuring the client of the PowerDNS API: %w", err)
 	}
 	return &Backend{
-		server:   base.String() + "/api/v1/servers/" + url.PathEscape(serverID),
-		apiKey:   options.APIKey,
-		timeout:  timeout,
-		disabled: map[string]map[string][]record{},
-		client:   client,
+		server:  base.String() + "/api/v1/servers/" + url.PathEscape(serverID),
+		apiKey:  options.APIKey,
+		timeout: timeout,
+		seen:    map[string]seenName{},
+		client:  client,
 	}, nil
 }
 
@@ -147,12 +155,12 @@ type record struct {
 // of the lookups of a name: there, Lookup reads the whole zone.
 func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRset, error) {
 	name = dns.CanonicalName(name)
-	legacy, err := b.isLegacy(ctx)
+	info, err := b.serverInfo(ctx)
 	if err != nil {
 		return nil, err
 	}
 	query := url.Values{"rrsets": {"true"}, "rrset_name": {name}}
-	if legacy {
+	if info.legacy {
 		query.Del("rrset_name")
 	}
 	var content struct {
@@ -163,7 +171,7 @@ func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRse
 	}
 
 	var sets []backend.RRset
-	disabled := map[string][]record{}
+	seen := seenName{read: time.Now(), sets: map[string]seenRRset{}}
 	for i := range content.RRsets {
 		set := &content.RRsets[i]
 		// Versions that ignore rrset_name return the whole zone.
@@ -177,58 +185,44 @@ func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRse
 		if len(converted.Records) > 0 {
 			sets = append(sets, converted)
 		}
-		for _, r := range set.Records {
-			if r.Disabled {
-				disabled[typeName(converted.Type)] = append(disabled[typeName(converted.Type)], r)
-			}
-		}
+		seen.sets[typeName(converted.Type)] = seenRRset{ttl: converted.TTL, records: set.Records}
 	}
-	b.keepDisabled(zone, name, disabled)
+	b.keepSeen(zone, name, seen)
 	return sets, nil
 }
 
-// isLegacy tells whether the server is PowerDNS 4, which it reads once.
-func (b *Backend) isLegacy(ctx context.Context) (bool, error) {
-	b.legacyMu.Lock()
-	defer b.legacyMu.Unlock()
-	if b.legacyKnown {
-		return b.legacy, nil
+// serverInfo reads the version of the server, once.
+func (b *Backend) serverInfo(ctx context.Context) (serverInfo, error) {
+	b.infoMu.Lock()
+	defer b.infoMu.Unlock()
+	if b.infoKnown {
+		return b.info, nil
 	}
 	var server struct {
 		Version string `json:"version"`
 	}
 	if err := b.do(ctx, http.MethodGet, "", nil, &server); err != nil {
-		return false, fmt.Errorf("reading the version of PowerDNS: %w", err)
+		return serverInfo{}, fmt.Errorf("reading the version of PowerDNS: %w", err)
 	}
-	b.legacy, b.legacyKnown = strings.HasPrefix(server.Version, "4."), true
-	return b.legacy, nil
+	b.info = serverInfo{legacy: strings.HasPrefix(server.Version, "4."), recordOps: recordOps(server.Version)}
+	b.infoKnown = true
+	return b.info, nil
 }
 
-// keepDisabled records the disabled records of a name.
-func (b *Backend) keepDisabled(zone, name string, disabled map[string][]record) {
-	key := dns.CanonicalName(zone) + " " + name
-	b.disabledMu.Lock()
-	defer b.disabledMu.Unlock()
-	if len(disabled) == 0 {
-		delete(b.disabled, key)
-		return
+// recordOps tells whether a version of PowerDNS takes the EXTEND and PRUNE
+// changetypes, which came with 4.9.12 and 5.0.2.
+func recordOps(version string) bool {
+	var major, minor, patch int
+	if _, err := fmt.Sscanf(version, "%d.%d.%d", &major, &minor, &patch); err != nil {
+		return false
 	}
-	b.disabled[key] = disabled
-}
-
-// withDisabled adds to an RRset to replace the disabled records that the last
-// lookup of its name found, but those that the RRset enables again.
-func (b *Backend) withDisabled(zone string, set *rrset) {
-	b.disabledMu.Lock()
-	kept := b.disabled[dns.CanonicalName(zone)+" "+set.Name][set.Type]
-	b.disabledMu.Unlock()
-	for _, candidate := range kept {
-		enabled := slices.ContainsFunc(set.Records, func(r record) bool {
-			return !r.Disabled && sameContent(set.Name, set.Type, r.Content, candidate.Content)
-		})
-		if !enabled {
-			set.Records = append(set.Records, candidate)
-		}
+	switch major {
+	case 4:
+		return minor > 9 || minor == 9 && patch >= 12
+	case 5:
+		return minor > 0 || patch >= 2
+	default:
+		return major > 5
 	}
 }
 
@@ -238,24 +232,39 @@ func (b *Backend) withDisabled(zone string, set *rrset) {
 // would. When that form is the same RDATA, Apply sends the PATCH again with
 // it: a refused PATCH applies nothing. A PATCH that PowerDNS may have applied
 // without answering is checked by reading its RRsets again.
+//
+// Add and Remove become EXTEND and PRUNE, which PowerDNS applies to the
+// records of the RRset as they stand: see patchOf.
 func (b *Backend) Apply(ctx context.Context, zone string, changes []backend.Change) error {
 	if len(changes) == 0 {
 		return nil
 	}
+	info, err := b.serverInfo(ctx)
+	if err != nil {
+		return err
+	}
+	// The PATCH needs what the lookup of a name read, which Apply reads again
+	// when it has gone.
+	for _, change := range changes {
+		if change.Op != backend.Add && change.Op != backend.Remove {
+			continue
+		}
+		if _, read := b.lookedUp(zone, change.RRset.Name); !read {
+			if _, lookupErr := b.Lookup(ctx, zone, change.RRset.Name); lookupErr != nil {
+				return lookupErr
+			}
+		}
+	}
+	sets, err := b.patchOf(zone, changes, info.recordOps)
+	if err != nil {
+		return err
+	}
 	body := struct {
 		RRsets []rrset `json:"rrsets"`
-	}{RRsets: make([]rrset, 0, len(changes))}
+	}{RRsets: sets}
 	records := 0
-	for _, change := range changes {
-		set, err := toAPI(change)
-		if err != nil {
-			return fmt.Errorf("%s: %w", change, err)
-		}
-		if change.Op == backend.Replace {
-			b.withDisabled(zone, &set)
-		}
-		body.RRsets = append(body.RRsets, set)
-		records += len(set.Records)
+	for i := range sets {
+		records += len(sets[i].Records)
 	}
 	for attempt := 0; ; attempt++ {
 		err := b.do(ctx, http.MethodPatch, zonePath(zone), body, nil)
@@ -296,13 +305,20 @@ func (b *Backend) verify(ctx context.Context, zone string, changes []backend.Cha
 // shows reports whether the RRsets of a name are as a change wants them.
 func shows(sets []backend.RRset, change backend.Change) bool {
 	i := slices.IndexFunc(sets, func(set backend.RRset) bool { return set.Type == change.RRset.Type })
-	if change.Op == backend.Delete {
+	var held []dns.RR
+	if i >= 0 {
+		held = sets[i].Records
+	}
+	switch change.Op {
+	case backend.Delete:
 		return i < 0
+	case backend.Add:
+		return holds(held, change.RRset.Records)
+	case backend.Remove:
+		return !slices.ContainsFunc(change.RRset.Records, func(rr dns.RR) bool { return holds(held, []dns.RR{rr}) })
+	case backend.Replace:
 	}
-	if i < 0 || sets[i].TTL != change.RRset.TTL {
-		return false
-	}
-	return holds(sets[i].Records, change.RRset.Records) && holds(change.RRset.Records, sets[i].Records)
+	return i >= 0 && sets[i].TTL == change.RRset.TTL && holds(held, change.RRset.Records) && holds(change.RRset.Records, held)
 }
 
 // holds reports whether every record of b has the same data in a.

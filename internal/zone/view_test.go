@@ -178,9 +178,23 @@ func TestViewChanges(t *testing.T) {
 				)
 			},
 			want: []string{
-				"delete www.example.test. TXT",
-				"replace new.example.test. AAAA 60 [2001:db8::1]",
+				`remove www.example.test. TXT ["hello"]`,
+				"add new.example.test. AAAA 60 [2001:db8::1]",
 				"replace www.example.test. A 120 [192.0.2.1, 192.0.2.9]",
+			},
+		},
+		{
+			name: "records gained and lost, removals first",
+			modify: func(ctx context.Context, view *zone.View) error {
+				return view.SetRRset(ctx, "www.example.test.", dns.TypeA, records(t,
+					"www.example.test. 300 IN A 192.0.2.3",
+					"www.example.test. 300 IN A 192.0.2.1",
+					"www.example.test. 300 IN A 192.0.2.3",
+				))
+			},
+			want: []string{
+				"remove www.example.test. A [192.0.2.2]",
+				"add www.example.test. A 300 [192.0.2.3]",
 			},
 		},
 	}

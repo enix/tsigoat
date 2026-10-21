@@ -115,6 +115,8 @@ func toAPI(change backend.Change) (rrset, error) {
 			set.Records = append(set.Records, record{Content: content(rr)})
 		}
 		return set, nil
+	case backend.Add, backend.Remove:
+		return rrset{}, fmt.Errorf("%s changes records, not a whole RRset", change)
 	default:
 		return rrset{}, fmt.Errorf("unknown operation %d", change.Op)
 	}

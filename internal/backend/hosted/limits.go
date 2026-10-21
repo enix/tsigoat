@@ -49,7 +49,7 @@ func (l *Limits) reason(zone string, change *backend.Change) string {
 		return l.Provider + " manages the NS records of the apex"
 	case !hostName(set.Name):
 		return fmt.Sprintf("%s holds no name like %s: letters, digits, hyphens and underscores only, and a leading wildcard", l.Provider, set.Name)
-	case change.Op == backend.Delete:
+	case change.Op == backend.Delete || change.Op == backend.Remove:
 		// Whatever the provider holds, it may delete.
 		return ""
 	case !slices.Contains(l.Types, set.Type):

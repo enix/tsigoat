@@ -18,10 +18,13 @@ import (
 	"github.com/enix/tsigoat/internal/config"
 )
 
+// minimalSecret is the secret of the key of minimal.
+const minimalSecret = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=" // gitleaks:allow (fixture)
+
 const minimal = `
 keys:
   - name: key.example.
-    secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= # gitleaks:allow (fixture)
+    secret: ` + minimalSecret + `
 backends:
   - name: pdns
     type: powerdns

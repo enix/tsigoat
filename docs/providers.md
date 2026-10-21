@@ -12,13 +12,16 @@ These providers store records one by one, each with an identifier, where RFC
 names that the update touches, computes the result of the update, then turns
 each RRset that changes into records to delete, to create, or whose TTL
 changes. A record that stays keeps its identifier, and what tsigoat does not
-see of it, such as a comment.
+see of it, such as a comment. The records that an update adds and removes are
+created and deleted alone: a record that another instance of tsigoat created
+meanwhile stays. An RRset whose TTL changes is brought whole to the content of
+the update.
 
 | Provider | An update is | Whole or not at all |
 | --- | --- | --- |
 | Cloudflare | One batch request | Yes, in the API: one transaction; the name servers may serve its records a few seconds apart |
 | Scaleway | One PATCH request | Yes, in the API: one version of the zone |
-| OVHcloud | One request per record, then a refresh of the zone | The name servers see the update whole, at the refresh; after a failure, tsigoat brings the records back as they were |
+| OVHcloud | One request per record, then a refresh of the zone | The name servers see the update whole, at the refresh; after a failure, tsigoat takes back what the update did |
 
 Whole does not mean certain: when a request times out, or gets a server
 error, the update may have applied or not. tsigoat then reads the records
@@ -75,11 +78,14 @@ name server of the zone as primary, and a serial of 1.
 
 ## Concurrency
 
-tsigoat serializes the updates of a zone within its process. Other writers of
-the same zones, through the API, the control panel or another tsigoat, race
-with it: an update reads, then writes, and could undo a change made in
-between. Run a single instance of tsigoat, and keep other writers away from
-the records that it manages, such as the `_acme-challenge` records.
+tsigoat serializes the updates of a zone within its process. Other instances
+of tsigoat, and other writers through the API or the control panel, may change
+the same RRsets meanwhile: the records that an update adds and removes apply
+to the records as they stand, so that theirs stay. What an update checks
+before it writes, and an RRset that it replaces whole, still race with them:
+see [Several instances](operations.md#several-instances). Keep other writers
+away from the records that tsigoat manages, such as the `_acme-challenge`
+records.
 
 ## Testing
 

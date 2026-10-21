@@ -23,10 +23,15 @@ another server.
 ## How tsigoat writes
 
 - **One request per update.** tsigoat computes the whole update in memory,
-  then sends its RRset changes in a single PATCH request, which PowerDNS
-  applies in one transaction: an update applies whole, or not at all.
-  Deletions come before replacements, so that a CNAME may replace other data
-  at a name, or the reverse.
+  then sends its changes in a single PATCH request, which PowerDNS applies in
+  one transaction: an update applies whole, or not at all. The records that
+  it adds and removes go as EXTEND and PRUNE, which PowerDNS applies to the
+  records of the RRset as they stand, so that the records that another
+  instance of tsigoat writes meanwhile stay; an RRset whose TTL changes is
+  replaced whole. PowerDNS takes EXTEND and PRUNE since 4.9.12 and 5.0.2:
+  before, tsigoat replaces every RRset that changes, as it read it.
+  Removals come first, so that a CNAME may replace other data at a name, or
+  the reverse.
 - **Contents in presentation format**, the format of the API, so that every
   record type that both tsigoat and PowerDNS know works. PowerDNS refuses a
   content that it would write differently: tsigoat writes SVCB and HTTPS
@@ -51,12 +56,15 @@ another server.
 - **ALIAS and LUA** records, which only PowerDNS knows, can be tested by
   prerequisites and deleted, but tsigoat never writes them.
 - **Disabled records** are invisible to clients, since PowerDNS does not serve
-  them. An update that rewrites their RRset keeps them.
+  them. An update keeps them, even when it removes every record that clients
+  see: PowerDNS drops them from an RRset that EXTEND or PRUNE change, and
+  tsigoat puts them back, in the same PATCH request.
 
 ## Concurrency
 
-tsigoat serializes the updates of a zone within its process. Other writers of
-the same zones, through the API or another tsigoat, race with it: an update
-reads, then writes whole RRsets, and could undo a change made in between. Run
-a single instance of tsigoat, and keep other writers away from the records
-that it manages.
+tsigoat serializes the updates of a zone within its process. Other instances
+of tsigoat, and other writers through the API, may change the same RRsets
+meanwhile: the records that an update adds and removes apply to the records
+as they stand, so that theirs stay. What an update checks before it writes,
+and an RRset that it replaces whole, still race with them: see
+[Several instances](operations.md#several-instances).

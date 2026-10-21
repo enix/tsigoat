@@ -80,9 +80,11 @@ Service accounts need one of the endpoints `ovh-eu`, `ovh-ca` and `ovh-us`.
   and refreshes the zone once, so that the name servers see the update whole.
 - **No transaction**: a request that fails may have applied anyway, before
   its response was lost. When a request fails, or the refresh fails three
-  times, tsigoat reads the records of the update again, brings them back to
-  their content before the update, whatever the requests did, checks them,
-  and refreshes the zone; the update gets SERVFAIL. When that fails too, the
+  times, tsigoat reads the records of the update again and takes back what
+  the update did, whatever the requests did: the RRsets that it replaced come
+  back as they were, the records that it added go, and those that it removed
+  come back. It checks them, and refreshes the zone; the update gets
+  SERVFAIL. When that fails too, the
   outcome is unknown: the zone may hold part of the update, which the next
   refresh, by tsigoat or by anyone, publishes; the update log tells so, and
   the [TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates) alert

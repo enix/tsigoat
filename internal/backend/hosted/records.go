@@ -169,10 +169,27 @@ func (s *Steps) Empty() bool {
 	return len(s.Delete) == 0 && len(s.Create) == 0 && len(s.Retime) == 0
 }
 
-// Diff returns the steps that turn current, the records of the RRset of a
-// change at the provider, into the content of the change. A record that the
-// RRset keeps stays, and only changes its TTL if needed; a duplicate goes.
+// Diff returns the steps that carry out a change on current, the records of
+// its RRset at the provider. Replace and Delete leave the records of the
+// change alone: a record that the RRset keeps stays, and only changes its TTL
+// if needed; a duplicate goes. Add creates the records missing, with the TTL
+// of the RRset when it exists; Remove deletes the records that it names,
+// duplicates included. Add and Remove leave the other records alone, which
+// concurrent updates may have written.
 func Diff(current []Record, change *backend.Change) Steps {
+	switch change.Op {
+	case backend.Add:
+		return additions(current, change)
+	case backend.Remove:
+		var steps Steps
+		for _, r := range current {
+			if slices.ContainsFunc(change.RRset.Records, func(rr dns.RR) bool { return dns.IsDuplicate(r.RR, rr) }) {
+				steps.Delete = append(steps.Delete, r)
+			}
+		}
+		return steps
+	case backend.Replace, backend.Delete:
+	}
 	var wanted []Record
 	if change.Op == backend.Replace {
 		for _, rr := range change.RRset.Records {
@@ -182,6 +199,26 @@ func Diff(current []Record, change *backend.Change) Steps {
 		}
 	}
 	return Restore(current, wanted)
+}
+
+// additions returns the steps of an Add: the records that current lacks,
+// with the TTL of the RRset when it exists.
+func additions(current []Record, change *backend.Change) Steps {
+	ttl := change.RRset.TTL
+	if len(current) > 0 {
+		ttl = slices.MinFunc(current, func(a, b Record) int { return cmp.Compare(a.RR.Header().Ttl, b.RR.Header().Ttl) }).RR.Header().Ttl
+	}
+	var steps Steps
+	for _, rr := range change.RRset.Records {
+		duplicate := func(other dns.RR) bool { return dns.IsDuplicate(other, rr) }
+		if slices.ContainsFunc(current, func(r Record) bool { return duplicate(r.RR) }) || slices.ContainsFunc(steps.Create, duplicate) {
+			continue
+		}
+		record := dns.Copy(rr)
+		record.Header().Ttl = ttl
+		steps.Create = append(steps.Create, record)
+	}
+	return steps
 }
 
 // Restore returns the steps that turn current, the records of an RRset at the
@@ -218,6 +255,30 @@ func Restore(current, wanted []Record) Steps {
 		}
 	}
 	return steps
+}
+
+// Undo returns the steps that take back what a change did to the records of
+// its RRset, from before, the records before the change, to now, the records
+// as they stand. Replace and Delete bring the RRset back to before whole;
+// Add deletes the records that it created, and Remove creates again the
+// records that it deleted, with their TTLs, so that the other records stay,
+// which concurrent updates may have written.
+func Undo(before, now []Record, change *backend.Change) Steps {
+	switch change.Op {
+	case backend.Add:
+		created := Diff(before, change).Create
+		return Diff(now, &backend.Change{Op: backend.Remove, RRset: backend.RRset{Records: created}})
+	case backend.Remove:
+		var steps Steps
+		for _, r := range Diff(before, change).Delete {
+			if !slices.ContainsFunc(now, func(n Record) bool { return dns.IsDuplicate(n.RR, r.RR) }) {
+				steps.Create = append(steps.Create, dns.Copy(r.RR))
+			}
+		}
+		return steps
+	case backend.Replace, backend.Delete:
+	}
+	return Restore(now, before)
 }
 
 // OfType returns the records of a type.
