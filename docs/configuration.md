@@ -6,8 +6,9 @@ setting with comments.
 
 The file is strict: an unknown setting is an error, as is a second YAML
 document, after `---`, and every error names its place, such as
-`zones[0].policy[1].names[0]`. Names, of keys, zones and rules, take no escape
-such as `\101` or `\.`, which would spell one name in two ways.
+`zones[0].policy[1].names[0]`. Names, of keys, zones and rules, are written
+as the requests spell them: without escapes such as `\101`, characters such
+as `@`, or bytes outside ASCII, which a request would spell otherwise.
 `tsigoat check-config` validates a file without starting anything, prints the
 warnings about risky settings, and exits with code 1 when the file is invalid;
 `--backends` also reads every zone through its backend.

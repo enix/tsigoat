@@ -1,2 +1,2 @@
 # Substrings the error must contain, anchored on the configuration path.
-zones[0].name: "\\101xample.test." holds escapes, which names may not hold
+zones[0].name: "\\101xample.test." reads "example.test." in the requests

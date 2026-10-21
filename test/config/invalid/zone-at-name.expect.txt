@@ -1,0 +1,2 @@
+# Substrings the error must contain, anchored on the configuration path.
+zones[0].name: "foo@bar.test." reads "foo\\@bar.test." in the requests

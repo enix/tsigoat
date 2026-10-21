@@ -784,7 +784,7 @@ func (v *validator) ruleBounds(path string, r *fileRule, rule *Rule) {
 
 // namePattern validates a policy name pattern, which must lie inside the zone.
 func (v *validator) namePattern(path, pattern, zone string) (string, bool) {
-	if escaped(path, pattern, v) {
+	if respelled(path, pattern, v) {
 		return "", false
 	}
 	canonical := canonicalName(pattern)
@@ -805,7 +805,7 @@ func (v *validator) domainName(path, name string) (string, bool) {
 		v.errorf(path, "missing name")
 		return "", false
 	}
-	if escaped(path, name, v) {
+	if respelled(path, name, v) {
 		return "", false
 	}
 	canonical := canonicalName(name)
@@ -816,19 +816,38 @@ func (v *validator) domainName(path, name string) (string, bool) {
 	return canonical, true
 }
 
-// canonicalName returns the canonical form of a name: lower case, with a
-// trailing dot.
-// escaped reports, as an error, a name that holds escapes: its wire form,
-// which requests carry, may be spelled otherwise, such as \101xample.test.
-// for example.test., so that it would match nothing.
-func escaped(path, name string, v *validator) bool {
-	if !strings.Contains(name, `\`) {
+// respelled reports, as an error, a name that the requests spell otherwise,
+// which would match nothing: miekg/dns writes the names that it decodes from
+// a message with escapes for some characters and for the bytes outside
+// printable ASCII, such as foo\@bar.test. for foo@bar.test. or \195\169 for
+// é, and without the escapes that it needs not, such as example.test. for
+// \101xample.test. Names take no escape at all.
+func respelled(path, name string, v *validator) bool {
+	spelled, ok := wireSpelling(name)
+	if !ok || (spelled == dns.CanonicalName(name) && !strings.Contains(name, `\`)) {
 		return false
 	}
-	v.errorf(path, "%q holds escapes, which names may not hold", name)
+	v.errorf(path, "%q reads %q in the requests: write names without escapes, characters such as @, or bytes outside ASCII", name, spelled)
 	return true
 }
 
+// wireSpelling returns a name as miekg/dns writes it once decoded from a
+// message, canonical; false for a name that does not encode.
+func wireSpelling(name string) (string, bool) {
+	buf := make([]byte, 512)
+	n, err := dns.PackDomainName(dns.Fqdn(name), buf, 0, nil, false)
+	if err != nil {
+		return "", false
+	}
+	decoded, _, err := dns.UnpackDomainName(buf[:n], 0)
+	if err != nil {
+		return "", false
+	}
+	return dns.CanonicalName(decoded), true
+}
+
+// canonicalName returns the canonical form of a name: lower case, with a
+// trailing dot.
 func canonicalName(name string) string {
 	return dns.CanonicalName(name)
 }
