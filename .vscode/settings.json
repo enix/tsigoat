@@ -1,0 +1,9 @@
+// Settings of the project for VS Code.
+{
+  // The build tags of the test packages, as in .golangci.yml: without them,
+  // gopls finds no package for their files, and the extension no test.
+  "gopls": {
+    "build.buildFlags": ["-tags=chart,differential,e2e,live"]
+  },
+  "go.buildTags": "chart,differential,e2e,live"
+}
