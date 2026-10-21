@@ -195,30 +195,43 @@ jobs:
           fi
           digests=$(jq -c 'map_values(.[0])' <<<"$grouped")
           echo "digests=$digests" >> "$GITHUB_OUTPUT"
+          # Each image of each registry, by digest, once: its tags share it.
+          jq -r '.[] | select(.type == "Docker Image") | "\(.name | sub(":[^:/]*$"; ""))@\(.extra.Digest)"' dist/artifacts.json \
+            | sort -u > dist/images.txt
+      # One signature per image and registry, rather than one per tag, which
+      # GoReleaser made: signing a digest again added to its signatures, which
+      # ghcr.io refused to the GITHUB_TOKEN.
+      - name: Sign the images
+        env:
+          COSIGN_YES: "true"
+          GODEBUG: http2client=0
+        run: |
+          set -euo pipefail
+          while read -r image; do
+            echo "::group::Signing $image"
+            cosign sign "$image"
+            echo "::endgroup::"
+          done < dist/images.txt
       # SLSA build provenance over the checksums file, which covers every
       # archive; SECURITY.md tells how to verify it.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-checksums: dist/checksums.txt
-      # One CycloneDX SBOM per pushed image, attached as a cosign attestation.
+      # One CycloneDX SBOM per image and registry, by the digest that
+      # GoReleaser pushed, attached as a cosign attestation.
       - name: Generate and attest image SBOMs
         env:
           COSIGN_YES: "true"
           GODEBUG: http2client=0
         run: |
           set -euo pipefail
-          while read -r ref; do
-            digest=$(docker buildx imagetools inspect "$ref" --format '{{ .Manifest.Digest }}')
-            echo "${ref%:*}@${digest}"
-          done < <(jq -r '.[] | select(.type == "Docker Image") | .name' dist/artifacts.json) \
-            | sort -u \
-            | while read -r ref_by_digest; do
-                echo "::group::SBOM for $ref_by_digest"
-                syft "$ref_by_digest" -o cyclonedx-json=/tmp/sbom.json
-                cosign attest --predicate /tmp/sbom.json --type cyclonedx "$ref_by_digest"
-                rm -f /tmp/sbom.json
-                echo "::endgroup::"
-              done
+          while read -r image; do
+            echo "::group::SBOM for $image"
+            syft "$image" -o cyclonedx-json=/tmp/sbom.json
+            cosign attest --predicate /tmp/sbom.json --type cyclonedx "$image"
+            rm -f /tmp/sbom.json
+            echo "::endgroup::"
+          done < dist/images.txt
 
   chart:
     name: Chart publish and sign

@@ -1,7 +1,7 @@
 # GoReleaser drives every build of tsigoat: binaries, archives, deb and rpm
-# packages, checksums, multi-arch container images (scratch by default,
-# busybox as an alternative with a shell), cosign keyless signatures and the
-# GitHub Release with its changelog.
+# packages, checksums and their cosign keyless signature, multi-arch container
+# images (scratch by default, busybox as an alternative with a shell), and the
+# GitHub Release with its changelog; the release workflow signs the images.
 #
 # Releases start from a version tag, which the Tag a release workflow creates
 # with svu, or a maintainer pushes; the release workflow runs GoReleaser and
@@ -214,15 +214,8 @@ dockers_v2:
     sbom: false
     labels: *busybox-labels
 
-docker_signs:
-  - id: image-cosign
-    cmd: cosign
-    artifacts: images
-    args:
-      - sign
-      - --yes
-      - "${artifact}@${digest}"
-    output: true
+# The release workflow signs the images, once per digest and registry: one
+# signature per tag, here, signed each digest again.
 
 # ─── Release and changelog ───────────────────────────────────────────────────
 release:
