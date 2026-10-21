@@ -243,10 +243,11 @@ func (b *Backend) Apply(ctx context.Context, zone string, changes []backend.Chan
 	if err != nil {
 		return err
 	}
-	// The PATCH needs what the lookup of a name read, which Apply reads again
-	// when it has gone.
+	// The PATCH needs what the lookup of a name read, the disabled records and
+	// the contents as PowerDNS wrote them, which Apply reads again when it has
+	// gone.
 	for _, change := range changes {
-		if change.Op != backend.Add && change.Op != backend.Remove {
+		if change.Op == backend.Delete {
 			continue
 		}
 		if _, read := b.lookedUp(zone, change.RRset.Name); !read {
