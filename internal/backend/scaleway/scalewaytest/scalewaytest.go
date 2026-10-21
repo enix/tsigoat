@@ -50,11 +50,22 @@ type API struct {
 	// they apply.
 	failures []failure
 	requests int
+	// held holds the PATCH requests that HoldPatch keeps for Land.
+	held []heldPatch
 }
 
 type failure struct {
 	status  int
 	message string
+	// late holds the request until its client gives up on it, then keeps it
+	// for Land.
+	late bool
+}
+
+// heldPatch is a PATCH request that applies after its client gave up on it.
+type heldPatch struct {
+	zone string
+	body patchBody
 }
 
 // New starts a simulated API until the end of the test.
@@ -105,6 +116,30 @@ func (a *API) FailPatch(status int, message string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.failures = append(a.failures, failure{status: status, message: message})
+}
+
+// HoldPatch makes the next PATCH request wait until its client gives up on it,
+// then keeps it, not applied, until Land applies it: a request that still
+// applies after its timeout, or the cancellation of its update.
+func (a *API) HoldPatch() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.failures = append(a.failures, failure{late: true})
+}
+
+// Land applies the PATCH requests that HoldPatch kept, as Scaleway would once
+// their client gave up.
+func (a *API) Land() error {
+	a.mu.Lock()
+	held := a.held
+	a.held = nil
+	a.mu.Unlock()
+	for _, h := range held {
+		if err := a.applyPatch(h.zone, &h.body); err != nil {
+			return fmt.Errorf("applying a held PATCH: %w", err)
+		}
+	}
+	return nil
 }
 
 // Requests returns the number of requests served.
@@ -228,14 +263,14 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request, zone string) {
 		reply(w, nil, fail(http.StatusBadRequest, "invalid argument: the simulated API wants disallow_new_zone_creation"))
 		return
 	}
-	err := a.store.Update(zone, func(tx *hostedtest.Tx[scaleway.APIRecord]) error {
-		for _, change := range body.Changes {
-			if err := apply(tx, zone, change.Add, change.Set, change.Delete, change.Clear != nil); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	if next != nil && next.late {
+		<-r.Context().Done()
+		a.mu.Lock()
+		a.held = append(a.held, heldPatch{zone: zone, body: body})
+		a.mu.Unlock()
+		return
+	}
+	err := a.applyPatch(zone, &body)
 	if err == nil && next != nil {
 		if hijacker, ok := w.(http.Hijacker); ok {
 			if conn, _, hijackErr := hijacker.Hijack(); hijackErr == nil {
@@ -245,6 +280,18 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request, zone string) {
 		}
 	}
 	reply(w, map[string]any{"records": []any{}}, err)
+}
+
+// applyPatch applies the changes of a PATCH request, all or none.
+func (a *API) applyPatch(zone string, body *patchBody) error {
+	return a.store.Update(zone, func(tx *hostedtest.Tx[scaleway.APIRecord]) error {
+		for _, change := range body.Changes {
+			if err := apply(tx, zone, change.Add, change.Set, change.Delete, change.Clear != nil); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // apply applies one change of a PATCH request.

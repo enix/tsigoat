@@ -2,6 +2,7 @@ package powerdns
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -53,6 +54,27 @@ type fakeAPI struct {
 	// patchAnswer, when set, answers the PATCH requests in place of 204 No
 	// Content, once they changed the zone when commit is set.
 	patchAnswer func(w http.ResponseWriter)
+	// hold makes the next PATCH request wait until its client gives up on
+	// it, then keeps it, not applied, in held, until land applies it.
+	hold bool
+	held []heldPatch
+}
+
+// heldPatch is a PATCH request that applies after its client gave up on it.
+type heldPatch struct {
+	zone   string
+	rrsets []rrset
+}
+
+// land applies the PATCH requests that hold kept, as PowerDNS would once their
+// client gave up.
+func (a *fakeAPI) land() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, h := range a.held {
+		a.zones[h.zone] = patched(a.zones[h.zone], h.rrsets)
+	}
+	a.held = nil
 }
 
 func newFakeAPI(t *testing.T) (*fakeAPI, *httptest.Server) {
@@ -128,6 +150,12 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := json.Unmarshal(body, &patch); err != nil {
 			a.t.Error(err)
+		}
+		if a.hold {
+			a.hold = false
+			<-r.Context().Done()
+			a.held = append(a.held, heldPatch{zone: id, rrsets: patch.RRsets})
+			return
 		}
 		for _, set := range patch.RRsets {
 			// Like PowerDNS, which wants one record and a TTL for EXTEND and
@@ -743,6 +771,37 @@ func TestUnansweredPatch(t *testing.T) {
 			}
 			if got != c.want {
 				t.Errorf("Apply() = %v, want an outcome %s", err, c.want)
+			}
+		})
+	}
+
+	// A PATCH that applies after its timeout, or after the cancellation of
+	// its update, once tsigoat read the RRsets again: they did not show it,
+	// so that its outcome is unknown; it lands afterwards.
+	for _, canceled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("late, canceled %t", canceled), func(t *testing.T) {
+			t.Parallel()
+			api, server := newFakeAPI(t)
+			api.hold = true
+			b, err := New(&Options{URL: server.URL, APIKey: apiKey, Timeout: 200 * time.Millisecond})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := t.Context()
+			if canceled {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				defer cancel()
+			}
+			if applyErr := b.Apply(ctx, "example.test.", changes(t)); !backend.IsIndeterminate(applyErr) {
+				t.Fatalf("Apply() = %v, want an unknown outcome", applyErr)
+			}
+			api.land()
+			sets, err := b.Lookup(t.Context(), "example.test.", "www.example.test.")
+			if err != nil || !slices.ContainsFunc(sets, func(set backend.RRset) bool {
+				return set.Type == dns.TypeTXT && set.TTL == 120 && len(set.Records) == 1
+			}) {
+				t.Errorf("after the late PATCH, Lookup() = %v, %v", sets, err)
 			}
 		})
 	}

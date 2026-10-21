@@ -1,6 +1,7 @@
 package ovh_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -161,6 +162,8 @@ func TestRecovery(t *testing.T) {
 		op            backend.Op
 		failures      []ovhtest.Failure
 		indeterminate bool
+		// canceled cancels the update while its requests run.
+		canceled bool
 	}{
 		// Delete "old", create "new", which applies but fails.
 		{label: "creation", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{pass, committed}},
@@ -173,6 +176,9 @@ func TestRecovery(t *testing.T) {
 		{label: "late creation", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{pass, late}},
 		// Add "new", which times out and applies after the recovery.
 		{label: "late addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, indeterminate: true, failures: []ovhtest.Failure{late}},
+		// Add "new", whose update is canceled while the request runs, which
+		// applies after the recovery.
+		{label: "canceled addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, indeterminate: true, canceled: true, failures: []ovhtest.Failure{late}},
 		// Delete "old", which applies but fails.
 		{label: "deletion", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{committed}},
 		// Retime "old", which applies but fails.
@@ -210,7 +216,13 @@ func TestRecovery(t *testing.T) {
 			if c.op != 0 {
 				change.Op = c.op
 			}
-			err = b.Apply(t.Context(), testZone, []backend.Change{change})
+			ctx := t.Context()
+			if c.canceled {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				defer cancel()
+			}
+			err = b.Apply(ctx, testZone, []backend.Change{change})
 			switch {
 			case err == nil:
 				t.Fatal("Apply() succeeded, want an error")

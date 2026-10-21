@@ -396,3 +396,18 @@ func TestContextCanceled(t *testing.T) {
 		t.Error("Update() succeeded with a canceled context")
 	}
 }
+
+// TestCanceledInFlight checks an update canceled while the server holds it:
+// the server received it, and may apply it still.
+func TestCanceledInFlight(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	server := startNameServer(t, []config.Key{relayKey()}, func(dns.ResponseWriter, *dns.Msg) { <-release })
+	t.Cleanup(func() { close(release) })
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := newRelay(t, server.addr, time.Second).Update(ctx, zone, "", nil, nil); !backend.IsIndeterminate(err) {
+		t.Errorf("Update() error = %v, want an unknown outcome", err)
+	}
+}

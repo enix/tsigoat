@@ -1,6 +1,7 @@
 package webhook_test
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
@@ -511,5 +512,18 @@ func TestNew(t *testing.T) {
 	}
 	if _, err := webhook.New(&webhook.Options{URL: "https://hooks.example.test", CAFile: "/missing.pem"}); err == nil {
 		t.Error("New() accepted a missing CA file")
+	}
+}
+
+// TestCanceledInFlight checks an update canceled while the endpoint works on
+// it: the endpoint received it, and may apply it still.
+func TestCanceledInFlight(t *testing.T) {
+	t.Parallel()
+	e := newEndpoint(t, false, func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	relay := newRelay(t, &webhook.Options{URL: e.server.URL})
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := relay.Update(ctx, zone, "", nil, records(t, `a.example.test. 60 IN TXT "x"`)); !backend.IsIndeterminate(err) {
+		t.Errorf("Update() error = %v, want an unknown outcome", err)
 	}
 }

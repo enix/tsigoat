@@ -1,11 +1,14 @@
 package scaleway_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -212,5 +215,41 @@ func TestTXTStrings(t *testing.T) {
 		if err != nil || len(sets) != 1 || !dns.IsDuplicate(sets[0].Records[0], record) {
 			t.Errorf("%s: Lookup() = %v, %v, want %s", c.label, sets, err, record)
 		}
+	}
+}
+
+// TestLateWrite checks a PATCH that applies after its timeout, or after the
+// cancellation of its update, once tsigoat read the records again: they did
+// not show it, so that its outcome is unknown; it lands afterwards.
+func TestLateWrite(t *testing.T) {
+	t.Parallel()
+	for _, canceled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("canceled %t", canceled), func(t *testing.T) {
+			t.Parallel()
+			api := scalewaytest.New(t)
+			api.CreateZone(testZone)
+			b, err := scaleway.New(&scaleway.Options{URL: api.URL, SecretKey: scalewaytest.SecretKey, Timeout: 200 * time.Millisecond})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := t.Context()
+			if canceled {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				defer cancel()
+			}
+			api.HoldPatch()
+			change := replace(t, `www.example.test. 300 IN TXT "late"`)
+			if applyErr := b.Apply(ctx, testZone, []backend.Change{change}); !backend.IsIndeterminate(applyErr) {
+				t.Fatalf("Apply() = %v, want an unknown outcome", applyErr)
+			}
+			if landErr := api.Land(); landErr != nil {
+				t.Fatal(landErr)
+			}
+			sets, err := b.Lookup(t.Context(), testZone, "www.example.test.")
+			if err != nil || len(sets) != 1 || !dns.IsDuplicate(sets[0].Records[0], change.RRset.Records[0]) {
+				t.Errorf("after the late PATCH, Lookup() = %v, %v", sets, err)
+			}
+		})
 	}
 }

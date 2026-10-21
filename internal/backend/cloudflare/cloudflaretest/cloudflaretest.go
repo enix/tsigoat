@@ -47,6 +47,14 @@ type API struct {
 	// endpoint, which go before the batch applies.
 	failures []failure
 	requests int
+	// held holds the batch requests that HoldBatch keeps for Land.
+	held []heldBatch
+}
+
+// heldBatch is a batch request that applies after its client gave up on it.
+type heldBatch struct {
+	zoneID, zoneName string
+	data             []byte
 }
 
 type zone struct {
@@ -58,6 +66,9 @@ type failure struct {
 	status  int
 	code    int
 	message string
+	// late holds the request until its client gives up on it, then keeps it
+	// for Land.
+	late bool
 }
 
 // New starts a simulated API until the end of the test.
@@ -122,6 +133,36 @@ func (a *API) FailBatch(status, code int, message string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.failures = append(a.failures, failure{status: status, code: code, message: message})
+}
+
+// HoldBatch makes the next batch request wait until its client gives up on
+// it, then keeps it, not applied, until Land applies it: a request that still
+// applies after its timeout, or the cancellation of its update.
+func (a *API) HoldBatch() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.failures = append(a.failures, failure{late: true})
+}
+
+// Land applies the batch requests that HoldBatch kept, as Cloudflare would
+// once their client gave up.
+func (a *API) Land() error {
+	a.mu.Lock()
+	held := a.held
+	a.held = nil
+	a.mu.Unlock()
+	for _, h := range held {
+		var body batchBody
+		if err := json.Unmarshal(h.data, &body); err != nil {
+			return fmt.Errorf("decoding a held batch: %w", err)
+		}
+		if err := a.store.Update(h.zoneID, func(tx *hostedtest.Tx[cloudflare.APIRecord]) error {
+			return apply(tx, h.zoneName, &body)
+		}); err != nil {
+			return fmt.Errorf("applying a held batch: %w", err)
+		}
+	}
+	return nil
 }
 
 // Requests returns the number of requests served.
@@ -302,6 +343,13 @@ func (a *API) batch(w http.ResponseWriter, r *http.Request, zoneID string) {
 	}
 
 	data, _ := io.ReadAll(r.Body)
+	if next != nil && next.late {
+		<-r.Context().Done()
+		a.mu.Lock()
+		a.held = append(a.held, heldBatch{zoneID: zoneID, zoneName: zoneName, data: data})
+		a.mu.Unlock()
+		return
+	}
 	var body batchBody
 	if err := json.Unmarshal(data, &body); err != nil {
 		reply(w, nil, nil, fail(http.StatusBadRequest, 9207, "Request body is invalid."))
