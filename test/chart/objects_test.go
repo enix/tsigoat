@@ -42,7 +42,8 @@ type (
 	deploymentSpec struct {
 		Replicas int `yaml:"replicas"`
 		Strategy struct {
-			Type string `yaml:"type"`
+			Type          string         `yaml:"type"`
+			RollingUpdate map[string]any `yaml:"rollingUpdate"`
 		} `yaml:"strategy"`
 		Selector struct {
 			MatchLabels map[string]string `yaml:"matchLabels"`

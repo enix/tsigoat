@@ -114,6 +114,9 @@ func checkRelease(t *testing.T, r release) {
 	if d.Replicas < 1 {
 		t.Errorf("%d replicas, want one at least", d.Replicas)
 	}
+	if d.Strategy.Type == "Recreate" && d.Strategy.RollingUpdate != nil {
+		t.Errorf("the Recreate strategy keeps rollingUpdate %v, which Kubernetes refuses", d.Strategy.RollingUpdate)
+	}
 	podLabels := d.Template.Metadata.Labels
 	if !selects(d.Selector.MatchLabels, podLabels) {
 		t.Errorf("the selector %v of the Deployment misses the pod labels %v", d.Selector.MatchLabels, podLabels)

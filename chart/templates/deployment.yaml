@@ -13,7 +13,13 @@ spec:
   replicas: {{ .Values.replicaCount }}
   {{- with .Values.strategy }}
   strategy:
+    {{- /* The default rollingUpdate stays in the values when type becomes
+    Recreate, which Kubernetes refuses beside it. */}}
+    {{- if eq (.type | default "") "Recreate" }}
+    {{- toYaml (omit . "rollingUpdate") | nindent 4 }}
+    {{- else }}
     {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- end }}
   selector:
     matchLabels:
