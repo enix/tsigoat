@@ -132,6 +132,10 @@ func parse(t *testing.T, name string, ttl uint32, records ...string) []backend.R
 		if err != nil || rr == nil {
 			t.Fatalf("parsing %q: %v", text, err)
 		}
+		// The engine hands over the records as a DNS message carries them.
+		if rr, err = backend.Canonical(rr); err != nil {
+			t.Fatalf("encoding %q: %v", text, err)
+		}
 		i := slices.IndexFunc(sets, func(set backend.RRset) bool { return set.Type == rr.Header().Rrtype })
 		if i < 0 {
 			sets = append(sets, backend.RRset{Name: name, Type: rr.Header().Rrtype, TTL: ttl})

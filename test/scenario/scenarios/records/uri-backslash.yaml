@@ -1,0 +1,8 @@
+description: A URI record whose target holds a backslash reaches the backend intact.
+refs: ["RFC 7553 4.4"]
+requests:
+  - updates:
+      - 'add _http._tcp 300 IN URI 10 1 "https://example.test/a\\b"'
+expect:
+  records:
+    - '_http._tcp 300 IN URI 10 1 "https://example.test/a\\b"'

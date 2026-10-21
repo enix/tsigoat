@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+
+	"github.com/enix/tsigoat/internal/backend"
 )
 
 // Target is a tsigoat server in front of a backend that the runner can
@@ -98,13 +100,11 @@ func normalizedRecords(ctx context.Context, target Target, zone string) ([]strin
 // Normalize returns the canonical text of a record, so that records read from
 // a backend and records written in a scenario compare equal: the record goes
 // through its wire format, which erases the textual variations of its RDATA,
-// such as the case of hexadecimal strings or the escapes of TXT strings.
+// such as the case of hexadecimal strings or the escapes of TXT strings, as
+// backend.Canonical does.
 func Normalize(rr dns.RR) string {
-	buf := make([]byte, dns.Len(rr)+1)
-	if n, err := dns.PackRR(rr, buf, 0, nil, false); err == nil {
-		if decoded, _, err := dns.UnpackRR(buf[:n], 0); err == nil {
-			rr = decoded
-		}
+	if canonical, err := backend.Canonical(rr); err == nil {
+		rr = canonical
 	}
 	rr = dns.Copy(rr)
 	rr.Header().Name = dns.CanonicalName(rr.Header().Name)

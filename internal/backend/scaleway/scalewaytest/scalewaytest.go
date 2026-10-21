@@ -327,6 +327,9 @@ func normalize(tx *hostedtest.Tx[scaleway.APIRecord], zone string, posted *scale
 	return rec, nil
 }
 
+// uncheckedURI is why tsigoat turns down the URI records at Scaleway.
+const uncheckedURI = "tsigoat did not check that Scaleway keeps URI records intact"
+
 // Rejected returns the cases of the conformance suite of the backends that
 // the scaleway backend turns down, with the reason, for the simulated API and
 // for Scaleway itself.
@@ -337,7 +340,7 @@ func Rejected() map[string]string {
 		"types/LOC":                 "tsigoat did not check that Scaleway keeps LOC records intact",
 		"types/PTR":                 "Scaleway may hold no PTR record",
 		"types/RP":                  "tsigoat did not check that Scaleway keeps RP records intact",
-		"types/URI":                 "tsigoat did not check that Scaleway keeps URI records intact",
+		"types/URI":                 uncheckedURI,
 		"types/NS":                  "Scaleway gives NS records a TTL of 1800 at least",
 		"txt/padded":                "Scaleway trims the spaces at the ends of TXT records",
 		"txt/quote":                 "Scaleway mangles the quotes of TXT strings",
@@ -368,7 +371,9 @@ func Divergences() map[string]string {
 		"records/hinfo":                "tsigoat did not check that Scaleway keeps HINFO records intact",
 		"records/loc":                  "tsigoat did not check that Scaleway keeps LOC records intact",
 		"records/ptr":                  "Scaleway may hold no PTR record",
-		"records/uri":                  "tsigoat did not check that Scaleway keeps URI records intact",
+		"records/uri":                  uncheckedURI,
+		"records/uri-backslash":        uncheckedURI,
+		"records/caa-backslash":        "tsigoat did not check that Scaleway keeps the backslashes of CAA records",
 		"records/ttl-zero":             "Scaleway holds no TTL below 60: tsigoat raises it",
 		"records/txt-escaped-quotes":   "Scaleway mangles the quotes of TXT strings: tsigoat turns them down",
 		"records/txt-multiple-strings": "Scaleway holds a TXT record as a single string: tsigoat turns down the strings that it would join",

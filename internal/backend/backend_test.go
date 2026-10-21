@@ -1,6 +1,7 @@
 package backend_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/miekg/dns"
@@ -48,6 +49,45 @@ func TestChangeString(t *testing.T) {
 	} {
 		if got := change.String(); got != want {
 			t.Errorf("String() = %q, want %q", got, want)
+		}
+	}
+}
+
+// TestNormalize checks that the CAA and URI records decoded from the wire,
+// whose strings miekg/dns leaves raw, keep their data when written and
+// encoded again.
+func TestNormalize(t *testing.T) {
+	t.Parallel()
+	for _, text := range []string{
+		`caa.example.test. 60 IN CAA 0 issue "ca.example.net; account=a\\b"`,
+		`caa.example.test. 60 IN CAA 0 iodef "mailto:\"quoted\"@example.net"`,
+		`caa.example.test. 60 IN CAA 0 issue "caf\195\169"`,
+		`_http._tcp.example.test. 60 IN URI 10 1 "https://example.net/a\\b"`,
+	} {
+		rr, err := dns.NewRR(text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wire := make([]byte, dns.Len(rr)+1)
+		n, err := dns.PackRR(rr, wire, 0, nil, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		received, _, err := dns.UnpackRR(wire[:n], 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		backend.Normalize(received)
+		if got, want := received.String(), rr.String(); got != want {
+			t.Errorf("Normalize() of %s writes %s", want, got)
+		}
+		again := make([]byte, dns.Len(received)+1)
+		if m, packErr := dns.PackRR(received, again, 0, nil, false); packErr != nil || !bytes.Equal(again[:m], wire[:n]) {
+			t.Errorf("Normalize() of %s encodes otherwise: %v", text, packErr)
+		}
+		canonical, err := backend.Canonical(rr)
+		if err != nil || !dns.IsDuplicate(canonical, received) {
+			t.Errorf("Canonical(%s) = %v, %v, want %s", text, canonical, err, received)
 		}
 	}
 }

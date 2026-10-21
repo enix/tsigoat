@@ -1,0 +1,8 @@
+description: A CAA record whose value holds a backslash reaches the backend intact.
+refs: ["RFC 8659 4.1"]
+requests:
+  - updates:
+      - 'add @ 300 IN CAA 0 issue "ca.example.test; account=a\\b"'
+expect:
+  records:
+    - '@ 300 IN CAA 0 issue "ca.example.test; account=a\\b"'

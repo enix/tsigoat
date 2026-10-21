@@ -259,7 +259,41 @@ func Canonical(rr dns.RR) (dns.RR, error) {
 	if err != nil {
 		return nil, fmt.Errorf("decoding %s: %w", rr, err)
 	}
+	Normalize(decoded)
 	return decoded, nil
+}
+
+// Normalize gives the value of a CAA record and the target of a URI record,
+// which miekg/dns decodes from the wire as raw bytes, the escaped form in
+// which it parses them from text, encodes them and writes them: decoded raw,
+// a backslash in them would read as an escape, and go. Every record decoded
+// from the wire goes through it.
+func Normalize(rr dns.RR) {
+	switch typed := rr.(type) {
+	case *dns.CAA:
+		typed.Value = escapeOctets(typed.Value)
+	case *dns.URI:
+		typed.Target = escapeOctets(typed.Target)
+	}
+}
+
+// escapeOctets escapes raw bytes as miekg/dns writes the strings of the
+// presentation format: quotes and backslashes, and the bytes outside
+// printable ASCII as \DDD.
+func escapeOctets(s string) string {
+	var escaped strings.Builder
+	for i := range len(s) {
+		switch c := s[i]; {
+		case c == '"' || c == '\\':
+			escaped.WriteByte('\\')
+			escaped.WriteByte(c)
+		case c < ' ' || c > '~':
+			fmt.Fprintf(&escaped, "\\%03d", c)
+		default:
+			escaped.WriteByte(c)
+		}
+	}
+	return escaped.String()
 }
 
 // RData returns the RDATA of a record in presentation format.

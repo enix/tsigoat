@@ -442,6 +442,9 @@ func normalize(created *Record, zone string) (rec Record, message string) {
 	return rec, ""
 }
 
+// noURI is why OVHcloud turns down the URI records.
+const noURI = "OVHcloud holds no URI record"
+
 // Rejected returns the cases of the conformance suite of the backends that
 // the ovh backend turns down, with the reason, for the simulated API and for
 // OVHcloud itself.
@@ -449,7 +452,7 @@ func Rejected() map[string]string {
 	return map[string]string{
 		"types/DS":                  "OVHcloud holds no DS record",
 		"types/HINFO":               "OVHcloud holds no HINFO record",
-		"types/URI":                 "OVHcloud holds no URI record",
+		"types/URI":                 noURI,
 		"txt/padded":                "OVHcloud trims the spaces at the ends of TXT strings",
 		"txt/quote":                 "OVHcloud mangles the quotes of TXT strings",
 		"txt/backslash":             "OVHcloud mangles the backslashes of TXT strings",
@@ -475,7 +478,9 @@ func Divergences() map[string]string {
 	return map[string]string{
 		"records/ds":                 "OVHcloud holds no DS record",
 		"records/hinfo":              "OVHcloud holds no HINFO record",
-		"records/uri":                "OVHcloud holds no URI record",
+		"records/uri":                noURI,
+		"records/uri-backslash":      noURI,
+		"records/caa-backslash":      "tsigoat did not check that OVHcloud keeps the backslashes of CAA records",
 		"records/ttl-zero":           "OVHcloud holds no TTL below 60: tsigoat raises it",
 		"records/txt-escaped-quotes": "OVHcloud mangles the quotes of TXT strings: tsigoat turns them down",
 		"records/txt-utf8":           "tsigoat keeps TXT strings to printable ASCII",

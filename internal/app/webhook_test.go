@@ -13,6 +13,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/enix/tsigoat/internal/backend"
 	"github.com/enix/tsigoat/internal/backend/memory"
 	"github.com/enix/tsigoat/internal/backend/webhook"
 	"github.com/enix/tsigoat/internal/update"
@@ -101,16 +102,12 @@ func record(op *webhook.Operation) (dns.RR, error) {
 	}
 }
 
-// asReceived returns a record as a DNS message carries it: the engine takes
-// the records of the messages, whose RDATA may differ in form from the same
-// RDATA parsed from text, such as hexadecimal digits in another case.
+// asReceived returns a record as the server hands it to the engine: decoded
+// from a DNS message, whose RDATA may differ in form from the same RDATA
+// parsed from text, such as hexadecimal digits in another case, then
+// normalized.
 func asReceived(rr dns.RR) (dns.RR, error) {
-	buf := make([]byte, dns.Len(rr)+1)
-	n, err := dns.PackRR(rr, buf, 0, nil, false)
-	if err != nil {
-		return nil, fmt.Errorf("encoding %s: %w", rr, err)
-	}
-	decoded, _, err := dns.UnpackRR(buf[:n], 0)
+	decoded, err := backend.Canonical(rr)
 	if err != nil {
 		return nil, fmt.Errorf("decoding %s: %w", rr, err)
 	}

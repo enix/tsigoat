@@ -269,12 +269,22 @@ func TestRoundTrip(t *testing.T) {
 		`quotes.example.test. 300 IN NAPTR 100 10 "U" "E2U+sip" "!^(.*)$!sip:\"q\"@example.net!" .`,
 		`caa.example.test. 300 IN CAA 0 iodef "mailto:a\"b@example.net"`,
 		`caa2.example.test. 300 IN CAA 0 issue "letsencrypt.org; validationmethods=dns-01"`,
+		`caa3.example.test. 300 IN CAA 0 issue "ca.example.net; account=a\\b"`,
 		`_http._tcp.example.test. 300 IN URI 10 1 "https://example.net/a\"b"`,
+		`_ftp._tcp.example.test. 300 IN URI 10 1 "https://example.net/a\\b"`,
 		`https.example.test. 300 IN HTTPS 1 . alpn="h2\;foo"`,
 		`svcb.example.test. 300 IN SVCB 1 svc.example.net. alpn="h2,h3" port="8443"`,
 		`txt.example.test. 300 IN TXT "back\\slash" "say \"hi\""`,
 	} {
+		// The engine takes the records as a DNS message carries them.
 		change := replace(t, text)
+		for i, rr := range change.RRset.Records {
+			received, err := backend.Canonical(rr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			change.RRset.Records[i] = received
+		}
 		if err := b.Apply(t.Context(), testZone, []backend.Change{change}); err != nil {
 			t.Errorf("Apply(%s): %v", text, err)
 			continue

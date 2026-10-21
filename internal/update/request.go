@@ -77,6 +77,9 @@ func Parse(m *dns.Msg, zone string, class uint16, served []string) (*Request, er
 	if count := len(m.Answer) + len(m.Ns); count > MaxRecords {
 		return nil, reject(dns.RcodeRefused, "%d records, more than the %d allowed", count, MaxRecords)
 	}
+	for _, rr := range slices.Concat(m.Answer, m.Ns) {
+		backend.Normalize(rr)
+	}
 	for _, rr := range m.Answer {
 		if err := checkPrerequisite(rr, zone, class, served); err != nil {
 			return nil, err
