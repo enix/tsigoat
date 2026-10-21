@@ -61,7 +61,8 @@ exit $status
 
 // Fuzz runs every fuzz target of the module in turn, each for the given time.
 // Targets are discovered with `go test -list`, so that new ones run without
-// touching the pipeline.
+// touching the pipeline. A package that does not build fails the run, rather
+// than read as one without targets, and so does a run that finds none.
 func (m *Tsigoat) Fuzz(
 	ctx context.Context,
 	// Time given to each target, as a Go duration or a number of runs such
@@ -73,12 +74,21 @@ func (m *Tsigoat) Fuzz(
 	return goBase(m.Source).
 		WithEnvVariable("FUZZTIME", fuzztime).
 		WithExec([]string{"sh", "-euc", `
-for pkg in $(go list ./...); do
-  for target in $(go test -list '^Fuzz' "$pkg" | grep '^Fuzz' || true); do
+packages=$(go list ./...)
+count=0
+for pkg in $packages; do
+  listed=$(go test -list '^Fuzz' "$pkg")
+  for target in $(printf '%s\n' "$listed" | grep '^Fuzz' || true); do
     echo "== $target ($pkg)"
     go test -run '^$' -fuzz "^$target\$" -fuzztime "$FUZZTIME" "$pkg"
+    count=$((count + 1))
   done
 done
+echo "== $count fuzz targets"
+if [ "$count" -eq 0 ]; then
+  echo "no fuzz target found" >&2
+  exit 1
+fi
 `}).
 		Stdout(ctx)
 }
