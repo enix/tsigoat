@@ -162,6 +162,9 @@ Over UDP, a response fits in 512 octets, or in the payload size that the
 client advertises with EDNS, up to 1232: compressed if need be, then cut down
 to its question and its OPT and TSIG records, with TC set, for the client to
 retry over TCP. Only the SOA of a zone with long names takes that much room.
+A response that does not fit even so, whose question and TSIG record take
+the room alone, as for a request about as large with long names, goes out
+larger, with TC set.
 
 ## Testing
 
