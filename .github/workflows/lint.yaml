@@ -30,6 +30,7 @@ jobs:
     name: Detect changed paths
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       go: ${{ steps.filter.outputs.go }}
       markdown: ${{ steps.filter.outputs.markdown }}
@@ -99,6 +100,7 @@ jobs:
       always() &&
       (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -129,6 +131,7 @@ jobs:
       always() &&
       (github.event_name != 'pull_request' || needs.changes.outputs.markdown == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -145,6 +148,7 @@ jobs:
       always() &&
       (github.event_name != 'pull_request' || needs.changes.outputs.actions == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -161,6 +165,7 @@ jobs:
       always() &&
       (github.event_name != 'pull_request' || needs.changes.outputs.dockerfile == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -178,6 +183,7 @@ jobs:
       !inputs.skip-renovate &&
       (github.event_name != 'pull_request' || needs.changes.outputs.renovate == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -194,6 +200,7 @@ jobs:
       always() &&
       (github.event_name != 'pull_request' || needs.changes.outputs.helm == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -215,6 +222,7 @@ jobs:
       always() &&
       (github.event_name != 'pull_request' || needs.changes.outputs.manifests == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:

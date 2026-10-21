@@ -19,6 +19,7 @@ jobs:
   analysis:
     name: Analysis (OpenSSF)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       security-events: write # upload SARIF to code scanning
       id-token: write # OIDC token for the signed publication
