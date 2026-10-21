@@ -24,6 +24,15 @@ def escape(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def link(url, label):
+    """Returns a Slack link to a web address, or the label and the address as
+    text: Slack reads <!...>, <@...> and <#...> as mentions of a channel, a
+    user or a conversation."""
+    if re.match(r"https?://", url):
+        return f"<{url}|{label or url}>"
+    return f"{label} ({url})" if label else url
+
+
 def inline(text, repository_url):
     """Turns the inline Markdown of a line into mrkdwn."""
     kept = []
@@ -36,7 +45,7 @@ def inline(text, repository_url):
     text = escape(text)
     text = re.sub(
         r"!?\[([^\]]*)\]\(([^)\s]+)[^)]*\)",
-        lambda m: keep(f"<{m[2]}|{m[1] or m[2]}>"),
+        lambda m: keep(link(m[2], m[1])),
         text,
     )
     # GitHub links the commits, issues and users that the notes name.
