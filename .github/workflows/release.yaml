@@ -169,6 +169,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GODEBUG: http2client=0
+          # The tag of the run, which GoReleaser would otherwise choose among
+          # the tags of the commit: a release may share it with a candidate.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
       # The chart pulls the tags of the release by digest. GoReleaser builds
       # each image once, for every platform, and pushes that index under every
       # name: each tag has one digest, which every registry must serve.

@@ -218,6 +218,12 @@ dockers_v2:
 # signature per tag, here, signed each digest again.
 
 # ─── Release and changelog ───────────────────────────────────────────────────
+# Among the tags of a commit, which a release may share with one of its
+# candidates, GoReleaser takes the highest: v0.1.0 ranks above v0.1.0-rc.1,
+# which git would rank above it. The release workflow names its tag.
+git:
+  prerelease_suffix: "-"
+
 release:
   github:
     owner: enix
