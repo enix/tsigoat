@@ -123,8 +123,11 @@ change of TTL, prerequisites and CNAME transitions are serialized within one
 pod alone: see
 [Several instances](https://github.com/enix/tsigoat/blob/main/docs/operations.md#several-instances).
 To keep every guarantee of RFC 2136, or in front of an older PowerDNS, set
-`replicaCount` to 1, and `strategy.type` to `Recreate` so that two pods never
-run at once. `service.sessionAffinity` set to `ClientIP` sends the requests of
+`replicaCount` to 1, and `strategy.type` to `Recreate`, which stops the old
+pod before it starts the new one during a rollout alone: a pod deleted by hand
+or evicted gets its replacement at once, while it finishes its updates in
+progress, for 26 seconds at most. Avoid deleting the pod while updates run.
+`service.sessionAffinity` set to `ClientIP` sends the requests of
 a client to one pod, which keeps these guarantees between the updates of that
 client, not between clients. `topologySpreadConstraints` spreads the replicas
 over nodes or zones.
@@ -177,7 +180,7 @@ covers the images and the binaries.
 | image.digest | string | `""` | Image digest, which takes precedence over the tag |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | imagePullSecrets | list | `[]` | Names of the Secrets to pull the image with |
-| replicaCount | int | `2` | Number of pods. Several pods keep the records of each other's updates, on PowerDNS since 4.9.12 and 5.0.2, but not every guarantee of RFC 2136 across pods: see [Replicas](#replicas). 1 keeps them all, with the `Recreate` strategy |
+| replicaCount | int | `2` | Number of pods. Several pods keep the records of each other's updates, on PowerDNS since 4.9.12 and 5.0.2, but not every guarantee of RFC 2136 across pods. 1, with the `Recreate` strategy, keeps them all, but while a pod deleted or evicted outside a rollout finishes its updates beside its replacement: see [Replicas](#replicas) |
 | strategy | object | a rolling update that starts a new pod before stopping an old one | Update strategy of the Deployment |
 | podDisruptionBudget.enabled | bool | `true` | Create a PodDisruptionBudget, with more than one replica |
 | podDisruptionBudget.maxUnavailable | int | `1` | Pods that a voluntary disruption, such as the drain of a node, may stop at once |

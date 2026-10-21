@@ -48,7 +48,9 @@ chart/                 Helm chart; README.md and values.schema.json generated
   run: TTL changes, prerequisites and CNAME transitions are only serialised
   within one (`docs/operations.md#several-instances`, an assumed choice);
   client affinity keeps them between the updates of one client alone, and
-  an older PowerDNS (no EXTEND/PRUNE) needs a single instance.
+  an older PowerDNS (no EXTEND/PRUNE) needs a single instance. `Recreate`
+  keeps a single replica alone during rollouts only: a pod deleted or
+  evicted finishes its updates (26 s at most) beside its replacement.
 - A zone on an `rfc2136` or `webhook` backend skips the engine: once the
   policy allows an update, `backend.Relay` sends it whole to the name server or
   the endpoint, which applies it; no zone lock in the server (the webhook

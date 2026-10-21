@@ -85,8 +85,13 @@ A few guarantees of RFC 2136 hold within an instance alone:
   not each one whole before the other.
 
 To keep them all, run a single instance: with the chart, set `replicaCount`
-to 1, and `strategy.type` to `Recreate` so that two pods never run at once,
-even during a rollout. Session affinity keeps them for the updates of one
+to 1, and `strategy.type` to `Recreate`, which stops the old pod before it
+starts the new one. Kubernetes holds that during the rollouts of the
+Deployment alone: a pod deleted by hand or evicted gets its replacement at
+once, while it finishes its updates in progress, for 26 seconds at most,
+which may then race with those of the new pod. Avoid deleting the pod while
+updates run, such as during the renewals of cert-manager. Session affinity
+keeps the guarantees above for the updates of one
 client alone: with `service.sessionAffinity` set to `ClientIP` in the chart,
 or a routing by client in a CNI or an external load balancer, the updates of
 a client go to one instance, which serializes them, such as the concurrent

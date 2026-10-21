@@ -77,7 +77,9 @@ To move a client off a legacy algorithm:
   accept unsigned updates.
 - **Several instances** keep the records that each other's updates add and
   remove, on PowerDNS since 4.9.12 and 5.0.2, but serialize a change of TTL,
-  prerequisites and CNAME transitions within one instance alone: see
+  prerequisites and CNAME transitions within one instance alone. Nothing
+  fences two instances apart: with a single replica, the `Recreate` strategy
+  of the chart holds during rollouts alone. See
   [Several instances](operations.md#several-instances).
 
 ## Hardening a deployment

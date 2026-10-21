@@ -123,8 +123,11 @@ change of TTL, prerequisites and CNAME transitions are serialized within one
 pod alone: see
 [Several instances](https://github.com/enix/tsigoat/blob/main/docs/operations.md#several-instances).
 To keep every guarantee of RFC 2136, or in front of an older PowerDNS, set
-`replicaCount` to 1, and `strategy.type` to `Recreate` so that two pods never
-run at once. `service.sessionAffinity` set to `ClientIP` sends the requests of
+`replicaCount` to 1, and `strategy.type` to `Recreate`, which stops the old
+pod before it starts the new one during a rollout alone: a pod deleted by hand
+or evicted gets its replacement at once, while it finishes its updates in
+progress, for 26 seconds at most. Avoid deleting the pod while updates run.
+`service.sessionAffinity` set to `ClientIP` sends the requests of
 a client to one pod, which keeps these guarantees between the updates of that
 client, not between clients. `topologySpreadConstraints` spreads the replicas
 over nodes or zones.

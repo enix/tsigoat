@@ -1,5 +1,6 @@
-# A single replica, which keeps every guarantee of RFC 2136, stopped before
-# its replacement starts during a rollout.
+# A single replica, stopped before its replacement starts during a rollout:
+# it keeps every guarantee of RFC 2136, but while a pod deleted or evicted
+# outside a rollout finishes its updates beside its replacement.
 replicaCount: 1
 strategy:
   type: Recreate

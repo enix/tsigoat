@@ -47,8 +47,9 @@ imagePullSecrets: []
 # @schema
 # -- Number of pods. Several pods keep the records of each other's updates,
 # on PowerDNS since 4.9.12 and 5.0.2, but not every guarantee of RFC 2136
-# across pods: see [Replicas](#replicas). 1 keeps them all, with the
-# `Recreate` strategy
+# across pods. 1, with the `Recreate` strategy, keeps them all, but while a
+# pod deleted or evicted outside a rollout finishes its updates beside its
+# replacement: see [Replicas](#replicas)
 replicaCount: 2
 
 # @schema
