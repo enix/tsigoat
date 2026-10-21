@@ -27,7 +27,7 @@ close the document.
 | F11 | Confirmed | Fixed: failure expiry from the end of the read, cancellable wait | `0635b3c` |
 | F12 | Confirmed | Fixed: RFC 8945 length rules, BADTRUNC under a full-MAC policy | `53aed06` |
 | F13 | Confirmed | Fixed: additions without the RDATA of their type get FORMERR | `6741fcb`, `06fc528` |
-| F14 | Confirmed | Guarantee corrected; fencing left to a decision | `ca07db7` |
+| F14 | Confirmed | Guarantee corrected; then several replicas whose writes keep each other's records | `ca07db7`, `42c3a70`, `3d8a915` |
 | F15 | Confirmed | Fixed: one toolchain for tests, scans and releases; scanner pinned | `5cb039a` |
 | F16 | Confirmed | Fixed: second YAML document and escaped names refused | `8372c29`, `06fc528` |
 | F17 | Confirmed | Fixed in the code: no loss on PowerDNS 4.9 | `299e338` |
@@ -250,6 +250,17 @@ the pod while updates run.
 nor a lease removes every stale writer, as the audit notes, and both cost
 availability or complexity.
 
+**Follow-up, the same day.** The maintainer chose availability over fencing,
+and no lease: a lock on the Kubernetes API would load it in proportion to the
+traffic, and fail during the maintenances of the control plane. The engine
+now sends the records that an update adds and removes, which the backends
+apply to the records as they stand (EXTEND and PRUNE at PowerDNS), so that
+concurrent instances keep each other's records (`42c3a70`); the chart runs
+two replicas, with a rolling update and a PodDisruptionBudget (`3d8a915`).
+What holds within one instance alone, a change of TTL, prerequisites and
+CNAME transitions, is documented as an assumed choice, with the ways to keep
+it: a single replica, or the affinity of a client to one pod.
+
 ### F15 — Different Go toolchains
 
 **Confirmed.** **Action:** `go.mod` names the toolchain, `go1.27.2`, which
@@ -410,7 +421,9 @@ workflows to upload them.
 
 1. **Fencing (F14).** Keep the documented limitation of one Deployment with
    Recreate, or move to a single-replica StatefulSet, or add a lease with the
-   handling of a lost lease. None of them stops every stale writer.
+   handling of a lost lease. None of them stops every stale writer. Decided
+   after this response: several replicas whose writes keep each other's
+   records, see F14.
 2. **Stronger webhook guarantees (F05).** Endpoints get an `id` and an
    ordering requirement; a status or reconciliation API would let tsigoat
    settle unknown outcomes, at the cost of a larger protocol.
