@@ -4,6 +4,10 @@
     "config:recommended",
     ":dependencyDashboard",
   ],
+  // config:recommended would title the updates `chore: ...`, and those of
+  // direct dependencies `fix: ...`: the package rules of this preset win over
+  // semanticCommitType.
+  ignorePresets: [":semanticPrefixFixDepsChoreOthers"],
 
   // Dependency bumps are titled `deps: ...`, which GoReleaser lists in the
   // "Dependencies" section of the changelog. Vulnerability fixes use
