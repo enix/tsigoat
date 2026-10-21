@@ -201,7 +201,10 @@ with the D* decisions, tooling), which must never be committed.
 - Everything in the repository is in English, but `docs/local/`.
 - Conventional Commits; GoReleaser builds the changelog from them, svu the
   next version (`feat:` a minor, a breaking change too in 0.x, anything else
-  a patch). Releases: `tag.yaml` tags main and dispatches `release.yaml` on
+  a patch). The types are those of `CONTRIBUTING.md`: a dependency bump is
+  `deps:`, whatever the dependency, as Renovate titles its own, and
+  `security:` when it fixes a vulnerability; `chore`, `ci`, `refactor`,
+  `test` and `build` stay out of the changelog. Releases: `tag.yaml` tags main and dispatches `release.yaml` on
   the tag; GoReleaser leaves a draft; its publication posts on Slack
   (`announce.yaml`, `scripts/announce-release.py`).
 - golangci-lint must pass clean, without path exclusions. Every `//nolint`
