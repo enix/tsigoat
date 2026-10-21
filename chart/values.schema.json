@@ -181,6 +181,27 @@
       "required": [],
       "type": "object"
     },
+    "podDisruptionBudget": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "maxUnavailable": {
+          "default": 1,
+          "required": [],
+          "type": [
+            "integer",
+            "string"
+          ]
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
     "podLabels": {
       "additionalProperties": {
         "type": "string"
@@ -247,6 +268,11 @@
       "additionalProperties": true,
       "required": [],
       "type": "object"
+    },
+    "replicaCount": {
+      "default": 2,
+      "minimum": 1,
+      "type": "integer"
     },
     "resources": {
       "additionalProperties": true,
@@ -316,6 +342,20 @@
         "port": {
           "default": 53,
           "maximum": 65535,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "sessionAffinity": {
+          "default": "None",
+          "enum": [
+            "None",
+            "ClientIP"
+          ],
+          "type": "string"
+        },
+        "sessionAffinityTimeoutSeconds": {
+          "default": 10800,
+          "maximum": 86400,
           "minimum": 1,
           "type": "integer"
         },
@@ -403,12 +443,24 @@
       ],
       "type": "object"
     },
+    "strategy": {
+      "additionalProperties": true,
+      "required": [],
+      "type": "object"
+    },
     "terminationGracePeriodSeconds": {
       "default": 30,
       "minimum": 0,
       "type": "integer"
     },
     "tolerations": {
+      "items": {
+        "required": [],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "topologySpreadConstraints": {
       "items": {
         "required": [],
         "type": "object"
@@ -421,6 +473,7 @@
     "fullnameOverride",
     "namespaceOverride",
     "image",
+    "podDisruptionBudget",
     "secret",
     "log",
     "service",

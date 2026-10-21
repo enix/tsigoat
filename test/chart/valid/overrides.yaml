@@ -1,5 +1,14 @@
-# Every override of names, image, pod and ports, and additional objects.
+# Every override of names, replicas, image, pod and ports, and additional
+# objects.
 nameOverride: dns-updates
+replicaCount: 3
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 1
+    maxSurge: 0
+podDisruptionBudget:
+  maxUnavailable: 50%
 fullnameOverride: updates
 namespaceOverride: dns
 extraLabels:
@@ -53,6 +62,8 @@ admin:
 service:
   type: NodePort
   port: 5353
+  sessionAffinity: ClientIP
+  sessionAffinityTimeoutSeconds: 600
 serviceAccount:
   create: false
   name: dns
@@ -94,6 +105,10 @@ affinity:
             - key: kubernetes.io/arch
               operator: In
               values: [amd64, arm64]
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
 priorityClassName: system-cluster-critical
 terminationGracePeriodSeconds: 60
 extraDeploy:

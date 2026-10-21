@@ -111,12 +111,21 @@ the addresses of the clients rather than those of the nodes.
 The administration server, which serves the probes and the metrics, has no
 authentication: it has its own Service, always of type `ClusterIP`.
 
-tsigoat runs as a single replica, with the `Recreate` strategy: it serializes
-the updates of a zone within its process, and two instances could lose each
-other's updates. `Recreate` keeps two pods from running at once during a
-rollout alone: when a pod is deleted or evicted, its replacement starts while
-it finishes its updates in progress, for 26 seconds at most. Avoid deleting
-the pod while updates run, such as during the renewals of cert-manager.
+## Replicas
+
+tsigoat runs two replicas by default, with a rolling update and a
+PodDisruptionBudget, so that one of them may stop while the other serves. Each
+pod serializes the updates of a zone; the records that an update adds and
+removes apply to the records as they stand, so that the pods keep the records
+of each other's updates, such as the challenges of a certificate and of its
+wildcard. A change of TTL, prerequisites and CNAME transitions are serialized
+within one pod alone: see
+[Several instances](https://github.com/enix/tsigoat/blob/main/docs/operations.md#several-instances).
+To keep every guarantee of RFC 2136, set `replicaCount` to 1, with the
+`Recreate` strategy if two pods must not run at once during a rollout, or set
+`service.sessionAffinity` to `ClientIP`, which sends the requests of a client
+to one pod. `topologySpreadConstraints` spreads the replicas over nodes or
+zones.
 
 ## Monitoring
 

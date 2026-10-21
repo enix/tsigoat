@@ -25,6 +25,12 @@ spec:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   {{- end }}
+  sessionAffinity: {{ .Values.service.sessionAffinity }}
+  {{- if eq .Values.service.sessionAffinity "ClientIP" }}
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: {{ .Values.service.sessionAffinityTimeoutSeconds }}
+  {{- end }}
   selector:
     {{- include "tsigoat.selectorLabels" . | nindent 4 }}
   ports:

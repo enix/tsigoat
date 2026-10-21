@@ -30,8 +30,7 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
 
 > [!WARNING]
 > tsigoat has no release yet. Its backends are PowerDNS, Cloudflare,
-> OVHcloud, Scaleway, the name servers that implement RFC 2136 and webhooks;
-> tsigoat runs as a single instance, but in front of name servers alone.
+> OVHcloud, Scaleway, the name servers that implement RFC 2136 and webhooks.
 
 ## Features
 
@@ -61,6 +60,10 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
   point.
 - **SOA queries** for the zones that tsigoat serves, which lego, certbot and
   nsupdate send to find the zone of a name.
+- **Several instances**, such as the replicas of the chart: the records that
+  an update adds and removes apply to the records as they stand, so that
+  the instances keep each other's records, with the limits that
+  [operations.md](docs/operations.md#several-instances) tells.
 - **Operations**: one structured log entry per update, Prometheus metrics,
   health checks, a strict configuration file with `check-config`, static
   binaries and multi-architecture images.

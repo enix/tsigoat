@@ -111,13 +111,14 @@ func checkRelease(t *testing.T, r release) {
 	t.Helper()
 	deployment := r.one(t, "Deployment")
 	d := spec[deploymentSpec](t, deployment)
-	if d.Replicas != 1 || d.Strategy.Type != "Recreate" {
-		t.Errorf("%d replicas with the %s strategy, want 1 with Recreate", d.Replicas, d.Strategy.Type)
+	if d.Replicas < 1 {
+		t.Errorf("%d replicas, want one at least", d.Replicas)
 	}
 	podLabels := d.Template.Metadata.Labels
 	if !selects(d.Selector.MatchLabels, podLabels) {
 		t.Errorf("the selector %v of the Deployment misses the pod labels %v", d.Selector.MatchLabels, podLabels)
 	}
+	checkDisruptionBudget(t, r, d.Replicas, podLabels)
 	if len(d.Template.Spec.Containers) != 1 {
 		t.Fatalf("%d containers, want 1", len(d.Template.Spec.Containers))
 	}
@@ -236,6 +237,27 @@ func checkServices(t *testing.T, r release, c *container, podLabels map[string]s
 			if e.Port != "admin" || e.Path != "/metrics" {
 				t.Errorf("ServiceMonitor %s scrapes %s%s, want admin/metrics", o.Metadata.Name, e.Port, e.Path)
 			}
+		}
+	}
+}
+
+// checkDisruptionBudget checks that a PodDisruptionBudget selects the pods of
+// several replicas, and that a single replica has none, which would block the
+// drain of its node.
+func checkDisruptionBudget(t *testing.T, r release, replicas int, podLabels map[string]string) {
+	t.Helper()
+	budgets := r["PodDisruptionBudget"]
+	if replicas == 1 && len(budgets) > 0 {
+		t.Errorf("%d PodDisruptionBudget for a single replica", len(budgets))
+	}
+	for _, o := range budgets {
+		s := spec[struct {
+			Selector struct {
+				MatchLabels map[string]string `yaml:"matchLabels"`
+			} `yaml:"selector"`
+		}](t, o)
+		if !selects(s.Selector.MatchLabels, podLabels) {
+			t.Errorf("the selector %v of the PodDisruptionBudget misses the pod labels %v", s.Selector.MatchLabels, podLabels)
 		}
 	}
 }

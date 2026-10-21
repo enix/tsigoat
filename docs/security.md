@@ -75,10 +75,10 @@ To move a client off a legacy algorithm:
 - **Rate**: tsigoat does not limit the rate of requests. Each signed update
   costs a few backend calls, each unsigned one none, but for the zones that
   accept unsigned updates.
-- **Single instance**: tsigoat serializes the updates of a zone within its
-  process, see [PowerDNS](powerdns.md#concurrency). Nothing fences two
-  instances apart: in Kubernetes, the `Recreate` strategy of the chart holds
-  during rollouts alone, see [Operations](operations.md#kubernetes).
+- **Several instances** keep the records that each other's updates add and
+  remove, but serialize a change of TTL, prerequisites and CNAME transitions
+  within one instance alone: see
+  [Several instances](operations.md#several-instances).
 
 ## Hardening a deployment
 

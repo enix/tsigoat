@@ -51,12 +51,10 @@ tsigoat out of the cluster and monitoring it.
 [examples/helm](../examples/helm) holds values files, for cert-manager and
 for clients outside the cluster, and a cert-manager ClusterIssuer.
 
-The chart runs one replica with the `Recreate` strategy, since tsigoat
-serializes the updates of a zone within its process. `Recreate` keeps two
-pods from running at once during a rollout alone: a pod deleted by hand or
-evicted gets its replacement at once, while it finishes its updates in
-progress, which may then race with those of the new pod. The pod passes the
-restricted Pod Security profile, and its probes use `/healthz` and `/readyz`.
+The chart runs two replicas by default, with a rolling update and a
+PodDisruptionBudget: [Several instances](#several-instances) tells what they
+keep of RFC 2136, and how to keep it all. The pods pass the restricted Pod
+Security profile, and their probes use `/healthz` and `/readyz`.
 The DNS Service and the Service of the administration server are apart, so
 that exposing the first never exposes the second.
 

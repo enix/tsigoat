@@ -1,4 +1,5 @@
-# tsigoat runs as a single replica: the chart has no replicaCount.
+# No replica.
+replicaCount: 0
 config:
   keys:
     - name: acme.
@@ -12,4 +13,5 @@ config:
   zones:
     - name: example.test.
       keys: [acme.]
-replicaCount: 2
+secret:
+  existingSecret: dns-secrets

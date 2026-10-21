@@ -42,6 +42,39 @@ image:
 imagePullSecrets: []
 
 # @schema
+# type: integer
+# minimum: 1
+# @schema
+# -- Number of pods. Several pods keep the records of each other's updates,
+# but not every guarantee of RFC 2136 across pods: see [Replicas](#replicas).
+# 1 keeps them all, as `service.sessionAffinity` does for the updates of one
+# client
+replicaCount: 2
+
+# @schema
+# type: object
+# additionalProperties: true
+# properties: {}
+# @schema
+# -- Update strategy of the Deployment
+# @default -- a rolling update that starts a new pod before stopping an old one
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxUnavailable: 0
+    maxSurge: 1
+
+podDisruptionBudget:
+  # -- Create a PodDisruptionBudget, with more than one replica
+  enabled: true
+  # @schema
+  # type: [integer, string]
+  # @schema
+  # -- Pods that a voluntary disruption, such as the drain of a node, may stop
+  # at once
+  maxUnavailable: 1
+
+# @schema
 # type: object
 # additionalProperties: true
 # properties: {}
@@ -135,6 +168,21 @@ service:
   loadBalancerSourceRanges: []
   # -- Class of a `LoadBalancer` Service
   loadBalancerClass: ""
+  # @schema
+  # type: string
+  # enum: [None, ClientIP]
+  # @schema
+  # -- Session affinity of the DNS Service: `ClientIP` sends the requests of a
+  # client to one pod, which serializes its updates
+  sessionAffinity: None
+  # @schema
+  # type: integer
+  # minimum: 1
+  # maximum: 86400
+  # @schema
+  # -- How long a client stays with its pod after its last request, in
+  # seconds, with `ClientIP`
+  sessionAffinityTimeoutSeconds: 10800
 
 admin:
   # @schema
@@ -348,14 +396,22 @@ tolerations: []
 # @schema
 # -- Affinity of the pod
 affinity: {}
+# @schema
+# type: array
+# items:
+#   type: object
+# @schema
+# -- Topology spread constraints of the pods, such as one per node; their
+# `labelSelector` defaults to the labels of the pods
+topologySpreadConstraints: []
 # -- Priority class of the pod
 priorityClassName: ""
 # @schema
 # type: integer
 # minimum: 0
 # @schema
-# -- Time given to the updates in progress when the pod stops: tsigoat
-# needs 26 seconds at most
+# -- Time given to the updates in progress when a pod stops: tsigoat needs 26
+# seconds at most
 terminationGracePeriodSeconds: 30
 
 # -- Additional objects to deploy with the release, as YAML objects or

@@ -1,0 +1,20 @@
+# A single replica, which keeps every guarantee of RFC 2136, stopped before
+# its replacement starts during a rollout.
+replicaCount: 1
+strategy:
+  type: Recreate
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns.example.test:8081
+        apiKeyFile: /run/secrets/tsigoat/pdns
+  zones:
+    - name: example.test.
+      keys: [acme.]
+secret:
+  existingSecret: dns-secrets

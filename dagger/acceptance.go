@@ -187,7 +187,7 @@ VALUES
 if ! helm install tsigoat /chart --namespace tsigoat --values /tmp/values.yaml --wait --timeout 3m; then
   kubectl -n tsigoat get all,events -o wide || true
   kubectl -n tsigoat describe pods || true
-  kubectl -n tsigoat logs deploy/tsigoat --tail=50 || true
+  kubectl -n tsigoat logs -l app.kubernetes.io/name=tsigoat --prefix --tail=50 || true
   exit 1
 fi
 kubectl -n tsigoat exec deploy/tsigoat -- /tsigoat check-config --backends
@@ -284,11 +284,12 @@ if ! kubectl wait --for=condition=Ready certificate --all -n default --timeout=3
   kubectl get certificate,certificaterequest,order,challenge -A -o wide || true
   kubectl describe challenge -A || true
   kubectl -n cert-manager logs deploy/cert-manager --tail=100 || true
-  kubectl -n tsigoat logs deploy/tsigoat --tail=100 || true
+  kubectl -n tsigoat logs -l app.kubernetes.io/name=tsigoat --prefix --tail=100 || true
   exit 1
 fi
 kubectl get certificate -n default
-echo "== updates applied by tsigoat: $(kubectl -n tsigoat logs deploy/tsigoat | grep '"msg":"update"' | grep -c '"rcode":"NOERROR"')"
+# The replicas share the updates: count them in the logs of every pod.
+echo "== updates applied by tsigoat: $(kubectl -n tsigoat logs -l app.kubernetes.io/name=tsigoat --tail=-1 | grep '"msg":"update"' | grep -c '"rcode":"NOERROR"')"
 echo "== OK"
 `)
 }

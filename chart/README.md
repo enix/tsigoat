@@ -111,12 +111,21 @@ the addresses of the clients rather than those of the nodes.
 The administration server, which serves the probes and the metrics, has no
 authentication: it has its own Service, always of type `ClusterIP`.
 
-tsigoat runs as a single replica, with the `Recreate` strategy: it serializes
-the updates of a zone within its process, and two instances could lose each
-other's updates. `Recreate` keeps two pods from running at once during a
-rollout alone: when a pod is deleted or evicted, its replacement starts while
-it finishes its updates in progress, for 26 seconds at most. Avoid deleting
-the pod while updates run, such as during the renewals of cert-manager.
+## Replicas
+
+tsigoat runs two replicas by default, with a rolling update and a
+PodDisruptionBudget, so that one of them may stop while the other serves. Each
+pod serializes the updates of a zone; the records that an update adds and
+removes apply to the records as they stand, so that the pods keep the records
+of each other's updates, such as the challenges of a certificate and of its
+wildcard. A change of TTL, prerequisites and CNAME transitions are serialized
+within one pod alone: see
+[Several instances](https://github.com/enix/tsigoat/blob/main/docs/operations.md#several-instances).
+To keep every guarantee of RFC 2136, set `replicaCount` to 1, with the
+`Recreate` strategy if two pods must not run at once during a rollout, or set
+`service.sessionAffinity` to `ClientIP`, which sends the requests of a client
+to one pod. `topologySpreadConstraints` spreads the replicas over nodes or
+zones.
 
 ## Monitoring
 
@@ -166,6 +175,10 @@ covers the images and the binaries.
 | image.digest | string | `""` | Image digest, which takes precedence over the tag |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | imagePullSecrets | list | `[]` | Names of the Secrets to pull the image with |
+| replicaCount | int | `2` | Number of pods. Several pods keep the records of each other's updates, but not every guarantee of RFC 2136 across pods: see [Replicas](#replicas). 1 keeps them all, as `service.sessionAffinity` does for the updates of one client |
+| strategy | object | a rolling update that starts a new pod before stopping an old one | Update strategy of the Deployment |
+| podDisruptionBudget.enabled | bool | `true` | Create a PodDisruptionBudget, with more than one replica |
+| podDisruptionBudget.maxUnavailable | int | `1` | Pods that a voluntary disruption, such as the drain of a node, may stop at once |
 | config | object | none: the chart refuses to install without zones and backends | Configuration of tsigoat: `keys`, `backends` and `zones`, as [docs/configuration.md](https://github.com/enix/tsigoat/blob/main/docs/configuration.md) describes them. The chart sets the listen addresses itself. Secret files are read from `/run/secrets/tsigoat`, see `secret`. |
 | secret.existingSecret | string | `""` | Name of an existing Secret, mounted in `/run/secrets/tsigoat`, whose keys the configuration reads with `secretFile` and `apiKeyFile` |
 | secret.files | object | `{}` | Files of a Secret that the chart creates and mounts in `/run/secrets/tsigoat`, by file name; prefer `existingSecret`, which keeps the secrets out of the release |
@@ -179,6 +192,8 @@ covers the images and the binaries.
 | service.externalTrafficPolicy | string | `""` | externalTrafficPolicy of a `NodePort` or `LoadBalancer` Service: `Local` keeps the addresses of the clients in the logs |
 | service.loadBalancerSourceRanges | list | `[]` | Sources allowed to reach a `LoadBalancer` Service, as CIDR blocks |
 | service.loadBalancerClass | string | `""` | Class of a `LoadBalancer` Service |
+| service.sessionAffinity | string | `"None"` | Session affinity of the DNS Service: `ClientIP` sends the requests of a client to one pod, which serializes its updates |
+| service.sessionAffinityTimeoutSeconds | int | `10800` | How long a client stays with its pod after its last request, in seconds, with `ClientIP` |
 | admin.port | int | `9153` | Port of the administration server, which serves `/healthz`, `/readyz` and `/metrics` to the probes and Prometheus, through its own `ClusterIP` Service |
 | serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor for the Prometheus operator |
 | serviceMonitor.interval | string | `""` | Scrape interval; the default of Prometheus when empty |
@@ -207,7 +222,8 @@ covers the images and the binaries.
 | nodeSelector | object | `{}` | Node selector of the pod |
 | tolerations | list | `[]` | Tolerations of the pod |
 | affinity | object | `{}` | Affinity of the pod |
+| topologySpreadConstraints | list | `[]` | Topology spread constraints of the pods, such as one per node; their `labelSelector` defaults to the labels of the pods |
 | priorityClassName | string | `""` | Priority class of the pod |
-| terminationGracePeriodSeconds | int | `30` | Time given to the updates in progress when the pod stops: tsigoat needs 26 seconds at most |
+| terminationGracePeriodSeconds | int | `30` | Time given to the updates in progress when a pod stops: tsigoat needs 26 seconds at most |
 | extraDeploy | list | `[]` | Additional objects to deploy with the release, as YAML objects or strings, both rendered as templates |
 | global.imageRegistry | string | `""` | Registry of every image, which overrides `image.registry` |
