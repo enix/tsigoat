@@ -9,8 +9,8 @@
 // deletions that RFC 2136 ignores whatever the state of the zone, turns down
 // the updates that the endpoint could not evaluate without reading the zone,
 // and sends the updates of a zone one at a time, while the endpoint answers
-// within the timeout. A request that fails once it left whole, as on a
-// timeout, leaves the outcome of its update unknown.
+// within the timeout. A request that fails once it may have left whole, as on
+// a timeout, leaves the outcome of its update unknown.
 package webhook
 
 import (
@@ -25,12 +25,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptrace"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -251,8 +249,8 @@ func newID() string {
 
 // uncertainError is a failure of a request that may have reached the
 // endpoint, which may have applied it: a timeout or a broken connection once
-// the request left whole, or a gateway that answers for an endpoint that
-// broke off or took too long.
+// the request may have left whole, or a gateway that answers for an endpoint
+// that broke off or took too long.
 type uncertainError struct {
 	err error
 }
@@ -318,16 +316,10 @@ func (r *Relay) post(ctx context.Context, request *Request) error {
 	}
 	defer unlock()
 
-	// sent tells whether the request left whole: the endpoint may apply it
-	// whatever happens next.
-	var sent atomic.Bool
-	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-		WroteRequest: func(info httptrace.WroteRequestInfo) {
-			if info.Err == nil {
-				sent.Store(true)
-			}
-		},
-	})
+	// A request that may have left whole, the endpoint may apply whatever
+	// happens next.
+	var delivery httpclient.Delivery
+	ctx = delivery.Trace(ctx)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, r.url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("building the request: %w", err)
@@ -349,7 +341,7 @@ func (r *Relay) post(ctx context.Context, request *Request) error {
 	resp, err := r.client.Do(req)
 	if err != nil {
 		err = fmt.Errorf("posting the update: %w", err)
-		if sent.Load() {
+		if delivery.Left() {
 			return &uncertainError{err: err}
 		}
 		return err

@@ -110,9 +110,12 @@ provider holds no TTL below a minimum implements `backend.TTLFloor`: it turns
 lower TTLs down, and the server raises the TTLs of an update to the minimum,
 which the update log reports. The PowerDNS backend sends one PATCH request,
 which PowerDNS applies in one transaction, as the Cloudflare and Scaleway
-backends send one batch, or PATCH, request; when the request left whole but
-its answer did not come back, the PowerDNS backend reads the RRsets again, as
-the backends of the hosted providers do. The API of OVHcloud has no
+backends send one batch, or PATCH, request; when the request may have left
+whole but its answer did not come back, the PowerDNS backend reads the RRsets
+again, as the backends of the hosted providers do. A request may have left
+whole once its write started, unless the write failed: over HTTP/2, the
+transport gives up on a request without waiting for the end of its write,
+which `httpclient.Delivery` takes into account. The API of OVHcloud has no
 transaction: its backend writes one record at a time and publishes the zone
 once, at the end; when a request fails, it takes back what the answers of its
 requests tell that the update did, from a journal: the records that it

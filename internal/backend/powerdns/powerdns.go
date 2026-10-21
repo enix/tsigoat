@@ -16,12 +16,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptrace"
 	"net/url"
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -338,21 +336,15 @@ func sameRecord(a, b dns.RR) bool {
 }
 
 // do calls the API, and decodes the response into out when not nil. A
-// failure once the request left whole, and the 502 and 504 of a gateway, are
-// an *unansweredError.
+// failure once the request may have left whole, and the 502 and 504 of a
+// gateway, are an *unansweredError.
 func (b *Backend) do(ctx context.Context, method, path string, in, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, b.timeout)
 	defer cancel()
-	// sent tells whether the request left whole: PowerDNS may apply it
-	// whatever happens next.
-	var sent atomic.Bool
-	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-		WroteRequest: func(info httptrace.WroteRequestInfo) {
-			if info.Err == nil {
-				sent.Store(true)
-			}
-		},
-	})
+	// A request that may have left whole, PowerDNS may apply whatever
+	// happens next.
+	var delivery httpclient.Delivery
+	ctx = delivery.Trace(ctx)
 
 	var payload io.Reader
 	if in != nil {
@@ -375,7 +367,7 @@ func (b *Backend) do(ctx context.Context, method, path string, in, out any) erro
 	resp, err := b.client.Do(req)
 	if err != nil {
 		err = fmt.Errorf("PowerDNS API: %w", err)
-		if sent.Load() {
+		if delivery.Left() {
 			return &unansweredError{err: err}
 		}
 		return err

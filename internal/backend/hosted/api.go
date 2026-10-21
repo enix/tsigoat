@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptrace"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
+
+	"github.com/enix/tsigoat/internal/backend/httpclient"
 )
 
 const (
@@ -182,16 +182,10 @@ type retry struct {
 func (a *API) attempt(ctx context.Context, method, path string, body []byte, out any) (retry, error) {
 	ctx, cancel := context.WithTimeout(ctx, a.Timeout)
 	defer cancel()
-	// sent tells whether the request left whole: the provider may apply it
-	// whatever happens next.
-	var sent atomic.Bool
-	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-		WroteRequest: func(info httptrace.WroteRequestInfo) {
-			if info.Err == nil {
-				sent.Store(true)
-			}
-		},
-	})
+	// A request that may have left whole, the provider may apply whatever
+	// happens next.
+	var delivery httpclient.Delivery
+	ctx = delivery.Trace(ctx)
 
 	var payload io.Reader
 	if body != nil {
@@ -215,7 +209,7 @@ func (a *API) attempt(ctx context.Context, method, path string, body []byte, out
 	resp, err := a.Client.Do(req)
 	if err != nil {
 		err = fmt.Errorf("%s API: %w", a.Provider, err)
-		if !sent.Load() {
+		if !delivery.Left() {
 			err = &unsentError{err: err}
 		}
 		// A write may have applied before the failure: only reads go again.
