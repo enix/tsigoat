@@ -58,6 +58,9 @@ type fakeAPI struct {
 	// it, then keeps it, not applied, in held, until land applies it.
 	hold bool
 	held []heldPatch
+	// holding, when set, is closed once hold keeps a PATCH request, read
+	// whole.
+	holding chan struct{}
 }
 
 // heldPatch is a PATCH request that applies after its client gave up on it.
@@ -153,6 +156,9 @@ func (a *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if a.hold {
 			a.hold = false
+			if a.holding != nil {
+				close(a.holding)
+			}
 			<-r.Context().Done()
 			a.held = append(a.held, heldPatch{zone: id, rrsets: patch.RRsets})
 			return
@@ -782,16 +788,22 @@ func TestUnansweredPatch(t *testing.T) {
 		t.Run(fmt.Sprintf("late, canceled %t", canceled), func(t *testing.T) {
 			t.Parallel()
 			api, server := newFakeAPI(t)
-			api.hold = true
+			api.hold, api.holding = true, make(chan struct{})
 			b, err := New(&Options{URL: server.URL, APIKey: apiKey, Timeout: 200 * time.Millisecond})
 			if err != nil {
 				t.Fatal(err)
 			}
 			ctx := t.Context()
 			if canceled {
+				// The update is canceled once its PATCH reached PowerDNS
+				// whole: before, it fails without leaving.
 				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				ctx, cancel = context.WithCancel(ctx)
 				defer cancel()
+				go func() {
+					<-api.holding
+					cancel()
+				}()
 			}
 			if applyErr := b.Apply(ctx, "example.test.", changes(t)); !backend.IsIndeterminate(applyErr) {
 				t.Fatalf("Apply() = %v, want an unknown outcome", applyErr)
