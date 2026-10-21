@@ -154,11 +154,12 @@ by the job of the ServiceMonitor; with another scrape configuration, set
 
 ## Verifying the chart
 
-The chart is signed with cosign, keyless, by the release workflow:
+The chart is signed with cosign, keyless, by the release workflow, on the
+tag of its version:
 
 ```sh
 cosign verify ghcr.io/enix/charts/tsigoat:<version> \
-  --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
+  --certificate-identity 'https://github.com/enix/tsigoat/.github/workflows/release.yaml@refs/tags/v<version>' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 

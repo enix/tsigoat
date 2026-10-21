@@ -21,19 +21,23 @@ the latest minor release.
 Releases sign every image, the Helm chart, and the checksums of their
 archives, with cosign keyless. GitHub attests the build provenance of the
 archives, and every image carries a CycloneDX SBOM as a cosign attestation.
-Before deploying a release:
+Before deploying a release, check that the release workflow signed it, on
+the tag of its version:
 
 ```sh
+identity='https://github.com/enix/tsigoat/.github/workflows/release.yaml@refs/tags/v<version>'
+issuer='https://token.actions.githubusercontent.com'
 cosign verify ghcr.io/enix/tsigoat:<version> \
-  --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
+cosign verify-attestation --type cyclonedx ghcr.io/enix/tsigoat:<version> \
+  --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
 cosign verify ghcr.io/enix/charts/tsigoat:<version> \
-  --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
 cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
-  --certificate-identity-regexp '^https://github.com/enix/tsigoat/' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify tsigoat-v<version>-linux-amd64.tar.gz --owner enix
+  --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
+gh attestation verify tsigoat-v<version>-linux-amd64.tar.gz --repo enix/tsigoat \
+  --signer-workflow enix/tsigoat/.github/workflows/release.yaml \
+  --source-ref refs/tags/v<version>
 ```
 
 ## Security model
