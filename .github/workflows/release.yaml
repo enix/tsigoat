@@ -9,6 +9,11 @@ name: Release
 # publishes it, which announces it on Slack (announce.yaml). The Helm chart
 # follows the images, with the same version.
 #
+# Secrets of the `release` environment for the images, which GoReleaser
+# pushes to ghcr.io, with the GITHUB_TOKEN, quay.io and docker.io: QUAY_USERNAME
+# and QUAY_TOKEN, DOCKERHUB_USERNAME and DOCKERHUB_TOKEN. The release stops
+# before any push when one of them, or of those of the chart, is missing.
+#
 # Settings of the `release` environment for the chart:
 #   - variable CHART_REGISTRY: OCI repository of the chart, without oci://;
 #     ghcr.io/enix/charts by default, pushed with the GITHUB_TOKEN;
@@ -83,6 +88,37 @@ jobs:
     env:
       IMAGE_NAME: ${{ vars.IMAGE_NAME || 'tsigoat' }}
     steps:
+      # GoReleaser pushes to every registry of .goreleaser.yaml, and the chart
+      # job to CHART_REGISTRY: a credential missing there would stop the
+      # release midway, once part of it is public.
+      - name: Check the registry credentials
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          CHART_REGISTRY: ${{ vars.CHART_REGISTRY || 'ghcr.io/enix/charts' }}
+          CHART_REGISTRY_USERNAME: ${{ secrets.CHART_REGISTRY_USERNAME }}
+          CHART_REGISTRY_TOKEN: ${{ secrets.CHART_REGISTRY_TOKEN }}
+          GH_TOKEN_PUBLISH_HELM_CHART: ${{ secrets.GH_TOKEN_PUBLISH_HELM_CHART }}
+        run: |
+          missing=()
+          required=(QUAY_USERNAME QUAY_TOKEN DOCKERHUB_USERNAME DOCKERHUB_TOKEN)
+          if [[ "$CHART_REGISTRY" != ghcr.io/* ]]; then
+            required+=(CHART_REGISTRY_USERNAME CHART_REGISTRY_TOKEN)
+          fi
+          if [[ "$CHART_REGISTRY" == quay.io/* ]]; then
+            required+=(GH_TOKEN_PUBLISH_HELM_CHART)
+          fi
+          for name in "${required[@]}"; do
+            if [ -z "${!name}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::The release environment lacks ${missing[*]}: nothing was published."
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -101,18 +137,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Login to quay.io
-        env:
-          QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
-        if: env.QUAY_TOKEN != ''
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: quay.io
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_TOKEN }}
       - name: Login to docker.io
-        env:
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-        if: env.DOCKERHUB_TOKEN != ''
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
