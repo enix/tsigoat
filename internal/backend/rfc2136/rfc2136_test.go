@@ -204,19 +204,22 @@ func TestUpdateRcodes(t *testing.T) {
 		rcode int
 		// err is a part of the error; the rcode passes through when empty.
 		err string
+		// indeterminate tells that the server may have applied the update:
+		// miekg/dns does not verify a NOTAUTH response.
+		indeterminate bool
 	}{
-		{dns.RcodeSuccess, ""},
-		{dns.RcodeYXDomain, ""},
-		{dns.RcodeYXRrset, ""},
-		{dns.RcodeNameError, ""},
-		{dns.RcodeNXRrset, ""},
-		{dns.RcodeFormatError, ""},
-		{dns.RcodeNotZone, ""},
-		{dns.RcodeRefused, "refused the update of zone example.test.: grant key tsigoat."},
-		{dns.RcodeNotAuth, "answered NOTAUTH: it is not authoritative for zone example.test."},
-		{dns.RcodeNotImplemented, "does not implement updates"},
-		{dns.RcodeServerFailure, "answered the update of zone example.test. with SERVFAIL"},
-		{12, "with RCODE12"},
+		{dns.RcodeSuccess, "", false},
+		{dns.RcodeYXDomain, "", false},
+		{dns.RcodeYXRrset, "", false},
+		{dns.RcodeNameError, "", false},
+		{dns.RcodeNXRrset, "", false},
+		{dns.RcodeFormatError, "", false},
+		{dns.RcodeNotZone, "", false},
+		{dns.RcodeRefused, "refused the update of zone example.test.: grant key tsigoat.", false},
+		{dns.RcodeNotAuth, "answered NOTAUTH: it is not authoritative for zone example.test.", true},
+		{dns.RcodeNotImplemented, "does not implement updates", false},
+		{dns.RcodeServerFailure, "answered the update of zone example.test. with SERVFAIL", false},
+		{12, "with RCODE12", false},
 	}
 	for _, tt := range tests {
 		t.Run(rcodeName(tt.rcode), func(t *testing.T) {
@@ -228,6 +231,9 @@ func TestUpdateRcodes(t *testing.T) {
 				t.Errorf("Update() = %s, %v, want %s", rcodeName(rcode), err, rcodeName(tt.rcode))
 			case tt.err != "" && (err == nil || !strings.Contains(err.Error(), tt.err)):
 				t.Errorf("Update() error = %v, want one about %q", err, tt.err)
+			}
+			if backend.IsIndeterminate(err) != tt.indeterminate {
+				t.Errorf("Update() error = %v, indeterminate %t, want %t", err, backend.IsIndeterminate(err), tt.indeterminate)
 			}
 		})
 	}
@@ -254,7 +260,8 @@ func TestExchangeFailures(t *testing.T) {
 		// indeterminate tells that the server may have applied the update.
 		indeterminate bool
 	}{
-		{"wrong secret", []config.Key{wrongSecret}, reply(dns.RcodeSuccess), "rejected the signature of key tsigoat.: BADSIG", false},
+		// The server answers NOTAUTH with BADSIG, unsigned: so would anyone.
+		{"wrong secret", []config.Key{wrongSecret}, reply(dns.RcodeSuccess), "rejected the signature of key tsigoat.: BADSIG", true},
 		// A response without signature may come from a server that applied
 		// the update, or from anyone.
 		{"unsigned response", []config.Key{relayKey()}, func(w dns.ResponseWriter, req *dns.Msg) {

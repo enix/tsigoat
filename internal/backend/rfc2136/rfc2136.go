@@ -10,8 +10,9 @@
 // REFUSED update, for one, means that the server does not grant tsigoat what
 // its policy grants the client. They are errors, which the client gets as
 // SERVFAIL. An exchange that fails once the update reached the server, as when
-// the response does not come in time, leaves the outcome unknown: the server
-// may have applied the update.
+// the response does not come in time, or a response that does not verify,
+// such as a NOTAUTH, leaves the outcome unknown: the server may have applied
+// the update.
 package rfc2136
 
 import (
@@ -185,17 +186,18 @@ func (r *Relay) exchange(ctx context.Context, zone string, m *dns.Msg) (*dns.Msg
 	watched := &watchedConn{Conn: conn.Conn}
 	conn.Conn = watched
 	resp, _, err := client.ExchangeWithConnContext(ctx, m, conn)
+	// miekg/dns leaves the signature of a NOTAUTH response unverified, and a
+	// server that rejects the signature of a message answers NOTAUTH with a
+	// TSIG error, unsigned but for BADTIME (RFC 8945 5.3.2): anyone may have
+	// sent such a response, which tells nothing of what the server did.
 	if resp != nil {
-		// The server signs a response with a TSIG error when it can, or
-		// leaves its MAC empty, which fails the verification.
 		if tsig := resp.IsTsig(); tsig != nil && tsig.Error != dns.RcodeSuccess {
-			return nil, fmt.Errorf("%s rejected the signature of key %s: %s", r.server, r.keyName, rcodeName(int(tsig.Error)))
+			return nil, &sentError{err: fmt.Errorf("%s rejected the signature of key %s: %s", r.server, r.keyName, rcodeName(int(tsig.Error)))}
 		}
 	}
 	switch {
 	case errors.Is(err, dns.ErrAuth) && resp != nil && resp.Rcode == dns.RcodeNotAuth:
-		// miekg/dns leaves the signature of a NOTAUTH response unverified.
-		return nil, fmt.Errorf("%s answered NOTAUTH: it is not authoritative for zone %s", r.server, zone)
+		return nil, &sentError{err: fmt.Errorf("%s answered NOTAUTH: it is not authoritative for zone %s", r.server, zone)}
 	case errors.Is(err, dns.ErrSig), errors.Is(err, dns.ErrTime), errors.Is(err, auth.ErrUnknownKey),
 		errors.Is(err, auth.ErrAlgorithmMismatch):
 		// A response that does not verify tells nothing of what the server

@@ -158,13 +158,17 @@ updates, see [RFC 2136 servers](rfc2136.md#setting-up-the-server); for a
 tsigoat could not tell whether an update applied: a write timed out, or the
 connection broke after the request left, and reading the records back did
 not tell either; undoing a failed update at OVHcloud failed, or a request
-that failed there may still apply; an RFC 2136 server answered unsigned, or a
+that failed there may still apply; an RFC 2136 server gave an answer that
+tsigoat cannot verify, unsigned, NOTAUTH or a TSIG error, or a
 webhook endpoint answered 5xx. The client got SERVFAIL, but the zone may hold
 all of the update, part of it, or none. The
 `msg=update` log entry, whose `error` starts with `outcome unknown`, names the
 changes: compare them with the zone, through the provider, and fix it by hand
 if needed. A client that retries its update brings the RRsets to their wanted
-content anyway, since tsigoat reads them again.
+content anyway, since tsigoat reads them again. A TSIG error in the log of
+an `rfc2136` backend, such as BADSIG or BADKEY, tells that the server does
+not know the key of tsigoat as configured: `tsigoat check-config --backends`
+checks it.
 
 ### TsigoatUpdatesFailing
 
