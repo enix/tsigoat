@@ -196,7 +196,7 @@ jobs:
           digests=$(jq -c 'map_values(.[0])' <<<"$grouped")
           echo "digests=$digests" >> "$GITHUB_OUTPUT"
       # SLSA build provenance over the checksums file, which covers every
-      # archive. Verify with `gh attestation verify <archive> --owner enix`.
+      # archive; SECURITY.md tells how to verify it.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-checksums: dist/checksums.txt
