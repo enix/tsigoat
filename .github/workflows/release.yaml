@@ -97,6 +97,8 @@ jobs:
       packages: write # push to ghcr.io
       id-token: write # OIDC for cosign keyless and provenance signing
       attestations: write # upload the build provenance
+    outputs:
+      digests: ${{ steps.digests.outputs.digests }}
     steps:
       # GoReleaser pushes to every registry of .goreleaser.yaml, and the chart
       # job to CHART_REGISTRY: a credential missing there would stop the
@@ -167,6 +169,32 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GODEBUG: http2client=0
+      # The chart pulls the tags of the release by digest. GoReleaser builds
+      # each image once, for every platform, and pushes that index under every
+      # name: each tag has one digest, which every registry must serve.
+      - name: Collect the digests of the images
+        id: digests
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          images=$(jq -c --arg version "$version" '
+            [.[] | select(.type == "Docker Image")
+                 | {name, tag: (.name | sub("^.*:"; "")), digest: .extra.Digest}
+                 | select(.tag == $version or .tag == $version + "-busybox")]' dist/artifacts.json)
+          while read -r name digest; do
+            served=$(docker buildx imagetools inspect "$name" --format '{{ .Manifest.Digest }}')
+            if [ "$served" != "$digest" ]; then
+              echo "::error::$name serves $served, not $digest, which GoReleaser pushed."
+              exit 1
+            fi
+          done < <(jq -r '.[] | "\(.name) \(.digest)"' <<<"$images")
+          grouped=$(jq -c 'group_by(.tag) | map({key: .[0].tag, value: (map(.digest) | unique)}) | from_entries' <<<"$images")
+          if ! jq -e --arg version "$version" 'keys == ([$version, $version + "-busybox"] | sort) and all(.[]; length == 1)' <<<"$grouped" >/dev/null; then
+            echo "::error::Each tag of the release needs one digest: $grouped"
+            exit 1
+          fi
+          digests=$(jq -c 'map_values(.[0])' <<<"$grouped")
+          echo "digests=$digests" >> "$GITHUB_OUTPUT"
       # SLSA build provenance over the checksums file, which covers every
       # archive. Verify with `gh attestation verify <archive> --owner enix`.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
@@ -222,9 +250,12 @@ jobs:
           host="${CHART_REGISTRY%%/*}"
           echo "$REGISTRY_TOKEN" | helm registry login --username "$REGISTRY_USERNAME" --password-stdin "$host"
           echo "$REGISTRY_TOKEN" | cosign login --username "$REGISTRY_USERNAME" --password-stdin "$host"
-      # The version of the tag, for the chart and for the images; Artifact
-      # Hub marks the release candidates as prereleases.
+      # The version of the tag, for the chart and for the images, whose tags
+      # the chart pulls by digest; Artifact Hub marks the release candidates
+      # as prereleases.
       - name: Package
+        env:
+          DIGESTS: ${{ needs.goreleaser.outputs.digests }}
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
@@ -233,8 +264,23 @@ jobs:
             prerelease=true
           fi
           sed -i "s|^  artifacthub.io/prerelease:.*|  artifacthub.io/prerelease: \"${prerelease}\"|" chart/Chart.yaml
+          if [ "$(grep -c '^  digests: {}$' chart/values.yaml)" -ne 1 ]; then
+            echo "::error::chart/values.yaml lacks the line of image.digests to fill."
+            exit 1
+          fi
+          sed -i "s|^  digests: {}\$|  digests: ${DIGESTS}|" chart/values.yaml
           cp LICENSE chart/LICENSE
           helm package chart --destination dist --version "$version" --app-version "$version"
+          for suffix in "" -busybox; do
+            tag="$version$suffix"
+            want="ghcr.io/enix/tsigoat:$tag@$(jq -r --arg tag "$tag" '.[$tag]' <<<"$DIGESTS")"
+            got=$(helm template tsigoat "dist/tsigoat-$version.tgz" --values test/chart/valid/minimal.yaml \
+              --set "image.tagSuffix=$suffix" | yq 'select(.kind == "Deployment") | .spec.template.spec.containers[0].image')
+            if [ "$got" != "$want" ]; then
+              echo "::error::The chart pulls $got, not $want."
+              exit 1
+            fi
+          done
       - name: Push
         id: push
         run: |

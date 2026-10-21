@@ -172,6 +172,10 @@ removed with the fix.
   `# @schema` block (helm-schema drops the inferred one), and
   `properties: {}` on free-form objects with defaults (it would otherwise
   forbid their unknown nested keys).
+- The release writes `image.digests` (tag → digest of the multi-platform
+  image, checked on every registry) into the packaged chart, which pulls those
+  tags by digest unless `image.pinDigest` is false; in the repository it is
+  empty, and the chart pulls by tag.
 - The chart owns `listen` and `admin` of the configuration, and refuses inline
   secrets, which would land in the ConfigMap.
 - `test/chart/valid` and `examples/helm/*.values.yaml` must render and pass

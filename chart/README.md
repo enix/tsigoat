@@ -152,6 +152,21 @@ their severity. The alerts select the metrics of the release by namespace and
 by the job of the ServiceMonitor; with another scrape configuration, set
 `prometheusRules.selector`.
 
+## Image
+
+The chart of a release pulls its image by digest. The release writes into
+`image.digests` the digest of each of its tags: the digest of the image of
+every platform, so that each node pulls its own, and the same on ghcr.io,
+quay.io and docker.io, which the release checks. `image.registry`, or
+`global.imageRegistry`, chooses the registry; `image.tagSuffix: -busybox`, the
+image with a shell, pinned as well. The signatures of the images cover these
+digests.
+
+A mirror that copies every platform, such as `crane copy` or
+`skopeo copy --all`, keeps the digests; for one that does not, set
+`image.pinDigest` to false. Another tag in `image.tag` is pulled by tag, and
+`image.digest` pins any image.
+
 ## Verifying the chart
 
 The chart is signed with cosign, keyless, by the release workflow, on the
@@ -179,6 +194,8 @@ covers the images and the binaries.
 | image.tag | string | `""` | Image tag; the appVersion of the chart by default |
 | image.tagSuffix | string | `""` | Appended to the tag: `-busybox` selects the image with a shell |
 | image.digest | string | `""` | Image digest, which takes precedence over the tag |
+| image.pinDigest | bool | `true` | Pull the tags of the release by the digests of `image.digests`; false pulls by tag, for a registry that holds other digests, such as a mirror that copied one platform |
+| image.digests | object | the digests of the release; empty in the repository | Digests of the images of the release, by tag, which the release writes: the digest of each multi-platform image, the same on every registry |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | imagePullSecrets | list | `[]` | Names of the Secrets to pull the image with |
 | replicaCount | int | `2` | Number of pods. Several pods keep the records of each other's updates, on PowerDNS since 4.9.12 and 5.0.2, but not every guarantee of RFC 2136 across pods. 1, with the `Recreate` strategy, keeps them all, but while a pod deleted or evicted outside a rollout finishes its updates beside its replacement: see [Replicas](#replicas) |

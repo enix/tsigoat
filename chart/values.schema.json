@@ -83,6 +83,17 @@
           "default": "",
           "type": "string"
         },
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "required": [],
+          "type": "object"
+        },
+        "pinDigest": {
+          "default": true,
+          "type": "boolean"
+        },
         "pullPolicy": {
           "default": "IfNotPresent",
           "enum": [
@@ -114,7 +125,8 @@
         "registry",
         "tag",
         "tagSuffix",
-        "digest"
+        "digest",
+        "pinDigest"
       ],
       "type": "object"
     },

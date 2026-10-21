@@ -27,6 +27,20 @@ image:
   tagSuffix: ""
   # -- Image digest, which takes precedence over the tag
   digest: ""
+  # -- Pull the tags of the release by the digests of `image.digests`; false
+  # pulls by tag, for a registry that holds other digests, such as a mirror
+  # that copied one platform
+  pinDigest: true
+  # @schema
+  # type: object
+  # properties: {}
+  # additionalProperties:
+  #   type: string
+  # @schema
+  # -- Digests of the images of the release, by tag, which the release writes:
+  # the digest of each multi-platform image, the same on every registry
+  # @default -- the digests of the release; empty in the repository
+  digests: {}
   # @schema
   # type: string
   # enum: [Always, IfNotPresent, Never]

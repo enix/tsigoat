@@ -35,6 +35,9 @@ and `docker.io/enix/tsigoat`, for amd64, arm64 and riscv64:
   nothing else;
 - `<version>-busybox` and `busybox` add a shell, for debugging.
 
+Each image holds every platform under one digest, the same on the three
+registries; the chart of a release pulls its image by that digest.
+
 Both run `serve` as user 65534, read `/etc/tsigoat/config.yaml`, listen on
 port 5353 over UDP and TCP, and expose 9153 for the administration server:
 

@@ -61,6 +61,7 @@ type (
 
 	container struct {
 		Name           string        `yaml:"name"`
+		Image          string        `yaml:"image"`
 		Args           []string      `yaml:"args"`
 		Ports          []port        `yaml:"ports"`
 		Env            []envVar      `yaml:"env"`
@@ -149,22 +150,23 @@ func spec[T any](t *testing.T, o *object) *T {
 	return &s
 }
 
-// helm runs helm template with a values file, returning its output and its
-// error output.
-func helm(t *testing.T, values string) (stdout, stderr string, err error) {
+// helm runs helm template with a values file and more arguments, such as
+// --set, returning its output and its error output.
+func helm(t *testing.T, values string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	command := exec.CommandContext(t.Context(), "helm", "template", releaseName, chartDir,
-		"--namespace", releaseNamespace, "--values", values)
+	arguments := slices.Concat([]string{"template", releaseName, chartDir, "--namespace", releaseNamespace, "--values", values}, args)
+	command := exec.CommandContext(t.Context(), "helm", arguments...)
 	command.Stdout, command.Stderr = &out, &errOut
 	err = command.Run()
 	return out.String(), errOut.String(), err
 }
 
-// render renders the chart with a values file, and decodes the objects.
-func render(t *testing.T, values string) release {
+// render renders the chart with a values file and more arguments, and
+// decodes the objects.
+func render(t *testing.T, values string, args ...string) release {
 	t.Helper()
-	stdout, stderr, err := helm(t, values)
+	stdout, stderr, err := helm(t, values, args...)
 	if err != nil {
 		t.Fatalf("helm template: %v\n%s", err, stderr)
 	}

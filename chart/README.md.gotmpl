@@ -152,6 +152,21 @@ their severity. The alerts select the metrics of the release by namespace and
 by the job of the ServiceMonitor; with another scrape configuration, set
 `prometheusRules.selector`.
 
+## Image
+
+The chart of a release pulls its image by digest. The release writes into
+`image.digests` the digest of each of its tags: the digest of the image of
+every platform, so that each node pulls its own, and the same on ghcr.io,
+quay.io and docker.io, which the release checks. `image.registry`, or
+`global.imageRegistry`, chooses the registry; `image.tagSuffix: -busybox`, the
+image with a shell, pinned as well. The signatures of the images cover these
+digests.
+
+A mirror that copies every platform, such as `crane copy` or
+`skopeo copy --all`, keeps the digests; for one that does not, set
+`image.pinDigest` to false. Another tag in `image.tag` is pulled by tag, and
+`image.digest` pins any image.
+
 ## Verifying the chart
 
 The chart is signed with cosign, keyless, by the release workflow, on the

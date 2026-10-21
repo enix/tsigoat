@@ -68,7 +68,9 @@ Name of the Secret mounted in /run/secrets/tsigoat, empty when there is none.
 {{/*
 Image reference: the digest takes precedence over the tag, which defaults to
 the appVersion; global.imageRegistry overrides image.registry, and an empty
-registry leaves the reference without one.
+registry leaves the reference without one. A tag that image.digests holds,
+as the release writes the digests of its tags, is pulled by that digest: the
+digest of a multi-platform image, the same on every registry.
 */}}
 {{- define "tsigoat.image" -}}
 {{- $registry := .Values.image.registry -}}
@@ -82,7 +84,16 @@ registry leaves the reference without one.
 {{- if .Values.image.digest -}}
 {{- printf "%s@%s" $repository .Values.image.digest -}}
 {{- else -}}
-{{- printf "%s:%s%s" $repository (default .Chart.AppVersion .Values.image.tag | toString) (.Values.image.tagSuffix | toString) -}}
+{{- $tag := printf "%s%s" (default .Chart.AppVersion .Values.image.tag | toString) (.Values.image.tagSuffix | toString) -}}
+{{- $digest := "" -}}
+{{- if .Values.image.pinDigest -}}
+{{- $digest = get (.Values.image.digests | default dict) $tag -}}
+{{- end -}}
+{{- if $digest -}}
+{{- printf "%s:%s@%s" $repository $tag $digest -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 
