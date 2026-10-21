@@ -113,10 +113,16 @@ tests:
   - name: uncertain updates
     interval: 1m
     input_series:
-      - series: tsigoat_backend_calls_total{namespace="tsigoat", job="tsigoat-admin", backend="ovh", operation="apply", result="indeterminate"}
-        values: 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-      - series: tsigoat_backend_calls_total{namespace="other", job="tsigoat-admin", backend="ovh", operation="apply", result="indeterminate"}
-        values: 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+      # The outcome of an update through ovh is unknown at 3 minutes, before
+      # any scrape of its series: the first one shows the time of the
+      # incident.
+      - series: tsigoat_backend_last_indeterminate_timestamp_seconds{namespace="tsigoat", job="tsigoat-admin", backend="ovh"}
+        values: _ _ _ 180x27
+      # pdns has none.
+      - series: tsigoat_backend_last_indeterminate_timestamp_seconds{namespace="tsigoat", job="tsigoat-admin", backend="pdns"}
+        values: 0x30
+      - series: tsigoat_backend_last_indeterminate_timestamp_seconds{namespace="other", job="tsigoat-admin", backend="ovh"}
+        values: _ _ _ 180x27
     alert_rule_test:
       - eval_time: 2m
         alertname: TsigoatUncertainUpdates

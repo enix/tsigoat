@@ -68,6 +68,18 @@ func TestBackend(t *testing.T) {
 	t.Parallel()
 	m := newMetrics(t)
 	b := m.Backend("pdns", memory.New())
+	// Every series exists from the start, at zero.
+	for _, result := range []string{"success", "error", "indeterminate"} {
+		if n := testutil.CollectAndCount(m.backendCalls, "tsigoat_backend_calls_total"); n != 6 {
+			t.Fatalf("%d series of backend calls, want 6", n)
+		}
+		if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("pdns", "apply", result)); got != 0 {
+			t.Errorf("apply calls with result %s = %v, want 0", result, got)
+		}
+	}
+	if got := testutil.ToFloat64(m.lastIndeterminate.WithLabelValues("pdns")); got != 0 {
+		t.Errorf("time of the last unknown outcome = %v, want 0", got)
+	}
 
 	if _, err := b.Lookup(context.Background(), "missing.test.", "missing.test."); !errors.Is(err, backend.ErrZoneNotFound) {
 		t.Errorf("Lookup() error %v, want the error of the backend", err)
@@ -101,6 +113,9 @@ func TestBackend(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(m.backendCalls.WithLabelValues("uncertain", "apply", "indeterminate")); got != 1 {
 		t.Errorf("apply calls with result indeterminate = %v, want 1", got)
+	}
+	if got := testutil.ToFloat64(m.lastIndeterminate.WithLabelValues("uncertain")); time.Since(time.Unix(int64(got), 0)) > time.Minute {
+		t.Errorf("time of the last unknown outcome = %v, want now", got)
 	}
 }
 

@@ -127,6 +127,7 @@ With `admin.listen` set, tsigoat serves over HTTP:
 | `tsigoat_tsig_failures_total` | `error`: BADKEY, BADSIG, BADTIME or BADTRUNC |
 | `tsigoat_backend_calls_total` | `backend`, `operation` (lookup, apply; relay and check for the `rfc2136` and `webhook` backends), `result` (success, error, or indeterminate when tsigoat could not tell whether a write applied) |
 | `tsigoat_backend_call_duration_seconds` | `backend`, `operation` |
+| `tsigoat_backend_last_indeterminate_timestamp_seconds` | `backend`: time of the last call whose outcome is unknown, 0 when there was none |
 | `tsigoat_build_info` | `version`, `revision`, `goversion` |
 
 The Go runtime and process metrics come too. The `zone` and `key` labels only

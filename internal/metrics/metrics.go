@@ -16,6 +16,14 @@ import (
 
 const namespace = "tsigoat"
 
+// The label of the backends, and the results of their calls.
+const (
+	labelBackend        = "backend"
+	resultSuccess       = "success"
+	resultError         = "error"
+	resultIndeterminate = "indeterminate"
+)
+
 // Metrics holds the collectors of tsigoat in their own registry.
 type Metrics struct {
 	registry *prometheus.Registry
@@ -25,6 +33,10 @@ type Metrics struct {
 	tsigFailures    *prometheus.CounterVec
 	backendCalls    *prometheus.CounterVec
 	backendCallTime *prometheus.HistogramVec
+	// lastIndeterminate holds the time of the last call of a backend whose
+	// outcome is unknown, which an alert compares with the current time,
+	// whatever the time of the scrapes.
+	lastIndeterminate *prometheus.GaugeVec
 }
 
 var _ dnsserver.Observer = (*Metrics)(nil)
@@ -57,13 +69,19 @@ func New(info *product.Info) *Metrics {
 			Help: "Calls to the backends, by backend, operation (lookup or apply, relay for the updates " +
 				"that a relay evaluates) and result (success, error, or indeterminate when the outcome " +
 				"of a write is unknown).",
-		}, []string{"backend", "operation", "result"}),
+		}, []string{labelBackend, "operation", "result"}),
 		backendCallTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Name:      "backend_call_duration_seconds",
 			Help:      "Duration of the calls to the backends, by backend and operation.",
 			Buckets:   prometheus.DefBuckets,
-		}, []string{"backend", "operation"}),
+		}, []string{labelBackend, "operation"}),
+		lastIndeterminate: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "backend_last_indeterminate_timestamp_seconds",
+			Help: "Time of the last call of a backend whose outcome is unknown, in seconds since the epoch; " +
+				"0 when there was none.",
+		}, []string{labelBackend}),
 	}
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
@@ -73,7 +91,7 @@ func New(info *product.Info) *Metrics {
 	buildInfo.WithLabelValues(info.Version, info.GitCommit, info.Runtime).Set(1)
 
 	m.registry.MustRegister(
-		m.responses, m.responseTime, m.tsigFailures, m.backendCalls, m.backendCallTime, buildInfo,
+		m.responses, m.responseTime, m.tsigFailures, m.backendCalls, m.backendCallTime, m.lastIndeterminate, buildInfo,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -103,27 +121,44 @@ func algorithmName(algorithm string) string {
 
 // Backend wraps a backend to measure its calls: lookup and apply.
 func (m *Metrics) Backend(name string, b backend.Backend) backend.Backend {
+	m.createSeries(name, "lookup", "apply")
 	return backend.ObservedBackend(b, func(operation string, start time.Time, err error) {
 		m.observeCall(name, operation, start, err)
 	})
 }
 
 // Relay wraps a relay to measure its calls: relay for the updates, lookup for
-// the SOA queries.
+// the SOA queries, check for the checks.
 func (m *Metrics) Relay(name string, r backend.Relay) backend.Relay {
+	m.createSeries(name, "lookup", "relay", "check")
 	return backend.ObservedRelay(r, func(operation string, start time.Time, err error) {
 		m.observeCall(name, operation, start, err)
 	})
 }
 
+// createSeries creates the series of the calls of a backend at zero, so that
+// the first call of a result is an increase, rather than a new series whose
+// first value Prometheus cannot tell apart from what came before.
+func (m *Metrics) createSeries(name string, operations ...string) {
+	for _, operation := range operations {
+		for _, result := range []string{resultSuccess, resultError, resultIndeterminate} {
+			m.backendCalls.WithLabelValues(name, operation, result)
+		}
+	}
+	m.lastIndeterminate.WithLabelValues(name)
+}
+
 func (m *Metrics) observeCall(backendName, operation string, start time.Time, err error) {
-	result := "success"
+	result := resultSuccess
 	switch {
 	case backend.IsIndeterminate(err):
-		result = "indeterminate"
+		result = resultIndeterminate
 	case err != nil:
-		result = "error"
+		result = resultError
 	}
 	m.backendCalls.WithLabelValues(backendName, operation, result).Inc()
 	m.backendCallTime.WithLabelValues(backendName, operation).Observe(time.Since(start).Seconds())
+	if result == resultIndeterminate {
+		m.lastIndeterminate.WithLabelValues(backendName).SetToCurrentTime()
+	}
 }
