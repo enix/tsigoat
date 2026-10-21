@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -152,6 +153,7 @@ func TestRecovery(t *testing.T) {
 	pass := ovhtest.Failure{}
 	committed := ovhtest.Failure{Status: http.StatusInternalServerError, Message: "lost response", AfterCommit: true}
 	refused := ovhtest.Failure{Status: http.StatusInternalServerError, Message: "refused"}
+	late := ovhtest.Failure{Late: true}
 	for _, c := range []struct {
 		label  string
 		change string
@@ -166,6 +168,11 @@ func TestRecovery(t *testing.T) {
 		{label: "addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, failures: []ovhtest.Failure{committed}},
 		// Remove "old", which applies but fails.
 		{label: "removal", change: `www.example.test. 300 IN TXT "old"`, op: backend.Remove, failures: []ovhtest.Failure{committed}},
+		// Delete "old", then create "new", which times out and applies
+		// after the recovery: the records read again do not show it.
+		{label: "late creation", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{pass, late}},
+		// Add "new", which times out and applies after the recovery.
+		{label: "late addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, indeterminate: true, failures: []ovhtest.Failure{late}},
 		// Delete "old", which applies but fails.
 		{label: "deletion", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{committed}},
 		// Retime "old", which applies but fails.
@@ -192,7 +199,7 @@ func TestRecovery(t *testing.T) {
 			b, err := ovh.New(&ovh.Options{
 				Endpoint:       api.URL,
 				ApplicationKey: ovhtest.ApplicationKey, ApplicationSecret: ovhtest.ApplicationSecret, ConsumerKey: ovhtest.ConsumerKey,
-				RefreshDelay: time.Millisecond,
+				RefreshDelay: time.Millisecond, Timeout: 200 * time.Millisecond,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -210,6 +217,14 @@ func TestRecovery(t *testing.T) {
 			case backend.IsIndeterminate(err) != c.indeterminate:
 				t.Fatalf("Apply() = %v, want an indeterminate outcome: %t", err, c.indeterminate)
 			case c.indeterminate:
+				// A request that timed out applies now: the zone holds it,
+				// which its next refresh publishes.
+				if slices.Contains(c.failures, late) {
+					api.Land()
+					if !slices.ContainsFunc(api.Records(testZone), func(r ovhtest.Record) bool { return r.Target == `"new"` }) {
+						t.Errorf("records %v, want the late record", api.Records(testZone))
+					}
+				}
 				return
 			}
 			if !strings.Contains(err.Error(), "the records are as they were") {

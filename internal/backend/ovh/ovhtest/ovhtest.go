@@ -7,6 +7,7 @@
 package ovhtest
 
 import (
+	"context"
 	"crypto/sha1" //nolint:gosec // G505: the signature of the OVHcloud API is SHA-1
 	"encoding/hex"
 	"encoding/json"
@@ -64,7 +65,9 @@ type API struct {
 	refreshes int
 	// failures holds the outcomes of the next write requests.
 	failures []Failure
-	tokens   int
+	// late holds the requests that Late failures keep for Land.
+	late   []lateRequest
+	tokens int
 }
 
 // Failure is the outcome of a write request, refreshes included.
@@ -76,6 +79,10 @@ type Failure struct {
 	// AfterCommit applies the request before answering the error, as a
 	// request whose response is lost.
 	AfterCommit bool
+	// Late holds the request until the client gives up on it, then keeps
+	// it, not applied, until Land applies it: a request that still applies
+	// after its timeout.
+	Late bool
 }
 
 // New starts a simulated API until the end of the test.
@@ -170,6 +177,25 @@ func (a *API) SetSkew(skew time.Duration) {
 	a.skew = skew
 }
 
+// lateRequest is a request that applies after its client gave up on it.
+type lateRequest struct {
+	r     *http.Request
+	parts []string
+	body  []byte
+}
+
+// Land applies the requests that Late failures kept, as their late
+// application by OVHcloud.
+func (a *API) Land() {
+	a.mu.Lock()
+	late := a.late
+	a.late = nil
+	a.mu.Unlock()
+	for _, l := range late {
+		a.zone(httptest.NewRecorder(), l.r, l.parts, l.body)
+	}
+}
+
 // FailWrites sets the outcomes of the next write requests, refreshes
 // included.
 func (a *API) FailWrites(failures ...Failure) {
@@ -229,16 +255,31 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errorBody(w, http.StatusNotFound, classNotFound, "This service does not exist")
 		return
 	}
-	if r.Method != http.MethodGet {
-		if f := a.nextFailure(); f.Status != 0 {
-			if f.AfterCommit {
-				a.zone(httptest.NewRecorder(), r, parts, body)
-			}
-			errorBody(w, f.Status, "Server::InternalServerError", f.Message)
-			return
-		}
+	if r.Method != http.MethodGet && a.fail(w, r, parts, body) {
+		return
 	}
 	a.zone(w, r, parts, body)
+}
+
+// fail plays the next failure of a write request, and reports whether there
+// was one.
+func (a *API) fail(w http.ResponseWriter, r *http.Request, parts []string, body []byte) bool {
+	f := a.nextFailure()
+	switch {
+	case f.Late:
+		<-r.Context().Done()
+		a.mu.Lock()
+		a.late = append(a.late, lateRequest{r: r.Clone(context.WithoutCancel(r.Context())), parts: parts, body: body})
+		a.mu.Unlock()
+		return true
+	case f.Status != 0:
+		if f.AfterCommit {
+			a.zone(httptest.NewRecorder(), r, parts, body)
+		}
+		errorBody(w, f.Status, "Server::InternalServerError", f.Message)
+		return true
+	}
+	return false
 }
 
 // The prefix of the paths of the zones, and the class of the errors of a

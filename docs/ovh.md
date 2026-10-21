@@ -84,7 +84,8 @@ Service accounts need one of the endpoints `ovh-eu`, `ovh-ca` and `ovh-us`.
   the update did, whatever the requests did: the RRsets that it replaced come
   back as they were, the records that it added go, and those that it removed
   come back. It checks them, and refreshes the zone; the update gets
-  SERVFAIL. When that fails too, the
+  SERVFAIL. When that fails too, or when the request that failed may still
+  apply, as after a timeout, and the records read again do not show it, the
   outcome is unknown: the zone may hold part of the update, which the next
   refresh, by tsigoat or by anyone, publishes; the update log tells so, and
   the [TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates) alert
