@@ -54,7 +54,7 @@ with depguard rules.
    NXRRSET or YXRRSET when one fails.
 8. **Update section**, applied to the view by the rules of RFC 2136 3.4.2:
    CNAME exclusivity, SOA serial ordering, apex SOA and NS protection, one TTL
-   per RRset.
+   per RRset; then the TTLs below the minimum of the backend are raised to it.
 9. **One call to the backend** with the RRset changes of the view; a failure
    gets SERVFAIL, and nothing is applied, unless the backend tells that the
    outcome is unknown, see [the backend contract](#the-backend-contract).
@@ -69,7 +69,11 @@ parsed from text. `View.Changes` returns the changes of each RRset: the records
 that it loses and gains, `Remove` and `Add`, when it keeps its TTL, or when the
 update creates or deletes it; its replacement, `Replace`, when its TTL
 changes. The removals come first, for the backends that check each change
-against the state left by the previous ones.
+against the state left by the previous ones. `View.RaiseTTLs` comes before:
+it raises the TTLs that the update writes below the minimum of the backend,
+so that a record added at 30 seconds to an RRset that holds the minimum of 60
+seconds stays an addition, which keeps the records that another instance adds
+meanwhile.
 
 `update` holds the RFC 2136 logic on top of the view, and returns an
 `*update.Error` with the rcode and the reason of a rejection, which the server

@@ -17,9 +17,10 @@ import (
 
 // slowLookups delays the lookups of a backend, which widens the time between
 // the reads of an update and its writes, where the updates of another
-// instance come.
+// instance come. It keeps the TTL floor of the backend.
 type slowLookups struct {
 	backend.Backend
+	floor uint32
 }
 
 func (s slowLookups) Lookup(ctx context.Context, zone, name string) ([]backend.RRset, error) {
@@ -27,12 +28,17 @@ func (s slowLookups) Lookup(ctx context.Context, zone, name string) ([]backend.R
 	return s.Backend.Lookup(ctx, zone, name)
 }
 
+func (s slowLookups) MinTTL() uint32 {
+	return s.floor
+}
+
 // TestConcurrentInstances runs two instances of tsigoat on one backend, as the
 // replicas of a Deployment do: the updates of one name that come at once,
 // through either instance, must all apply, those that add values as those
 // that remove them. Each instance serializes the updates of a zone alone; the
 // backends apply the records that an update adds and removes to the records
-// as they stand.
+// as they stand. The records have a TTL below the minimum of the providers,
+// which the server raises before it tells an addition from a replacement.
 func TestConcurrentInstances(t *testing.T) {
 	t.Parallel()
 	const zone, name, count = "example.test.", "_acme-challenge.example.test.", 16
@@ -62,7 +68,10 @@ func TestConcurrentInstances(t *testing.T) {
 	for _, target := range targets {
 		t.Run(target.name, func(t *testing.T) {
 			t.Parallel()
-			b := slowLookups{target.start(t)}
+			b := slowLookups{Backend: target.start(t)}
+			if floor, ok := b.Backend.(backend.TTLFloor); ok {
+				b.floor = floor.MinTTL()
+			}
 			factory := func(*config.Backend) (backend.Backend, error) { return b, nil }
 			instances := []string{serve(t, minimalConfig(t), factory), serve(t, minimalConfig(t), factory)}
 			values := make([]string, count)
@@ -77,7 +86,7 @@ func TestConcurrentInstances(t *testing.T) {
 					wg.Go(func() {
 						m := new(dns.Msg)
 						m.SetUpdate(zone)
-						record := mustRR(t, fmt.Sprintf("%s 60 IN TXT %q", name, value))
+						record := mustRR(t, fmt.Sprintf("%s 30 IN TXT %q", name, value))
 						if add {
 							m.Insert([]dns.RR{record})
 						} else {

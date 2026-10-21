@@ -147,6 +147,33 @@ func (v *View) Changes() []backend.Change {
 	return append(removals, others...)
 }
 
+// RaiseTTLs raises to minTTL the TTL of the RRsets that the update writes
+// below it, those that it creates, adds records to or gives another TTL, and
+// returns them, such as "www.example.org. TXT 30 to 60". It comes before
+// Changes, so that adding a record to an RRset that has the minimum TTL stays
+// an addition, which keeps the records that other instances add meanwhile.
+func (v *View) RaiseTTLs(minTTL uint32) []string {
+	var raised []string
+	for _, name := range slices.Sorted(maps.Keys(v.current)) {
+		before, after := v.original[name], v.current[name]
+		for _, rrtype := range slices.Sorted(maps.Keys(after)) {
+			old, now := before[rrtype], after[rrtype]
+			if len(now) == 0 || now[0].Header().Ttl >= minTTL {
+				continue
+			}
+			ttl := now[0].Header().Ttl
+			if len(old) > 0 && old[0].Header().Ttl == ttl && len(missing(now, old)) == 0 {
+				continue
+			}
+			raised = append(raised, fmt.Sprintf("%s %s %d to %d", name, dns.Type(rrtype), ttl, minTTL))
+			for _, rr := range now {
+				rr.Header().Ttl = minTTL
+			}
+		}
+	}
+	return raised
+}
+
 // missing returns copies of the records of a that b does not hold, once each.
 func missing(a, b []dns.RR) []dns.RR {
 	var out []dns.RR

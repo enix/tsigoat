@@ -213,6 +213,104 @@ func TestViewChanges(t *testing.T) {
 	}
 }
 
+func TestViewRaiseTTLs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		minTTL  uint32
+		modify  func(ctx context.Context, view *zone.View) error
+		raised  []string
+		changes []string
+	}{
+		{
+			name:   "addition to an RRset at the minimum",
+			minTTL: 60,
+			modify: func(ctx context.Context, view *zone.View) error {
+				return view.SetRRset(ctx, "www.example.test.", dns.TypeTXT, records(t,
+					`www.example.test. 30 IN TXT "hello"`,
+					`www.example.test. 30 IN TXT "new"`,
+				))
+			},
+			raised:  []string{"www.example.test. TXT 30 to 60"},
+			changes: []string{`add www.example.test. TXT 60 ["new"]`},
+		},
+		{
+			name:   "new RRset",
+			minTTL: 60,
+			modify: func(ctx context.Context, view *zone.View) error {
+				return view.SetRRset(ctx, "new.example.test.", dns.TypeAAAA, records(t, "new.example.test. 0 IN AAAA 2001:db8::1"))
+			},
+			raised:  []string{"new.example.test. AAAA 0 to 60"},
+			changes: []string{"add new.example.test. AAAA 60 [2001:db8::1]"},
+		},
+		{
+			name:   "TTL lowered below the minimum",
+			minTTL: 60,
+			modify: func(ctx context.Context, view *zone.View) error {
+				return view.SetRRset(ctx, "www.example.test.", dns.TypeA, records(t,
+					"www.example.test. 30 IN A 192.0.2.1",
+					"www.example.test. 30 IN A 192.0.2.2",
+				))
+			},
+			raised:  []string{"www.example.test. A 30 to 60"},
+			changes: []string{"replace www.example.test. A 60 [192.0.2.1, 192.0.2.2]"},
+		},
+		{
+			name:   "TTL lowered from the minimum",
+			minTTL: 60,
+			modify: func(ctx context.Context, view *zone.View) error {
+				return view.SetRRset(ctx, "www.example.test.", dns.TypeTXT, records(t, `www.example.test. 30 IN TXT "hello"`))
+			},
+			raised: []string{"www.example.test. TXT 30 to 60"},
+		},
+		{
+			name:   "addition to an RRset below the minimum",
+			minTTL: 600,
+			modify: func(ctx context.Context, view *zone.View) error {
+				return view.SetRRset(ctx, "www.example.test.", dns.TypeA, records(t,
+					"www.example.test. 300 IN A 192.0.2.1",
+					"www.example.test. 300 IN A 192.0.2.2",
+					"www.example.test. 300 IN A 192.0.2.3",
+				))
+			},
+			raised:  []string{"www.example.test. A 300 to 600"},
+			changes: []string{"replace www.example.test. A 600 [192.0.2.1, 192.0.2.2, 192.0.2.3]"},
+		},
+		{
+			name:   "removal from an RRset below the minimum",
+			minTTL: 600,
+			modify: func(ctx context.Context, view *zone.View) error {
+				return view.SetRRset(ctx, "www.example.test.", dns.TypeA, records(t, "www.example.test. 300 IN A 192.0.2.1"))
+			},
+			changes: []string{"remove www.example.test. A [192.0.2.2]"},
+		},
+		{
+			name:   "untouched RRsets below the minimum",
+			minTTL: 600,
+			modify: func(ctx context.Context, view *zone.View) error {
+				_, err := view.RRsets(ctx, "www.example.test.")
+				return err
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			view := zone.NewView(newBackend(t), testZone)
+			if err := tt.modify(t.Context(), view); err != nil {
+				t.Fatal(err)
+			}
+			if got := view.RaiseTTLs(tt.minTTL); !slices.Equal(got, tt.raised) {
+				t.Errorf("RaiseTTLs(%d) = %q, want %q", tt.minTTL, got, tt.raised)
+			}
+			if got, want := describe(view.Changes()), strings.Join(tt.changes, "\n"); got != want {
+				t.Errorf("Changes():\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+}
+
 func TestViewChangesApply(t *testing.T) {
 	t.Parallel()
 	b := newBackend(t)

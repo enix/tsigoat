@@ -62,8 +62,10 @@ error of the backend, which the
 
 The providers hold no TTL below 60 seconds, and some read 0 as the default TTL
 of the zone. tsigoat raises the lower TTLs of an update to 60 seconds, which
-the update log reports in `ttl_raised`. ACME clients ask for 60 seconds or
-more.
+the update log reports in `ttl_raised`, before it computes the changes: a
+record added at 30 seconds to an RRset at 60 seconds is created alone, and
+the records that another instance creates meanwhile stay. ACME clients ask
+for 60 seconds or more.
 
 These providers let the records of an RRset have different TTLs. Such an RRset
 reads with the lowest of them, the one that resolvers keep, and an update that

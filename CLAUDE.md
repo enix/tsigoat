@@ -73,7 +73,8 @@ chart/                 Helm chart; README.md and values.schema.json generated
   what another writer may have done. A write whose outcome stays unknown
   returns a `backend.IndeterminateError` (metrics result `indeterminate`). Backends with a
   minimum TTL implement `backend.TTLFloor`, and the server raises lower TTLs
-  (`ttl_raised` in the update log). Records read from a provider are made
+  in the view before it computes the changes (`View.RaiseTTLs`, `ttl_raised`
+  in the update log), so that an addition stays an `Add`. Records read from a provider are made
   canonical (wire round trip) so that they compare with the records of an
   update. In-house HTTP clients only, no provider SDK and no libdns
   (decision D12).

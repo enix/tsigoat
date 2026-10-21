@@ -381,8 +381,8 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		out.fail(err)
 		return
 	}
+	out.raised = view.RaiseTTLs(z.MinTTL)
 	out.changes = view.Changes()
-	out.raised = raiseTTLs(out.changes, z.MinTTL)
 	if len(out.changes) > 0 {
 		err := z.Backend.Apply(ctx, zoneName, out.changes)
 		if rejection, ok := errors.AsType[*backend.RejectionError](err); ok {
@@ -395,25 +395,6 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		}
 	}
 	out.rcode = dns.RcodeSuccess
-}
-
-// raiseTTLs raises the TTLs of the RRsets that the changes replace or add to
-// the minimum of the backend, and returns those it raised, such as
-// "www.example.org. TXT 0 to 60".
-func raiseTTLs(changes []backend.Change, minTTL uint32) []string {
-	var raised []string
-	for i := range changes {
-		set := &changes[i].RRset
-		if (changes[i].Op != backend.Replace && changes[i].Op != backend.Add) || set.TTL >= minTTL {
-			continue
-		}
-		raised = append(raised, fmt.Sprintf("%s %s %d to %d", set.Name, dns.Type(set.Type), set.TTL, minTTL))
-		set.TTL = minTTL
-		for _, rr := range set.Records {
-			rr.Header().Ttl = minTTL
-		}
-	}
-	return raised
 }
 
 // relay hands an authorized update over to the relay of its zone, which
