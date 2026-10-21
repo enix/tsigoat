@@ -4,7 +4,7 @@ go 1.26.0
 
 // The toolchain of the tests and of the releases alike, which the golang image
 // of dagger/base.go matches (task check:toolchain).
-toolchain go1.27.2
+toolchain go1.27.3
 
 require (
 	github.com/KimMachineGun/automemlimit v1.0.0
