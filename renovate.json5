@@ -195,6 +195,13 @@
       labels: ["dependencies"],
     },
     {
+      // The write sites of the GoReleaser version: the release workflow,
+      // flake.nix and the image of the package test in dagger/base.go.
+      matchPackageNames: ["goreleaser/goreleaser", "ghcr.io/goreleaser/goreleaser"],
+      groupName: "goreleaser",
+      labels: ["dependencies"],
+    },
+    {
       matchPackageNames: ["powerdns/**"],
       groupName: "powerdns test images",
       labels: ["dependencies", "test"],

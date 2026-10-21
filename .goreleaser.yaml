@@ -1,7 +1,7 @@
-# GoReleaser drives every build of tsigoat: binaries, archives, checksums,
-# multi-arch container images (scratch by default, busybox as an
-# alternative with a shell), cosign keyless signatures and the GitHub
-# Release with its changelog.
+# GoReleaser drives every build of tsigoat: binaries, archives, deb and rpm
+# packages, checksums, multi-arch container images (scratch by default,
+# busybox as an alternative with a shell), cosign keyless signatures and the
+# GitHub Release with its changelog.
 #
 # Releases start from a version tag, which the Tag a release workflow creates
 # with svu, or a maintainer pushes; the release workflow runs GoReleaser and
@@ -73,6 +73,56 @@ archives:
         formats: [zip]
     files:
       - LICENSE
+
+# ─── Linux packages ──────────────────────────────────────────────────────────
+# deb and rpm packages: the static binary, a hardened systemd unit run by the
+# system user tsigoat, and /etc/tsigoat for the configuration, which the
+# service waits for. docs/operations.md tells how to install them.
+nfpms:
+  - id: packages
+    ids: [tsigoat, tsigoat-local]
+    package_name: tsigoat
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Enix
+    homepage: https://github.com/enix/tsigoat
+    maintainer: Enix <enix@enix.fr>
+    description: |-
+      RFC 2136 dynamic update proxy authenticated with TSIG.
+      tsigoat receives DNS updates signed with TSIG, checks them against the
+      policy of their key, and applies them through the API of a DNS provider,
+      or relays them to a name server: an ACME client holds a key restricted
+      to its challenges, never the API key of the provider.
+    license: MIT
+    section: net
+    priority: optional
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    contents:
+      - src: build/package/tsigoat.service
+        dst: /usr/lib/systemd/system/tsigoat.service
+      - src: build/package/tsigoat.sysusers
+        dst: /usr/lib/sysusers.d/tsigoat.conf
+      - dst: /etc/tsigoat
+        type: dir
+        file_info:
+          mode: 0750
+          owner: root
+          group: tsigoat
+      - src: examples/config.yaml
+        dst: /usr/share/doc/tsigoat/examples/config.yaml
+      - src: LICENSE
+        dst: /usr/share/doc/tsigoat/copyright
+        packager: deb
+      - src: LICENSE
+        dst: /usr/share/licenses/tsigoat/LICENSE
+        packager: rpm
+    scripts:
+      preinstall: build/package/preinstall.sh
+      postinstall: build/package/postinstall.sh
+      preremove: build/package/preremove.sh
+      postremove: build/package/postremove.sh
+    rpm:
+      summary: RFC 2136 dynamic update proxy authenticated with TSIG
 
 checksum:
   name_template: "checksums.txt"

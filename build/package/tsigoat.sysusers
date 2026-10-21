@@ -1,0 +1,2 @@
+# The system user of the tsigoat service, whose group reads /etc/tsigoat.
+u tsigoat - "tsigoat DNS update proxy" - -

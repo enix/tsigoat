@@ -19,8 +19,9 @@ the latest minor release.
 ## Verifying releases
 
 Releases sign every image, the Helm chart, and the checksums of their
-archives, with cosign keyless. GitHub attests the build provenance of the
-archives, and every image carries a CycloneDX SBOM as a cosign attestation.
+archives and deb and rpm packages, with cosign keyless. GitHub attests the
+build provenance of the archives and packages, and every image carries a
+CycloneDX SBOM as a cosign attestation.
 Before deploying a release, check that the release workflow signed it, on
 the tag of its version:
 

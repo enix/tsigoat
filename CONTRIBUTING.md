@@ -193,7 +193,8 @@ Commits since the last release, or the next release candidate of it,
 `vX.Y.Z-rc.N`, when the box is ticked; `task release:next` prints it
 beforehand. The workflow tags the commit, then starts the release workflow on
 the tag: it runs the quality gates, then GoReleaser builds and signs the
-binaries and images and leaves a draft GitHub Release, which the maintainer
+binaries, the deb and rpm packages and the images, and leaves a draft GitHub
+Release, which the maintainer
 reviews and publishes. The Helm chart takes the version of the tag, and is
 pushed to its OCI registry and signed after the images. A maintainer may
 also push a version tag, which starts the release workflow alike.

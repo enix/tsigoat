@@ -67,7 +67,8 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
   [operations.md](docs/operations.md#several-instances) tells.
 - **Operations**: one structured log entry per update, Prometheus metrics,
   health checks, a strict configuration file with `check-config`, static
-  binaries and multi-architecture images.
+  binaries, deb and rpm packages with a hardened systemd unit, and
+  multi-architecture images.
 
 ## Getting started
 

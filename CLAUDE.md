@@ -36,6 +36,7 @@ internal/backend/backendtest/  conformance suite of the backends (memory, PowerD
 internal/metrics/      Prometheus collectors: responses, TSIG failures, backend calls
 internal/admin/        administration HTTP server: /healthz, /readyz, /metrics
 chart/                 Helm chart; README.md and values.schema.json generated
+build/                 Dockerfiles; package/: systemd unit, sysusers and scripts of the deb and rpm packages
 ```
 
 - The engine computes the changes of each RRset on an in-memory view: `Remove`
@@ -120,6 +121,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | BIND differential | `task test:differential` | `dagger call test-differential`: the scenarios against BIND 9, intended divergences in `test/differential/divergences.yaml`; and through tsigoat relaying to BIND, with no divergence |
 | Live providers | `task test:live` | `go test -tags live ./test/live/`: conformance suite and an ACME flow against the zones and credentials of `tmp/live.yaml` (`TSIGOAT_LIVE_CONFIG`); see `test/live/live.example.yaml` |
 | Helm chart | `task test:helm` | `dagger call test-helm`: `test/chart` (build tag `chart`) renders every example and fixture, then promtool and kubeconform; `task lint:helm` too |
+| Packages | `task test:packages` | `dagger call test-packages`: GoReleaser builds the deb and rpm packages (nfpm), installed, checked and removed on Debian and AlmaLinux |
 | Chart docs | `task doc:helm` | regenerates `chart/README.md` and `chart/values.schema.json`; `task check:helm-docs` fails when stale |
 | Webhook example | `task test:webhook` | `dagger call test-webhook-example`: nsupdate through tsigoat to `examples/webhook/webhook.py`, each authentication |
 | cert-manager | `task test:acceptance` | `dagger call test-acceptance`: the chart in k3s, cert-manager through it, inside Dagger; nightly |

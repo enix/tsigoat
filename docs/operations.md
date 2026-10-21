@@ -46,6 +46,38 @@ docker run --rm -p 53:5353/udp -p 53:5353/tcp \
   -v "$PWD/config.yaml:/etc/tsigoat/config.yaml:ro" ghcr.io/enix/tsigoat
 ```
 
+## Packages
+
+Each release holds deb and rpm packages for amd64, arm64 and riscv64, which
+`checksums.txt` lists, so that its signature covers them
+([SECURITY.md](../SECURITY.md#verifying-releases)). They install the static
+binary, a systemd unit and the system user `tsigoat`:
+
+```sh
+# Debian, Ubuntu
+curl -LO https://github.com/enix/tsigoat/releases/download/v<version>/tsigoat_<version>_amd64.deb
+sudo apt install ./tsigoat_<version>_amd64.deb
+# RHEL, Fedora
+sudo dnf install https://github.com/enix/tsigoat/releases/download/v<version>/tsigoat-<version>-1.x86_64.rpm
+```
+
+The service waits for `/etc/tsigoat/config.yaml`, which
+`/usr/share/doc/tsigoat/examples/config.yaml` shows with every setting. Write
+it, keep the secrets in files that the group `tsigoat` reads, check the
+configuration as the user of the service, then start it:
+
+```sh
+openssl rand -base64 32 | sudo install -m 0640 -g tsigoat /dev/stdin /etc/tsigoat/acme.key
+sudo -u tsigoat tsigoat check-config
+sudo systemctl enable --now tsigoat
+```
+
+The unit runs tsigoat as `tsigoat`, in a hardened sandbox, with the sole
+capability of binding the ports below 1024, such as 53. An upgrade restarts
+the service if it runs; the removal of the package stops it, and leaves
+`/etc/tsigoat` and the user. There is no apt or dnf repository yet: an
+upgrade takes the packages of the next release.
+
 ## Kubernetes
 
 The Helm chart of [chart](../chart) deploys tsigoat; [its
