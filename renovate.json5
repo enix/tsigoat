@@ -188,8 +188,9 @@
       labels: ["dependencies", "docker"],
     },
     {
-      // Both write sites of the Renovate version: dagger/base.go and Taskfile.yml.
-      matchPackageNames: ["renovate/renovate"],
+      // The write sites of the Renovate version: dagger/base.go, Taskfile.yml
+      // and the Renovate workflow, which pulls it from ghcr.io.
+      matchPackageNames: ["renovate/renovate", "ghcr.io/renovatebot/renovate"],
       groupName: "renovate",
       labels: ["dependencies"],
     },

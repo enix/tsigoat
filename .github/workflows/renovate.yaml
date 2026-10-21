@@ -88,3 +88,6 @@ jobs:
           RENOVATE_DRY_RUN: ${{ (inputs.dryRun != '' && inputs.dryRun != 'disabled') && inputs.dryRun || '' }}
         with:
           token: ${{ steps.app-token.outputs.token }}
+          # An exact version rather than the series of the action, since
+          # Renovate runs with the write access of the App.
+          renovate-version: 44.167.7
