@@ -27,7 +27,7 @@ close the document.
 | F11 | Confirmed | Fixed: failure expiry from the end of the read, cancellable wait | `0635b3c` |
 | F12 | Confirmed | Fixed: RFC 8945 length rules, BADTRUNC under a full-MAC policy | `53aed06` |
 | F13 | Confirmed | Fixed: additions without the RDATA of their type get FORMERR | `6741fcb`, `06fc528` |
-| F14 | Confirmed | Several replicas, whose writes keep each other's records, TTL floor included; what holds within one alone, and with session affinity, documented | `ca07db7`, `42c3a70`, `3d8a915`, `0f8637d`, `ce778cf`, `3141e26` |
+| F14 | Confirmed | Several replicas, whose writes keep each other's records, TTL floor included; what holds within one alone, and with session affinity, documented | `ca07db7`, `42c3a70`, `3d8a915`, `0f8637d`, `ce778cf`, `3141e26`, `099be7c` |
 | F15 | Confirmed | Fixed: one toolchain for tests, scans and releases, checked in CI; scanner pinned | `5cb039a`, `6aa5d63` |
 | F16 | Confirmed | Fixed: second YAML document refused, and the names that a request would spell otherwise | `8372c29`, `06fc528`, `5865d6c` |
 | F17 | Confirmed | Fixed in the code: no loss on PowerDNS 4.9 | `299e338` |
@@ -298,10 +298,13 @@ since 4.9.12 and 5.0.2, which take EXTEND and PRUNE: the documentation now
 says so, and tells to run a single instance in front of an older PowerDNS.
 What holds within one instance alone, a change of TTL, prerequisites and
 CNAME transitions, is documented as an assumed choice, which accepts the
-risk of overlapping writers for those changes; a single replica, with the
-`Recreate` strategy, avoids it, and session affinity keeps those guarantees
-between the updates of one client alone, such as the concurrent challenges
-of one cert-manager, not between clients (`3141e26`). The `Recreate`
+risk of overlapping writers for those changes. A single replica, with the
+`Recreate` strategy, avoids it during rollouts alone: a pod deleted by hand or
+evicted gets its replacement at once, while it finishes its updates in
+progress, for 26 seconds at most, which the documentation tells again
+(`099be7c`). Session affinity keeps those guarantees between the updates of
+one client alone, such as the concurrent challenges of one cert-manager, not
+between clients (`3141e26`). The `Recreate`
 strategy, as the documentation told to set it, rendered beside the
 `rollingUpdate` of the defaults, which Kubernetes refuses: the chart now
 leaves it out (`ce778cf`).
