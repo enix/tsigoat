@@ -67,8 +67,13 @@ removes apply to the records as they stand at the backend, so that concurrent
 updates keep each other's records: the challenges of a certificate and of its
 wildcard, sent at once to two instances, both stay. This is a deliberate
 choice, for availability, and of little consequence for ACME clients, whose
-updates add and remove values. A few guarantees of RFC 2136 hold within an
-instance alone:
+updates add and remove values. It holds with the hosted providers, and with
+PowerDNS since 4.9.12 and 5.0.2, which apply EXTEND and PRUNE to the records
+as they stand: with an older PowerDNS, every change replaces its RRset whole,
+as its instance read it, and concurrent updates of an RRset drop each
+other's records; run a single instance in front of it.
+
+A few guarantees of RFC 2136 hold within an instance alone:
 
 - an update that changes the TTL of an RRset replaces it whole, as its
   instance read it, and drops a record that another instance added meanwhile;
@@ -79,11 +84,16 @@ instance alone:
 - two updates that change the same RRsets apply to each RRset in some order,
   not each one whole before the other.
 
-To keep them all, run a single instance, or send the updates of each client
-to one instance: set `service.sessionAffinity` to `ClientIP` in the chart, or
-route by client in a CNI or an external load balancer. The
-relays need neither: an RFC 2136 name server applies each update whole, and a
-webhook endpoint applies the updates of a zone one at a time.
+To keep them all, run a single instance: with the chart, set `replicaCount`
+to 1, and `strategy.type` to `Recreate` so that two pods never run at once,
+even during a rollout. Session affinity keeps them for the updates of one
+client alone: with `service.sessionAffinity` set to `ClientIP` in the chart,
+or a routing by client in a CNI or an external load balancer, the updates of
+a client go to one instance, which serializes them, such as the concurrent
+challenges of one cert-manager; but two clients may still update a zone
+through two instances, and a client whose instance stops moves to another
+one. The relays need neither: an RFC 2136 name server applies each update
+whole, and a webhook endpoint applies the updates of a zone one at a time.
 
 ## Logs
 

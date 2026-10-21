@@ -110,9 +110,10 @@ tsigoat, for its part:
 
 - sends the updates of a zone one at a time, while the endpoint answers
   within the timeout. After a timeout, tsigoat sends the next update of the
-  zone, though the endpoint may still apply the previous one: only the
-  endpoint can keep the updates of a zone apart, as the example does, which
-  handles one request at a time. tsigoat runs as a single instance;
+  zone, though the endpoint may still apply the previous one, and several
+  instances of tsigoat send theirs side by side: only the endpoint can keep
+  the updates of a zone apart, as the example does, which handles one
+  request at a time;
 - refuses the updates with prerequisites, with REFUSED: their evaluation needs
   the content of the zone, which tsigoat does not read;
 - leaves out the deletions that RFC 2136 ignores whatever the state of the

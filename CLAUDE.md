@@ -46,7 +46,9 @@ chart/                 Helm chart; README.md and values.schema.json generated
   hosted providers), so that concurrent instances keep each other's records.
 - One mutex per zone serialises updates in the process; several instances may
   run: TTL changes, prerequisites and CNAME transitions are only serialised
-  within one (`docs/operations.md#several-instances`, an assumed choice).
+  within one (`docs/operations.md#several-instances`, an assumed choice);
+  client affinity keeps them between the updates of one client alone, and
+  an older PowerDNS (no EXTEND/PRUNE) needs a single instance.
 - A zone on an `rfc2136` or `webhook` backend skips the engine: once the
   policy allows an update, `backend.Relay` sends it whole to the name server or
   the endpoint, which applies it; no zone lock in the server (the webhook

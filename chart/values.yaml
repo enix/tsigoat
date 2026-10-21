@@ -46,9 +46,9 @@ imagePullSecrets: []
 # minimum: 1
 # @schema
 # -- Number of pods. Several pods keep the records of each other's updates,
-# but not every guarantee of RFC 2136 across pods: see [Replicas](#replicas).
-# 1 keeps them all, as `service.sessionAffinity` does for the updates of one
-# client
+# on PowerDNS since 4.9.12 and 5.0.2, but not every guarantee of RFC 2136
+# across pods: see [Replicas](#replicas). 1 keeps them all, with the
+# `Recreate` strategy
 replicaCount: 2
 
 # @schema
@@ -173,7 +173,8 @@ service:
   # enum: [None, ClientIP]
   # @schema
   # -- Session affinity of the DNS Service: `ClientIP` sends the requests of a
-  # client to one pod, which serializes its updates
+  # client to one pod, which serializes the updates of that client, not those
+  # of other clients
   sessionAffinity: None
   # @schema
   # type: integer

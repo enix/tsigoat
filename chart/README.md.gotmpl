@@ -118,14 +118,16 @@ PodDisruptionBudget, so that one of them may stop while the other serves. Each
 pod serializes the updates of a zone; the records that an update adds and
 removes apply to the records as they stand, so that the pods keep the records
 of each other's updates, such as the challenges of a certificate and of its
-wildcard. A change of TTL, prerequisites and CNAME transitions are serialized
-within one pod alone: see
+wildcard, on the hosted providers and on PowerDNS since 4.9.12 and 5.0.2. A
+change of TTL, prerequisites and CNAME transitions are serialized within one
+pod alone: see
 [Several instances](https://github.com/enix/tsigoat/blob/main/docs/operations.md#several-instances).
-To keep every guarantee of RFC 2136, set `replicaCount` to 1, with the
-`Recreate` strategy if two pods must not run at once during a rollout, or set
-`service.sessionAffinity` to `ClientIP`, which sends the requests of a client
-to one pod. `topologySpreadConstraints` spreads the replicas over nodes or
-zones.
+To keep every guarantee of RFC 2136, or in front of an older PowerDNS, set
+`replicaCount` to 1, and `strategy.type` to `Recreate` so that two pods never
+run at once. `service.sessionAffinity` set to `ClientIP` sends the requests of
+a client to one pod, which keeps these guarantees between the updates of that
+client, not between clients. `topologySpreadConstraints` spreads the replicas
+over nodes or zones.
 
 ## Monitoring
 

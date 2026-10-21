@@ -118,14 +118,16 @@ PodDisruptionBudget, so that one of them may stop while the other serves. Each
 pod serializes the updates of a zone; the records that an update adds and
 removes apply to the records as they stand, so that the pods keep the records
 of each other's updates, such as the challenges of a certificate and of its
-wildcard. A change of TTL, prerequisites and CNAME transitions are serialized
-within one pod alone: see
+wildcard, on the hosted providers and on PowerDNS since 4.9.12 and 5.0.2. A
+change of TTL, prerequisites and CNAME transitions are serialized within one
+pod alone: see
 [Several instances](https://github.com/enix/tsigoat/blob/main/docs/operations.md#several-instances).
-To keep every guarantee of RFC 2136, set `replicaCount` to 1, with the
-`Recreate` strategy if two pods must not run at once during a rollout, or set
-`service.sessionAffinity` to `ClientIP`, which sends the requests of a client
-to one pod. `topologySpreadConstraints` spreads the replicas over nodes or
-zones.
+To keep every guarantee of RFC 2136, or in front of an older PowerDNS, set
+`replicaCount` to 1, and `strategy.type` to `Recreate` so that two pods never
+run at once. `service.sessionAffinity` set to `ClientIP` sends the requests of
+a client to one pod, which keeps these guarantees between the updates of that
+client, not between clients. `topologySpreadConstraints` spreads the replicas
+over nodes or zones.
 
 ## Monitoring
 
@@ -175,7 +177,7 @@ covers the images and the binaries.
 | image.digest | string | `""` | Image digest, which takes precedence over the tag |
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | imagePullSecrets | list | `[]` | Names of the Secrets to pull the image with |
-| replicaCount | int | `2` | Number of pods. Several pods keep the records of each other's updates, but not every guarantee of RFC 2136 across pods: see [Replicas](#replicas). 1 keeps them all, as `service.sessionAffinity` does for the updates of one client |
+| replicaCount | int | `2` | Number of pods. Several pods keep the records of each other's updates, on PowerDNS since 4.9.12 and 5.0.2, but not every guarantee of RFC 2136 across pods: see [Replicas](#replicas). 1 keeps them all, with the `Recreate` strategy |
 | strategy | object | a rolling update that starts a new pod before stopping an old one | Update strategy of the Deployment |
 | podDisruptionBudget.enabled | bool | `true` | Create a PodDisruptionBudget, with more than one replica |
 | podDisruptionBudget.maxUnavailable | int | `1` | Pods that a voluntary disruption, such as the drain of a node, may stop at once |
@@ -192,7 +194,7 @@ covers the images and the binaries.
 | service.externalTrafficPolicy | string | `""` | externalTrafficPolicy of a `NodePort` or `LoadBalancer` Service: `Local` keeps the addresses of the clients in the logs |
 | service.loadBalancerSourceRanges | list | `[]` | Sources allowed to reach a `LoadBalancer` Service, as CIDR blocks |
 | service.loadBalancerClass | string | `""` | Class of a `LoadBalancer` Service |
-| service.sessionAffinity | string | `"None"` | Session affinity of the DNS Service: `ClientIP` sends the requests of a client to one pod, which serializes its updates |
+| service.sessionAffinity | string | `"None"` | Session affinity of the DNS Service: `ClientIP` sends the requests of a client to one pod, which serializes the updates of that client, not those of other clients |
 | service.sessionAffinityTimeoutSeconds | int | `10800` | How long a client stays with its pod after its last request, in seconds, with `ClientIP` |
 | admin.port | int | `9153` | Port of the administration server, which serves `/healthz`, `/readyz` and `/metrics` to the probes and Prometheus, through its own `ClusterIP` Service |
 | serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor for the Prometheus operator |

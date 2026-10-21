@@ -76,8 +76,8 @@ To move a client off a legacy algorithm:
   costs a few backend calls, each unsigned one none, but for the zones that
   accept unsigned updates.
 - **Several instances** keep the records that each other's updates add and
-  remove, but serialize a change of TTL, prerequisites and CNAME transitions
-  within one instance alone: see
+  remove, on PowerDNS since 4.9.12 and 5.0.2, but serialize a change of TTL,
+  prerequisites and CNAME transitions within one instance alone: see
   [Several instances](operations.md#several-instances).
 
 ## Hardening a deployment

@@ -64,7 +64,10 @@ another server.
 
 tsigoat serializes the updates of a zone within its process. Other instances
 of tsigoat, and other writers through the API, may change the same RRsets
-meanwhile: the records that an update adds and removes apply to the records
-as they stand, so that theirs stay. What an update checks before it writes,
-and an RRset that it replaces whole, still race with them: see
-[Several instances](operations.md#several-instances).
+meanwhile: since PowerDNS 4.9.12 and 5.0.2, the records that an update adds
+and removes apply to the records as they stand, so that theirs stay. What an
+update checks before it writes, and an RRset that it replaces whole, still
+race with them: see [Several instances](operations.md#several-instances).
+Before, every change replaces its RRset as tsigoat read it, and drops what
+the others wrote meanwhile: run a single instance of tsigoat in front of an
+older PowerDNS.
