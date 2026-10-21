@@ -34,6 +34,7 @@ import (
 	"go.yaml.in/yaml/v3"
 
 	"github.com/enix/tsigoat/internal/app"
+	"github.com/enix/tsigoat/internal/backend"
 	"github.com/enix/tsigoat/internal/config"
 	"github.com/enix/tsigoat/test/scenario"
 )
@@ -239,7 +240,8 @@ func (b *bindTarget) run(ctx context.Context, args ...string) (string, error) {
 	return string(output), err
 }
 
-// Records reads the zone with a zone transfer.
+// Records reads the zone with a zone transfer, and normalizes the records
+// decoded from it, as tsigoat does with the records of a request.
 func (b *bindTarget) Records(ctx context.Context, zone string) ([]dns.RR, error) {
 	m := new(dns.Msg)
 	m.SetAxfr(zone)
@@ -257,6 +259,7 @@ func (b *bindTarget) Records(ctx context.Context, zone string) ([]dns.RR, error)
 			if rr.Header().Rrtype == dns.TypeSOA || isNSAddress(rr, zone) {
 				continue
 			}
+			backend.Normalize(rr)
 			records = append(records, rr)
 		}
 	}
