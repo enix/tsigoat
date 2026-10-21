@@ -101,7 +101,7 @@ Every update ends with one entry, `msg=update`:
 | `rcode` | Response code |
 | `reason` | Why the update was rejected, for REFUSED, FORMERR, NOTZONE and failed prerequisites, or why the backend turned it down |
 | `error` | Why it failed, for SERVFAIL |
-| `changes` | RRset changes applied, such as `replace _acme-challenge.www.example.com. TXT 60 ["challenge-value"]` |
+| `changes` | Changes applied, such as `add _acme-challenge.www.example.com. TXT 60 ["challenge-value"]`, `remove` for the records removed, and `replace` or `delete` for whole RRsets |
 | `ttl_raised` | RRsets whose TTL tsigoat raised to the minimum of the provider, such as `www.example.com. TXT 30 to 60` |
 | `updates` | Updates relayed to an `rfc2136` or `webhook` backend, as requested, such as `add _acme-challenge.www.example.com. 60 TXT "challenge-value"` |
 | `duration` | Time to process the update |
