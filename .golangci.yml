@@ -12,7 +12,7 @@ run:
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:
-    # Same baseline as x509-certificate-exporter
+    # Correctness and security
     - bodyclose
     - contextcheck
     - errorlint
