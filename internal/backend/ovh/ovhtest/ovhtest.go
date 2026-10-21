@@ -65,9 +65,11 @@ type API struct {
 	refreshes int
 	// failures holds the outcomes of the next write requests.
 	failures []Failure
-	// late holds the requests that Late failures keep for Land.
-	late   []lateRequest
-	tokens int
+	// late holds the requests that Late failures keep for Land; waiting
+	// counts those that wait for their client to give up.
+	late    []lateRequest
+	waiting int
+	tokens  int
 }
 
 // Failure is the outcome of a write request, refreshes included.
@@ -184,9 +186,21 @@ type lateRequest struct {
 	body  []byte
 }
 
+// Waiting returns the number of requests that Late failures hold, which wait
+// for their client to give up.
+func (a *API) Waiting() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.waiting
+}
+
 // Land applies the requests that Late failures kept, as their late
-// application by OVHcloud.
+// application by OVHcloud, once none waits for its client to give up: the
+// server learns it after the client.
 func (a *API) Land() {
+	for deadline := time.Now().Add(5 * time.Second); a.Waiting() > 0 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	a.mu.Lock()
 	late := a.late
 	a.late = nil
@@ -267,8 +281,12 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, parts []string, body 
 	f := a.nextFailure()
 	switch {
 	case f.Late:
+		a.mu.Lock()
+		a.waiting++
+		a.mu.Unlock()
 		<-r.Context().Done()
 		a.mu.Lock()
+		a.waiting--
 		a.late = append(a.late, lateRequest{r: r.Clone(context.WithoutCancel(r.Context())), parts: parts, body: body})
 		a.mu.Unlock()
 		return true

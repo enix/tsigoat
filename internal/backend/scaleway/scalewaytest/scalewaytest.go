@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -52,6 +53,9 @@ type API struct {
 	requests int
 	// held holds the PATCH requests that HoldPatch keeps for Land.
 	held []heldPatch
+	// waiting counts the held requests that wait for their client to give
+	// up.
+	waiting int
 }
 
 type failure struct {
@@ -130,6 +134,10 @@ func (a *API) HoldPatch() {
 // Land applies the PATCH requests that HoldPatch kept, as Scaleway would once
 // their client gave up.
 func (a *API) Land() error {
+	// The server learns that the client gave up after the client does.
+	for deadline := time.Now().Add(5 * time.Second); a.waitingRequests() > 0 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	a.mu.Lock()
 	held := a.held
 	a.held = nil
@@ -264,8 +272,12 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request, zone string) {
 		return
 	}
 	if next != nil && next.late {
+		a.mu.Lock()
+		a.waiting++
+		a.mu.Unlock()
 		<-r.Context().Done()
 		a.mu.Lock()
+		a.waiting--
 		a.held = append(a.held, heldPatch{zone: zone, body: body})
 		a.mu.Unlock()
 		return
@@ -426,4 +438,12 @@ func Divergences() map[string]string {
 		"records/txt-multiple-strings": "Scaleway holds a TXT record as a single string: tsigoat turns down the strings that it would join",
 		"records/txt-utf8":             "tsigoat keeps TXT strings to printable ASCII",
 	}
+}
+
+// waitingRequests returns the number of held requests that wait for their
+// client to give up.
+func (a *API) waitingRequests() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.waiting
 }

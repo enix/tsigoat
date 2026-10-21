@@ -154,6 +154,7 @@ func TestRecovery(t *testing.T) {
 	pass := ovhtest.Failure{}
 	committed := ovhtest.Failure{Status: http.StatusInternalServerError, Message: "lost response", AfterCommit: true}
 	refused := ovhtest.Failure{Status: http.StatusInternalServerError, Message: "refused"}
+	rejected := ovhtest.Failure{Status: http.StatusBadRequest, Message: "rejected"}
 	late := ovhtest.Failure{Late: true}
 	for _, c := range []struct {
 		label  string
@@ -165,51 +166,44 @@ func TestRecovery(t *testing.T) {
 		// canceled cancels the update while its requests run.
 		canceled bool
 	}{
-		// Delete "old", create "new", which applies but fails.
-		{label: "creation", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{pass, committed}},
-		// Add "new" beside "old", which applies but fails.
-		{label: "addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, failures: []ovhtest.Failure{committed}},
-		// Remove "old", which applies but fails.
-		{label: "removal", change: `www.example.test. 300 IN TXT "old"`, op: backend.Remove, failures: []ovhtest.Failure{committed}},
-		// Delete "old", then create "new", which times out and applies
-		// after the recovery: the records read again do not show it.
+		// Delete "old", then create "new", which OVHcloud rejects: the
+		// deletion is taken back, and nothing changed.
+		{label: "rejected creation", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{pass, rejected}},
+		// Retime "old", which OVHcloud rejects.
+		{label: "rejected retime", change: `www.example.test. 600 IN TXT "old"`, failures: []ovhtest.Failure{rejected}},
+		// A request that applies but answers an error, or applies after
+		// its timeout, or after the cancellation of its update: nothing
+		// tells its effect apart from what another writer does, and its
+		// outcome stays unknown, whatever the recovery takes back.
+		{label: "creation", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{pass, committed}},
+		{label: "addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, indeterminate: true, failures: []ovhtest.Failure{committed}},
+		{label: "removal", change: `www.example.test. 300 IN TXT "old"`, op: backend.Remove, indeterminate: true, failures: []ovhtest.Failure{committed}},
+		{label: "deletion", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{committed}},
+		{label: "retime", change: `www.example.test. 600 IN TXT "old"`, indeterminate: true, failures: []ovhtest.Failure{committed}},
 		{label: "late creation", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{pass, late}},
-		// Add "new", which times out and applies after the recovery.
 		{label: "late addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, indeterminate: true, failures: []ovhtest.Failure{late}},
-		// Add "new", whose update is canceled while the request runs, which
-		// applies after the recovery.
 		{label: "canceled addition", change: `www.example.test. 300 IN TXT "new"`, op: backend.Add, indeterminate: true, canceled: true, failures: []ovhtest.Failure{late}},
-		// Delete "old", which applies but fails.
-		{label: "deletion", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{committed}},
-		// Retime "old", which applies but fails.
-		{label: "retime", change: `www.example.test. 600 IN TXT "old"`, failures: []ovhtest.Failure{committed}},
-		// The three refreshes apply but fail; the refresh of the records
-		// restored succeeds.
+		// The three refreshes apply but fail; the update is taken back, and
+		// its refresh succeeds.
 		{label: "refresh", change: `www.example.test. 300 IN TXT "new"`, failures: []ovhtest.Failure{
 			pass, pass, committed, committed, committed,
 		}},
-		// The refresh of the records restored fails too: the name servers
+		// The refresh of the records taken back fails too: the name servers
 		// may serve the update.
-		{label: "refresh after restoring", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{
+		{label: "refresh after taking back", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{
 			pass, pass, committed, committed, committed, pass, pass, refused, refused, refused,
 		}},
-		// Restoring fails: the zone may hold part of the update.
-		{label: "restoring", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{
-			pass, committed, refused,
+		// Taking back the deletion fails: the zone may hold part of the
+		// update.
+		{label: "taking back", change: `www.example.test. 300 IN TXT "new"`, indeterminate: true, failures: []ovhtest.Failure{
+			pass, rejected, refused,
 		}},
 	} {
 		t.Run(c.label, func(t *testing.T) {
 			t.Parallel()
 			api := ovhtest.New(t)
 			api.CreateZone(testZone, rr(t, `www.example.test. 300 IN TXT "old"`))
-			b, err := ovh.New(&ovh.Options{
-				Endpoint:       api.URL,
-				ApplicationKey: ovhtest.ApplicationKey, ApplicationSecret: ovhtest.ApplicationSecret, ConsumerKey: ovhtest.ConsumerKey,
-				RefreshDelay: time.Millisecond, Timeout: 200 * time.Millisecond,
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			b := newRecoveringBackend(t, api)
 			before := api.Records(testZone)
 			api.FailWrites(c.failures...)
 			change := replace(t, c.change)
@@ -222,7 +216,7 @@ func TestRecovery(t *testing.T) {
 				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
 				defer cancel()
 			}
-			err = b.Apply(ctx, testZone, []backend.Change{change})
+			err := b.Apply(ctx, testZone, []backend.Change{change})
 			switch {
 			case err == nil:
 				t.Fatal("Apply() succeeded, want an error")
@@ -239,13 +233,66 @@ func TestRecovery(t *testing.T) {
 				}
 				return
 			}
-			if !strings.Contains(err.Error(), "the records are as they were") {
-				t.Errorf("Apply() = %v, want the records restored", err)
-			}
 			if !sameRecords(api.Records(testZone), before) || !sameRecords(api.Published(testZone), before) {
-				t.Errorf("records %v, published %v, want %v", api.Records(testZone), api.Published(testZone), before)
+				t.Errorf("Apply() = %v; records %v, published %v, want %v", err, api.Records(testZone), api.Published(testZone), before)
 			}
 		})
+	}
+}
+
+// newRecoveringBackend returns a backend on api, with short delays.
+func newRecoveringBackend(t *testing.T, api *ovhtest.API) *ovh.Backend {
+	t.Helper()
+	b, err := ovh.New(&ovh.Options{
+		Endpoint:       api.URL,
+		ApplicationKey: ovhtest.ApplicationKey, ApplicationSecret: ovhtest.ApplicationSecret, ConsumerKey: ovhtest.ConsumerKey,
+		RefreshDelay: time.Millisecond, Timeout: 200 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// TestRecoveryBesideAnotherWriter checks that the recovery of an update keeps
+// what another writer does meanwhile: the first instance adds a value whose
+// request OVHcloud holds past its timeout, the second one adds the same
+// value, and succeeds. The first one must keep the record of the second one,
+// and report an unknown outcome, since its own request may still apply.
+func TestRecoveryBesideAnotherWriter(t *testing.T) {
+	t.Parallel()
+	api := ovhtest.New(t)
+	api.CreateZone(testZone, rr(t, `www.example.test. 300 IN TXT "old"`))
+	first, second := newRecoveringBackend(t, api), newRecoveringBackend(t, api)
+	addition := func() []backend.Change {
+		change := replace(t, `www.example.test. 300 IN TXT "new"`)
+		change.Op = backend.Add
+		return []backend.Change{change}
+	}
+
+	api.FailWrites(ovhtest.Failure{Late: true})
+	done := make(chan error, 1)
+	go func() { done <- first.Apply(t.Context(), testZone, addition()) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for api.Waiting() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if err := second.Apply(t.Context(), testZone, addition()); err != nil {
+		t.Fatalf("the second Apply() = %v", err)
+	}
+	var kept []int64
+	for _, r := range api.Records(testZone) {
+		if r.Target == `"new"` {
+			kept = append(kept, r.ID)
+		}
+	}
+	if err := <-done; !backend.IsIndeterminate(err) {
+		t.Errorf("the first Apply() = %v, want an unknown outcome", err)
+	}
+	for _, id := range kept {
+		if !slices.ContainsFunc(api.Records(testZone), func(r ovhtest.Record) bool { return r.ID == id }) {
+			t.Errorf("the recovery of the first update deleted record %d of the second one: %v", id, api.Records(testZone))
+		}
 	}
 }
 

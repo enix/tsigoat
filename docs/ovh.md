@@ -78,17 +78,19 @@ Service accounts need one of the endpoints `ovh-eu`, `ovh-ca` and `ovh-us`.
   stood at its last refresh. tsigoat applies the records of an update one
   request at a time, the deletions, the changes of TTL, then the creations,
   and refreshes the zone once, so that the name servers see the update whole.
-- **No transaction**: a request that fails may have applied anyway, before
-  its response was lost. When a request fails, or the refresh fails three
-  times, tsigoat reads the records of the update again and takes back what
-  the update did, whatever the requests did: the RRsets that it replaced come
-  back as they were, the records that it added go, and those that it removed
-  come back. It checks them, and refreshes the zone; the update gets
-  SERVFAIL. When that fails too, or when the request that failed may still
-  apply, as after a timeout, and the records read again do not show it, the
-  outcome is unknown: the zone may hold part of the update, which the next
-  refresh, by tsigoat or by anyone, publishes; the update log tells so, and
-  the [TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates) alert
+- **No transaction**: when a request fails, or the refresh fails three
+  times, tsigoat takes back what the answers of its requests tell that the
+  update did: it deletes the records that it created, by the identifiers that
+  OVHcloud gave them, creates again those that it deleted, and gives back
+  their TTL to those that it retimed; it checks them, and refreshes the zone.
+  The update gets SERVFAIL. A request that fails without telling whether it
+  applied, as after a timeout or a server error, may have applied, or apply
+  still, and nothing tells its effect apart from what another writer, such as
+  another instance of tsigoat, does: tsigoat leaves the records of its data
+  alone, and the outcome is unknown, as when taking back fails. The zone may
+  then hold part of the update, which the next refresh, by tsigoat or by
+  anyone, publishes; the update log tells so, and the
+  [TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates) alert
   fires. A refresh by another writer, such as the control panel, publishes
   what an update of tsigoat is writing too, if it comes in between.
 - **Lookups**: one request lists the records of a name, then one request

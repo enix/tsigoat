@@ -257,30 +257,6 @@ func Restore(current, wanted []Record) Steps {
 	return steps
 }
 
-// Undo returns the steps that take back what a change did to the records of
-// its RRset, from before, the records before the change, to now, the records
-// as they stand. Replace and Delete bring the RRset back to before whole;
-// Add deletes the records that it created, and Remove creates again the
-// records that it deleted, with their TTLs, so that the other records stay,
-// which concurrent updates may have written.
-func Undo(before, now []Record, change *backend.Change) Steps {
-	switch change.Op {
-	case backend.Add:
-		created := Diff(before, change).Create
-		return Diff(now, &backend.Change{Op: backend.Remove, RRset: backend.RRset{Records: created}})
-	case backend.Remove:
-		var steps Steps
-		for _, r := range Diff(before, change).Delete {
-			if !slices.ContainsFunc(now, func(n Record) bool { return dns.IsDuplicate(n.RR, r.RR) }) {
-				steps.Create = append(steps.Create, dns.Copy(r.RR))
-			}
-		}
-		return steps
-	case backend.Replace, backend.Delete:
-	}
-	return Restore(now, before)
-}
-
 // OfType returns the records of a type.
 func OfType(records []Record, rrtype uint16) []Record {
 	return slices.DeleteFunc(slices.Clone(records), func(r Record) bool { return r.RR.Header().Rrtype != rrtype })

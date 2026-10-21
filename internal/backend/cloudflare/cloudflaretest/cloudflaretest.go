@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -49,6 +50,9 @@ type API struct {
 	requests int
 	// held holds the batch requests that HoldBatch keeps for Land.
 	held []heldBatch
+	// waiting counts the held requests that wait for their client to give
+	// up.
+	waiting int
 }
 
 // heldBatch is a batch request that applies after its client gave up on it.
@@ -147,6 +151,10 @@ func (a *API) HoldBatch() {
 // Land applies the batch requests that HoldBatch kept, as Cloudflare would
 // once their client gave up.
 func (a *API) Land() error {
+	// The server learns that the client gave up after the client does.
+	for deadline := time.Now().Add(5 * time.Second); a.waitingRequests() > 0 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
 	a.mu.Lock()
 	held := a.held
 	a.held = nil
@@ -344,8 +352,12 @@ func (a *API) batch(w http.ResponseWriter, r *http.Request, zoneID string) {
 
 	data, _ := io.ReadAll(r.Body)
 	if next != nil && next.late {
+		a.mu.Lock()
+		a.waiting++
+		a.mu.Unlock()
 		<-r.Context().Done()
 		a.mu.Lock()
+		a.waiting--
 		a.held = append(a.held, heldBatch{zoneID: zoneID, zoneName: zoneName, data: data})
 		a.mu.Unlock()
 		return
@@ -486,4 +498,12 @@ func Divergences() map[string]string {
 		"records/ttl-zero": "Cloudflare holds no TTL below 60: tsigoat raises it",
 		"records/txt-utf8": "tsigoat keeps TXT strings to printable ASCII",
 	}
+}
+
+// waitingRequests returns the number of held requests that wait for their
+// client to give up.
+func (a *API) waitingRequests() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.waiting
 }

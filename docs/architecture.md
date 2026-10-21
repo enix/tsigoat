@@ -110,10 +110,11 @@ backends send one batch, or PATCH, request; when the request left whole but
 its answer did not come back, the PowerDNS backend reads the RRsets again, as
 the backends of the hosted providers do. The API of OVHcloud has no
 transaction: its backend writes one record at a time and publishes the zone
-once, at the end; when a request fails, it reads the records again and takes
-back what the update did, whatever the failed request did: the RRsets that it
-replaced come back as they were, the records that it added go, and those that
-it removed come back.
+once, at the end; when a request fails, it takes back what the answers of its
+requests tell that the update did, from a journal: the records that it
+created, by their identifiers, and those that it deleted or retimed. A
+request that failed without telling whether it applied leaves the outcome
+unknown, since nothing tells its effect apart from that of another writer.
 
 The backends of the hosted providers share `internal/backend/hosted`. They read
 the records of a name, with their identifiers, and group them into RRsets; to

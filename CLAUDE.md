@@ -68,8 +68,9 @@ chart/                 Helm chart; README.md and values.schema.json generated
   provider would not keep intact (types, TXT contents, SOA and apex NS,
   locked records such as Cloudflare's proxied ones); a provider error is
   SERVFAIL. Cloudflare and Scaleway write in one request; OVHcloud writes one
-  record at a time and refreshes once, and after a failure reads the records
-  again and restores them as they were. A write whose outcome stays unknown
+  record at a time and refreshes once, and after a failure takes back what its
+  journal holds (records created, by identifier, deleted, retimed), never
+  what another writer may have done. A write whose outcome stays unknown
   returns a `backend.IndeterminateError` (metrics result `indeterminate`). Backends with a
   minimum TTL implement `backend.TTLFloor`, and the server raises lower TTLs
   (`ttl_raised` in the update log). Records read from a provider are made

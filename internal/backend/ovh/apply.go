@@ -2,10 +2,10 @@ package ovh
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/miekg/dns"
@@ -23,13 +23,37 @@ const (
 	defaultRefreshDelay = time.Second
 )
 
-// step is a request that changes a record.
+// step is a request that changes a record, which writes what it did in a
+// journal once its answer tells it.
 type step struct {
 	describe string
-	do       func(ctx context.Context) error
-	// seen reports whether records read, by name, show what the request
-	// does.
-	seen func(records map[string][]hosted.Record) bool
+	do       func(ctx context.Context, j *journal) error
+}
+
+// journal holds what the requests of an update did, as their answers tell:
+// the records that they created, with the identifiers that OVHcloud gave
+// them, and the records that they deleted or retimed, as they were. A
+// recovery takes back what the journal holds alone: a record of the same
+// data at OVHcloud may come from another writer, such as another instance of
+// tsigoat.
+type journal struct {
+	created, deleted, retimed []hosted.Record
+}
+
+// empty reports whether the journal holds nothing to take back.
+func (j *journal) empty() bool {
+	return len(j.created) == 0 && len(j.deleted) == 0 && len(j.retimed) == 0
+}
+
+// names returns the canonical names of the records of the journal, once each.
+func (j *journal) names() []string {
+	var names []string
+	for _, r := range slices.Concat(j.created, j.deleted, j.retimed) {
+		if name := dns.CanonicalName(r.RR.Header().Name); !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // plan holds the requests that change the records of an update, by kind:
@@ -39,13 +63,18 @@ type plan struct {
 	deletions, retimes, creations []step
 }
 
-// add adds the requests that carry out steps.
-func (p *plan) add(b *Backend, zone string, steps *hosted.Steps) {
+// add adds the requests that carry out steps on current, the records of their
+// RRset.
+func (p *plan) add(b *Backend, zone string, steps *hosted.Steps, current []hosted.Record) {
 	for _, r := range steps.Delete {
 		p.deletions = append(p.deletions, b.deletion(zone, r))
 	}
 	for _, r := range steps.Retime {
-		p.retimes = append(p.retimes, b.retime(zone, r))
+		was := r
+		if i := slices.IndexFunc(current, func(c hosted.Record) bool { return c.ID == r.ID }); i >= 0 {
+			was = current[i]
+		}
+		p.retimes = append(p.retimes, b.retime(zone, r, was))
 	}
 	for _, rr := range steps.Create {
 		p.creations = append(p.creations, b.creation(zone, rr))
@@ -60,49 +89,53 @@ func (p *plan) steps() []step {
 // Apply implements backend.Backend: it deletes the records that go, retimes
 // those that stay, creates the new ones, then refreshes the zone.
 //
-// A request that fails may have applied anyway, at OVHcloud, before its
-// response was lost: when a step or the refresh fails, Apply reads the
-// records again, brings them back to their content before the update,
-// whatever the requests did, and publishes the zone. When that fails too,
-// the outcome is unknown.
+// OVHcloud has no transaction: when a request or the refresh fails, Apply
+// takes back what the journal of the update holds, and publishes the zone. A
+// request that failed without telling whether it applied, as after a timeout,
+// may have applied, or apply still: nothing tells its effect apart from what
+// another writer does, so that the outcome is unknown.
 func (b *Backend) Apply(ctx context.Context, zone string, changes []backend.Change) error {
 	zone = dns.CanonicalName(zone)
 	if err := b.limits.Check(zone, changes); err != nil {
 		return err
 	}
-	before, err := b.read(ctx, zone, changes)
+	names := make([]string, 0, len(changes))
+	for i := range changes {
+		if name := dns.CanonicalName(changes[i].RRset.Name); !slices.Contains(names, name) {
+			names = append(names, name)
+		}
+	}
+	before, err := b.read(ctx, zone, names)
 	if err != nil {
 		return err
 	}
 	var p plan
 	for i := range changes {
 		change := &changes[i]
-		diff := hosted.Diff(hosted.OfType(before[dns.CanonicalName(change.RRset.Name)], change.RRset.Type), change)
-		p.add(b, zone, &diff)
+		current := hosted.OfType(before[dns.CanonicalName(change.RRset.Name)], change.RRset.Type)
+		diff := hosted.Diff(current, change)
+		p.add(b, zone, &diff, current)
 	}
 	steps := p.steps()
 	if len(steps) == 0 {
 		return nil
 	}
-	for i := range steps {
-		if err := steps[i].do(ctx); err != nil {
-			return b.recover(ctx, zone, before, changes, &steps[i], fmt.Errorf("%s: %w", steps[i].describe, err), false)
+	var j journal
+	for _, s := range steps {
+		if err := s.do(ctx, &j); err != nil {
+			return b.recover(ctx, zone, &j, fmt.Errorf("%s: %w", s.describe, err), hosted.Ambiguous(err), false)
 		}
 	}
 	if err := b.refresh(ctx, zone); err != nil {
-		return b.recover(ctx, zone, before, changes, nil, fmt.Errorf("refreshing the zone, which publishes it: %w", err), true)
+		return b.recover(ctx, zone, &j, fmt.Errorf("refreshing the zone, which publishes it: %w", err), false, true)
 	}
 	return nil
 }
 
-// read reads the records of the names of the changes, by name.
-func (b *Backend) read(ctx context.Context, zone string, changes []backend.Change) (map[string][]hosted.Record, error) {
-	records := map[string][]hosted.Record{}
-	for i := range changes {
-		name := dns.CanonicalName(changes[i].RRset.Name)
-		if _, read := records[name]; read {
-			continue
-		}
+// read reads the records of names, by name.
+func (b *Backend) read(ctx context.Context, zone string, names []string) (map[string][]hosted.Record, error) {
+	records := make(map[string][]hosted.Record, len(names))
+	for _, name := range names {
 		held, err := b.records(ctx, zone, name)
 		if err != nil {
 			return nil, err
@@ -113,37 +146,39 @@ func (b *Backend) read(ctx context.Context, zone string, changes []backend.Chang
 }
 
 // deletion returns the step that deletes a record. A record that is gone
-// already is no error.
+// already is no error, and stays out of the journal: another writer deleted
+// it.
 func (b *Backend) deletion(zone string, r hosted.Record) step {
 	path := zonePath(zone) + "/record/" + r.ID
 	return step{
 		describe: "deleting " + r.RR.String(),
-		do: func(ctx context.Context) error {
+		do: func(ctx context.Context, j *journal) error {
 			err := b.do(ctx, http.MethodDelete, path, nil, nil)
-			if hosted.StatusOf(err) == http.StatusNotFound {
+			switch {
+			case hosted.StatusOf(err) == http.StatusNotFound:
 				return nil
+			case err != nil:
+				return err
 			}
-			return err
-		},
-		seen: func(records map[string][]hosted.Record) bool {
-			return !slices.ContainsFunc(records[dns.CanonicalName(r.RR.Header().Name)], func(held hosted.Record) bool { return held.ID == r.ID })
+			j.deleted = append(j.deleted, r)
+			return nil
 		},
 	}
 }
 
-// retime returns the step that gives a record the TTL that its RR carries.
-func (b *Backend) retime(zone string, r hosted.Record) step {
+// retime returns the step that gives a record the TTL that its RR carries; was
+// is the record as it stands.
+func (b *Backend) retime(zone string, r, was hosted.Record) step {
 	path := zonePath(zone) + "/record/" + r.ID
 	ttl := r.RR.Header().Ttl
 	return step{
 		describe: "changing the TTL of " + r.RR.String(),
-		do: func(ctx context.Context) error {
-			return b.do(ctx, http.MethodPut, path, map[string]uint32{"ttl": ttl}, nil)
-		},
-		seen: func(records map[string][]hosted.Record) bool {
-			return slices.ContainsFunc(records[dns.CanonicalName(r.RR.Header().Name)], func(held hosted.Record) bool {
-				return held.ID == r.ID && held.RR.Header().Ttl == ttl
-			})
+		do: func(ctx context.Context, j *journal) error {
+			if err := b.do(ctx, http.MethodPut, path, map[string]uint32{"ttl": ttl}, nil); err != nil {
+				return err
+			}
+			j.retimed = append(j.retimed, was)
+			return nil
 		},
 	}
 }
@@ -154,102 +189,146 @@ func (b *Backend) creation(zone string, rr dns.RR) step {
 	body := toAPI(rr, zone)
 	return step{
 		describe: "creating " + rr.String(),
-		do: func(ctx context.Context) error {
-			return b.do(ctx, http.MethodPost, zonePath(zone)+"/record", body, nil)
-		},
-		seen: func(records map[string][]hosted.Record) bool {
-			return slices.ContainsFunc(records[dns.CanonicalName(rr.Header().Name)], func(held hosted.Record) bool { return dns.IsDuplicate(held.RR, rr) })
+		do: func(ctx context.Context, j *journal) error {
+			var created struct {
+				ID int64 `json:"id"`
+			}
+			if err := b.do(ctx, http.MethodPost, zonePath(zone)+"/record", body, &created); err != nil {
+				return err
+			}
+			j.created = append(j.created, hosted.Record{ID: strconv.FormatInt(created.ID, 10), RR: rr})
+			return nil
 		},
 	}
 }
 
-// recover takes back what the update did, after cause made it fail, within
-// the recovery budget, then publishes the zone when needed: failed is the
-// request that failed, nil for the refresh; published tells that a refresh
-// failed, which may have published the update anyway. It returns the error
-// of the update, which tells whether its outcome is unknown: a request that
-// failed without telling whether it applied, and whose effect the records
-// read again do not show, may still apply after the recovery, as after a
-// timeout.
-func (b *Backend) recover(ctx context.Context, zone string, before map[string][]hosted.Record, changes []backend.Change,
-	failed *step, cause error, published bool,
-) error {
+// recover takes back what the journal holds, after cause made the update
+// fail, within the recovery budget, then publishes the zone when needed.
+// pending tells that the request that failed may have applied, or apply
+// still; published tells that a refresh failed, which may have published the
+// update anyway. It returns the error of the update, which tells whether its
+// outcome is unknown.
+func (b *Backend) recover(ctx context.Context, zone string, j *journal, cause error, pending, published bool) error {
 	ctx, cancel := backend.RecoveryContext(ctx)
 	defer cancel()
-	restored, now, err := b.restore(ctx, zone, before, changes)
+	tookBack, err := b.takeBack(ctx, zone, j)
 	if err != nil {
-		return backend.Indeterminate(fmt.Errorf("%w; restoring the records as they were failed, so that the zone may hold "+
+		return backend.Indeterminate(fmt.Errorf("%w; taking back what the update did failed, so that the zone may hold "+
 			"part of the update, which its next refresh publishes: %w", cause, err))
 	}
-	pending := failed != nil && hosted.Ambiguous(cause) && !failed.seen(now)
-	if !published && !restored {
+	if !published && !tookBack {
 		if pending {
-			return backend.Indeterminate(fmt.Errorf("%w; the records do not show the request, which may apply still, "+
+			return backend.Indeterminate(fmt.Errorf("%w; the request may have applied, or apply still, "+
 				"and the next refresh of the zone publish it", cause))
 		}
 		// Nothing changed.
 		return cause
 	}
-	// Publish the records as they were: a refresh, the one that failed or
-	// another, may have published some of the update.
+	// Publish the zone without the update: a refresh, the one that failed or
+	// another, may have published some of it.
 	if err := b.refresh(ctx, zone); err != nil {
 		if published || pending {
-			return backend.Indeterminate(fmt.Errorf("%w; the records are as they were, but publishing them failed, "+
+			return backend.Indeterminate(fmt.Errorf("%w; what the update did is taken back, but publishing the zone failed, "+
 				"so that the name servers may serve the update: %w", cause, err))
 		}
-		return fmt.Errorf("%w; the records are as they were, but refreshing the zone failed: %w", cause, err)
+		return fmt.Errorf("%w; what the update did is taken back, but refreshing the zone failed: %w", cause, err)
 	}
 	if pending {
-		return backend.Indeterminate(fmt.Errorf("%w; the records are as they were, but the failed request may apply still, "+
-			"and the next refresh of the zone publish it", cause))
+		return backend.Indeterminate(fmt.Errorf("%w; what the update did is taken back, but the failed request "+
+			"may have applied, or apply still, and the next refresh of the zone publish it", cause))
 	}
-	return fmt.Errorf("%w; the records are as they were", cause)
+	return fmt.Errorf("%w; what the update did is taken back", cause)
 }
 
-// restore reads the records of the changes again, takes back what each change
-// did, and checks it: an RRset replaced or deleted comes back as it was
-// before the update, the records added go, and the records removed come
-// back, so that the records that concurrent updates wrote meanwhile stay. It
-// reports whether it had to change something, and returns the records that
-// it read first.
-func (b *Backend) restore(ctx context.Context, zone string, before map[string][]hosted.Record, changes []backend.Change) (
-	restored bool, now map[string][]hosted.Record, err error,
-) {
-	now, err = b.read(ctx, zone, changes)
+// takeBack takes back what the journal holds: it deletes the records that the
+// update created, creates again those that it deleted, unless a record of the
+// same data stands, and gives back their TTL to those that it retimed; then
+// it reads the records again to check them. It reports whether it had to
+// change something.
+func (b *Backend) takeBack(ctx context.Context, zone string, j *journal) (bool, error) {
+	if j.empty() {
+		return false, nil
+	}
+	names := j.names()
+	now, err := b.read(ctx, zone, names)
 	if err != nil {
-		return false, nil, err
+		return false, err
 	}
-	var p plan
-	for i := range changes {
-		steps := undo(before, now, &changes[i])
-		p.add(b, zone, &steps)
-	}
-	steps := p.steps()
+	steps := b.reverse(zone, j, now).steps()
 	if len(steps) == 0 {
-		return false, now, nil
+		return false, nil
 	}
+	var undone journal
 	for _, s := range steps {
-		if stepErr := s.do(ctx); stepErr != nil {
-			return true, now, fmt.Errorf("%s: %w", s.describe, stepErr)
+		if stepErr := s.do(ctx, &undone); stepErr != nil {
+			return true, fmt.Errorf("%s: %w", s.describe, stepErr)
 		}
 	}
-	after, err := b.read(ctx, zone, changes)
+	after, err := b.read(ctx, zone, names)
 	if err != nil {
-		return true, now, fmt.Errorf("reading the records restored: %w", err)
+		return true, fmt.Errorf("reading the records again: %w", err)
 	}
-	for i := range changes {
-		if check := undo(before, after, &changes[i]); !check.Empty() {
-			return true, now, errors.New("the records read back still hold part of the update")
-		}
-	}
-	return true, now, nil
+	return true, j.held(after)
 }
 
-// undo returns the steps that take back a change, from the records of its
-// name before the update and as they stand.
-func undo(before, now map[string][]hosted.Record, change *backend.Change) hosted.Steps {
-	name, rrtype := dns.CanonicalName(change.RRset.Name), change.RRset.Type
-	return hosted.Undo(hosted.OfType(before[name], rrtype), hosted.OfType(now[name], rrtype), change)
+// reverse returns the requests that take back what the journal holds, from
+// now, the records as they stand.
+func (b *Backend) reverse(zone string, j *journal, now map[string][]hosted.Record) *plan {
+	var p plan
+	for _, r := range j.created {
+		if find(now, r) != nil {
+			p.deletions = append(p.deletions, b.deletion(zone, r))
+		}
+	}
+	for _, r := range j.retimed {
+		if current := find(now, r); current != nil && current.RR.Header().Ttl != r.RR.Header().Ttl {
+			p.retimes = append(p.retimes, b.retime(zone, r, *current))
+		}
+	}
+	for _, r := range j.deleted {
+		if !holdsData(now, r) {
+			p.creations = append(p.creations, b.creation(zone, r.RR))
+		}
+	}
+	return &p
+}
+
+// held returns why records still hold part of what the journal holds, nil when
+// they hold none of it.
+func (j *journal) held(records map[string][]hosted.Record) error {
+	for _, r := range j.created {
+		if find(records, r) != nil {
+			return fmt.Errorf("the record %s that the update created stays", r.RR)
+		}
+	}
+	for _, r := range j.retimed {
+		if current := find(records, r); current != nil && current.RR.Header().Ttl != r.RR.Header().Ttl {
+			return fmt.Errorf("the record %s keeps the TTL that the update gave it", current.RR)
+		}
+	}
+	for _, r := range j.deleted {
+		if !holdsData(records, r) {
+			return fmt.Errorf("the record %s that the update deleted is still missing", r.RR)
+		}
+	}
+	return nil
+}
+
+// find returns the record of records, by name, with the identifier of r; nil
+// when it is gone.
+func find(records map[string][]hosted.Record, r hosted.Record) *hosted.Record {
+	held := records[dns.CanonicalName(r.RR.Header().Name)]
+	if i := slices.IndexFunc(held, func(h hosted.Record) bool { return h.ID == r.ID }); i >= 0 {
+		return &held[i]
+	}
+	return nil
+}
+
+// holdsData reports whether records, by name, hold a record of the data of r.
+func holdsData(records map[string][]hosted.Record, r hosted.Record) bool {
+	return slices.ContainsFunc(records[dns.CanonicalName(r.RR.Header().Name)], func(h hosted.Record) bool {
+		return dns.IsDuplicate(h.RR, r.RR)
+	})
 }
 
 // refresh publishes the zone, as it stands, to the name servers.
