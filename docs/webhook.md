@@ -67,22 +67,30 @@ record come in double quotes.
 ## Responses
 
 The status of the response is the answer of the endpoint: tsigoat does not
-wait for the body of a success. A 2xx response applies the update, and the
-client gets NOERROR. Any other response fails it, and the client gets
-SERVFAIL, as when the endpoint does not answer within the `timeout` of the
-backend, from the connection to the end of the response, or when the
-connection or TLS fails. The log entry of the update gives the status and the
-beginning of the body, and the
+wait for the body of a success.
+
+| Status | Means | The client gets |
+| --- | --- | --- |
+| 2xx | The update applied whole | NOERROR |
+| 4xx | The endpoint applied nothing, such as for a request that it refuses | SERVFAIL |
+| 5xx | The update may have applied in part, or whole, or not at all | SERVFAIL, and an unknown outcome |
+
+The client gets SERVFAIL too when the endpoint does not answer within the
+`timeout` of the backend, from the connection to the end of the response, or
+when the connection or TLS fails. The log entry of the update gives the status
+and the beginning of the body, and the
 [TsigoatBackendErrors](operations.md#tsigoatbackenderrors) alert fires when
 the failures last.
 
 A request may fail after it reached the endpoint: the response does not come
-in time, the connection breaks, or a gateway answers 502 or 504 for an
-endpoint that broke off or took too long. The endpoint may have applied the
-update then, or may apply it still: the update log tells that the outcome is
-unknown, and the [TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates)
-alert fires. A client that sends its update again brings it to its end, when
-the endpoint keeps its operations idempotent.
+in time, the connection breaks, the endpoint fails after it applied part of
+the update, or a gateway answers 502 or 504 for an endpoint that broke off or
+took too long. The endpoint may have applied the update then, or may apply it
+still: the update log tells that the outcome is unknown, and the
+[TsigoatUncertainUpdates](operations.md#tsigoatuncertainupdates) alert fires.
+A client that sends its update again brings it to its end, when the endpoint
+keeps its operations idempotent. An endpoint answers 4xx only when it applied
+nothing, and 5xx otherwise.
 
 ## Contract
 

@@ -361,7 +361,10 @@ func (r *Relay) post(ctx context.Context, request *Request) error {
 	// The start of the body tells why, as far as it comes in time.
 	excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
 	err = responseError(r.redactedURL, resp, excerpt)
-	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusGatewayTimeout {
+	// A 4xx tells that the endpoint applied nothing, as a redirect does; a 5xx
+	// may come once it applied part of the update, or from a gateway while
+	// it applies it still.
+	if resp.StatusCode/100 == 5 {
 		return &uncertainError{err: err}
 	}
 	return err

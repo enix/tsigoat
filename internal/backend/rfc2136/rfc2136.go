@@ -206,8 +206,9 @@ func (r *Relay) exchange(ctx context.Context, zone string, m *dns.Msg) (*dns.Msg
 	case err != nil:
 		return nil, fmt.Errorf("exchanging with %s: %w", r.server, err)
 	case resp.IsTsig() == nil:
-		// Only a server that cannot verify the request answers unsigned.
-		return nil, fmt.Errorf("%s answered %s without signing", r.server, rcodeName(resp.Rcode))
+		// A response without signature, which a server that verified the
+		// request never sends, tells nothing of what the server did with it.
+		return nil, &sentError{err: fmt.Errorf("%s answered %s without signing", r.server, rcodeName(resp.Rcode))}
 	}
 	return resp, nil
 }

@@ -156,8 +156,10 @@ updates, see [RFC 2136 servers](rfc2136.md#setting-up-the-server); for a
 
 tsigoat could not tell whether an update applied: a write timed out, or the
 connection broke after the request left, and reading the records back did
-not tell either; or undoing a failed update at OVHcloud failed. The client got
-SERVFAIL, but the zone may hold all of the update, part of it, or none. The
+not tell either; undoing a failed update at OVHcloud failed, or a request
+that failed there may still apply; an RFC 2136 server answered unsigned, or a
+webhook endpoint answered 5xx. The client got SERVFAIL, but the zone may hold
+all of the update, part of it, or none. The
 `msg=update` log entry, whose `error` starts with `outcome unknown`, names the
 changes: compare them with the zone, through the provider, and fix it by hand
 if needed. A client that retries its update brings the RRsets to their wanted

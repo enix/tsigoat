@@ -255,9 +255,11 @@ func TestExchangeFailures(t *testing.T) {
 		indeterminate bool
 	}{
 		{"wrong secret", []config.Key{wrongSecret}, reply(dns.RcodeSuccess), "rejected the signature of key tsigoat.: BADSIG", false},
+		// A response without signature may come from a server that applied
+		// the update, or from anyone.
 		{"unsigned response", []config.Key{relayKey()}, func(w dns.ResponseWriter, req *dns.Msg) {
 			_ = w.WriteMsg(new(dns.Msg).SetRcode(req, dns.RcodeSuccess))
-		}, "answered NOERROR without signing", false},
+		}, "answered NOERROR without signing", true},
 		{"response signed with another key", []config.Key{relayKey(), other}, func(w dns.ResponseWriter, req *dns.Msg) {
 			resp := new(dns.Msg).SetRcode(req, dns.RcodeSuccess)
 			resp.SetTsig("other.", dns.HmacSHA256, 300, time.Now().Unix())

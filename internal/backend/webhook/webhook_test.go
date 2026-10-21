@@ -249,8 +249,12 @@ func TestFailures(t *testing.T) {
 		// update.
 		indeterminate bool
 	}{
+		// A 4xx tells that the endpoint applied nothing; a 5xx may come once
+		// it applied part of the update.
 		{"client error", status(http.StatusUnauthorized), 0, "answered 401 Unauthorized: body of the endpoint", false},
-		{"server error", status(http.StatusInternalServerError), 0, "answered 500 Internal Server Error", false},
+		{"too many requests", status(http.StatusTooManyRequests), 0, "answered 429 Too Many Requests", false},
+		{"server error", status(http.StatusInternalServerError), 0, "answered 500 Internal Server Error", true},
+		{"unavailable", status(http.StatusServiceUnavailable), 0, "answered 503 Service Unavailable", true},
 		{"bad gateway", status(http.StatusBadGateway), 0, "answered 502 Bad Gateway", true},
 		{"gateway timeout", status(http.StatusGatewayTimeout), 0, "answered 504 Gateway Timeout", true},
 		{"timeout", func(w http.ResponseWriter, r *http.Request) {

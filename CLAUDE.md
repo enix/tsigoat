@@ -53,8 +53,10 @@ chart/                 Helm chart; README.md and values.schema.json generated
   relay serializes per zone itself), `Check` for `check-config --backends`,
   `*backend.RejectionError` to turn an update down (webhook: prerequisites,
   delete of the whole apex; it drops SOA and apex NS deletions, fakes the
-  SOA). A failure after the update left (timeout, broken connection, 502 or
-  504 from a webhook gateway) is a `backend.IndeterminateError`. Webhook
+  SOA). A failure after the update left (timeout, broken connection, an
+  unsigned or unverifiable answer of the name server, a 5xx of the webhook
+  endpoint, which answers 4xx only when it applied nothing) is a
+  `backend.IndeterminateError`. Webhook
   requests carry a random `id`, which the example uses to refuse replays. The server's NOERROR, prerequisite failures,
   FORMERR and NOTZONE pass through; anything else is an error, SERVFAIL for
   the client. miekg/dns decodes RDATA-less records into typed empty structs

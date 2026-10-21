@@ -171,14 +171,15 @@ class RecentIDs:
 
     def admit(self, request_id, expiry):
         """Records an identifier until expiry, in seconds since the epoch.
-        Returns the status that refuses the request: 409 for a replay, 503
-        when the endpoint remembers too many identifiers; None to go on."""
+        Returns the status that refuses the request: 409 for a replay, 429
+        when the endpoint remembers too many identifiers; None to go on. Both
+        are 4xx: the endpoint applies nothing."""
         now = time.time()
         self.expiries = {i: t for i, t in self.expiries.items() if t > now}
         if request_id in self.expiries:
             return 409
         if len(self.expiries) >= self.limit:
-            return 503
+            return 429
         self.expiries[request_id] = expiry
         return None
 
