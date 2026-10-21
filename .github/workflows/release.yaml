@@ -43,13 +43,25 @@ jobs:
     name: Version tag
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
-      - name: Check that the release runs on a version tag
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Releases come from main: tag.yaml tags main alone, but a maintainer
+      # may push a tag on any commit.
+      - name: Check that the release runs on a version tag of main
         env:
           REF: ${{ github.ref }}
         run: |
           if [[ ! "$REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
             echo "::error::A release runs on a version tag, not on $REF."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$REF tags $GITHUB_SHA, which main does not hold."
             exit 1
           fi
 
