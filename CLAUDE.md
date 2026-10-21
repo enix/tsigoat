@@ -205,7 +205,9 @@ with the D* decisions, tooling), which must never be committed.
 - golangci-lint must pass clean, without path exclusions. Every `//nolint`
   names its linter and explains why.
 - Tests sit next to the code; table-driven for parsers; `Fuzz*` targets for
-  code that parses untrusted bytes.
+  code that parses untrusted bytes. The build tags of the test packages
+  (`chart`, `differential`, `e2e`, `live`) are listed in `.golangci.yml` and in
+  `.zed/settings.json`, which gives them to gopls.
 - Single sources of truth: Go toolchain in `go.mod` (`toolchain`, which the
   golang image of `dagger/base.go` matches: `task check:toolchain`), Dagger version in
   `dagger.json`, pinned images in `dagger/base.go` (tracked by Renovate).

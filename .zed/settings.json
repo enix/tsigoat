@@ -1,0 +1,12 @@
+// Settings of the project for Zed.
+{
+  "lsp": {
+    "gopls": {
+      "initialization_options": {
+        // The build tags of the test packages, as in .golangci.yml: without
+        // them, gopls finds no package for their files.
+        "buildFlags": ["-tags=chart,differential,e2e,live"]
+      }
+    }
+  }
+}
