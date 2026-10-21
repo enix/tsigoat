@@ -156,8 +156,10 @@ update that undid it, passes the signature and the timestamp. The endpoint
 refuses replays by their `id`, which the signature covers: it remembers the
 identifiers of the requests that it accepted for as long as their timestamp
 lets them in, and refuses a request whose identifier it knows, as the example
-does, with 409. An endpoint that forgets the identifiers when it stops refuses
-the requests signed before it started, as the example does too.
+does, with 409. It must remember them across its restarts: a request signed
+by a clock ahead of its own stays valid for up to ten minutes. The example
+keeps them in a file, `TSIGOAT_WEBHOOK_STATE`, which it writes before it
+applies a request.
 
 The secret never travels: the signature keeps someone in the middle from
 forging or changing a request, even over plain HTTP, or with
@@ -198,8 +200,11 @@ TSIGOAT_WEBHOOK_COMMAND=/usr/local/bin/my-dns-update \
 
 The example is a starting point, not a service to expose. It serves plain
 HTTP on `127.0.0.1:8053`, one request at a time, which keeps the updates of a
-zone in order; a client that stalls holds it for ten seconds, the time that
-it waits for each read of a request. Keep it on the loopback, next to tsigoat,
-or behind a proxy that serves HTTPS and bounds the connections. A test runs it
-behind tsigoat with each authentication, and nsupdate as the client, and
-checks that it refuses a replay.
+zone in order; a client has ten seconds to send its request whole, so that
+one that stalls, or sends its bytes one by one, holds the example ten seconds
+at most. Keep it on the loopback, next to tsigoat, or behind a proxy that
+serves HTTPS and bounds the connections. Keep its state file on a volume that
+outlives it, one file per endpoint: `tsigoat-webhook-8053.json` in its working
+directory by default. A test runs it behind tsigoat with each authentication,
+and nsupdate as the client, and checks that it refuses the replays, after a
+restart too, and the slow clients.

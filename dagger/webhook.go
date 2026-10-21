@@ -23,9 +23,9 @@ const (
 // per authentication: signature, basic and bearer. nsupdate adds the value of
 // an ACME challenge through tsigoat, then deletes it; tsigoat posts the
 // updates to the example, which hands them to a command that records them. An
-// update to an endpoint with another secret fails, and the example refuses a
-// replayed request, a request signed before it started, and a request
-// without length.
+// update to an endpoint with another secret fails, and the example refuses
+// replayed requests, after a restart too, a request without length, and a
+// client that sends its bytes one by one.
 func (m *Tsigoat) TestWebhookExample(ctx context.Context) (string, error) {
 	replacer := strings.NewReplacer(
 		"@KEY@", webhookKeySecret,
@@ -101,7 +101,8 @@ endpoint() {
   name=$1 port=$2
   shift 2
   env TSIGOAT_WEBHOOK_LISTEN=127.0.0.1:$port TSIGOAT_WEBHOOK_COMMAND="/test/record.sh $name" "$@" \
-    python3 -I /webhook/webhook.py 2> /tmp/$name.log &
+    python3 -I /webhook/webhook.py 2>> /tmp/$name.log &
+  eval "pid_$name=\$!"
 }
 endpoint signature 8053 TSIGOAT_WEBHOOK_SECRET=@SECRET@
 endpoint basic 8054 TSIGOAT_WEBHOOK_USERNAME=tsigoat TSIGOAT_WEBHOOK_PASSWORD=@PASSWORD@
@@ -149,36 +150,66 @@ if update wrong > /tmp/wrong.log 2>&1; then fail "an update succeeded with the w
 grep -q SERVFAIL /tmp/wrong.log || fail "the update with the wrong secret did not get SERVFAIL"
 grep -q "bad signature" /tmp/signature.log || fail "the endpoint did not refuse the wrong signature"
 
-echo "== replays, and a request without length"
-python3 -I - <<'PYTHON' || fail "the endpoint did not refuse a replay or a request without length"
-import hashlib, hmac, json, socket, time, urllib.error, urllib.request
+echo "== replays, across a restart too"
+# post sends a signed request without operations, its timestamp ahead of the
+# clock by $2 seconds, and checks that the endpoint answers $3.
+cat > /tmp/post.py <<'PYTHON'
+import hashlib, hmac, json, sys, time, urllib.error, urllib.request
 
-def post(request_id, age=0):
-    body = json.dumps({"version": 1, "id": request_id,
-                       "zone": "signature.test.", "key": "", "operations": []}).encode()
-    # Within the five minutes of the timestamp, but before the endpoint
-    # started when age says so.
-    timestamp = str(int(time.time()) - age)
-    mac = hmac.new(b"@SECRET@", timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
-    request = urllib.request.Request("http://127.0.0.1:8053/", body, {
-        "Content-Type": "application/json",
-        "X-Tsigoat-Timestamp": timestamp,
-        "X-Tsigoat-Signature": "sha256=" + mac,
-    })
-    try:
-        return urllib.request.urlopen(request, timeout=5).status
-    except urllib.error.HTTPError as error:
-        return error.code
+request_id, ahead, expected = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+body = json.dumps({"version": 1, "id": request_id,
+                   "zone": "signature.test.", "key": "", "operations": []}).encode()
+timestamp = str(int(time.time()) + ahead)
+mac = hmac.new(b"@SECRET@", timestamp.encode() + b"." + body, hashlib.sha256).hexdigest()
+request = urllib.request.Request("http://127.0.0.1:8053/", body, {
+    "Content-Type": "application/json",
+    "X-Tsigoat-Timestamp": timestamp,
+    "X-Tsigoat-Signature": "sha256=" + mac,
+})
+try:
+    status = urllib.request.urlopen(request, timeout=5).status
+except urllib.error.HTTPError as error:
+    status = error.code
+assert status == expected, (request_id, ahead, status, expected)
+PYTHON
+post() {
+  python3 -I /tmp/post.py "$@" || fail "the endpoint did not answer $3 to request $1"
+}
+replayed=0123456789abcdef0123456789abcdef
+ahead=fedcba9876543210fedcba9876543210
+post $replayed 0 204
+post $replayed 0 409
+# A clock two minutes ahead, within the margin of the timestamps.
+post $ahead 120 204
+kill "$pid_signature"
+wait "$pid_signature" 2>/dev/null || true
+endpoint signature 8053 TSIGOAT_WEBHOOK_SECRET=@SECRET@
+for i in $(seq 1 50); do nc -z 127.0.0.1 8053 && break; sleep 0.1; done
+post $replayed 0 409
+post $ahead 120 409
+grep -q "refused: replay" /tmp/signature.log || fail "the endpoint did not log the replays"
 
-replayed, early = "0123456789abcdef0123456789abcdef", "fedcba9876543210fedcba9876543210"
-statuses = (post(replayed), post(replayed), post(early, age=250))
-assert statuses == (204, 409, 409), statuses
+echo "== a request without length, a client that sends its bytes one by one"
+python3 -I - <<'PYTHON' || fail "the endpoint served a request without length or a slow client"
+import socket, time
+
 with socket.create_connection(("127.0.0.1", 8053), timeout=5) as conn:
     conn.sendall(b"POST / HTTP/1.0\r\nHost: endpoint\r\n\r\n")
     status = int(conn.recv(64).split(b" ")[1])
 assert status == 411, status
+
+start = time.monotonic()
+with socket.create_connection(("127.0.0.1", 8053), timeout=30) as conn:
+    conn.sendall(b"POST / HTTP/1.0\r\n")
+    try:
+        while time.monotonic() - start < 25:
+            conn.sendall(b"X")
+            time.sleep(1)
+    except OSError:
+        pass
+elapsed = time.monotonic() - start
+assert elapsed < 15, elapsed
 PYTHON
-grep -q "refused: replay" /tmp/signature.log || fail "the endpoint did not log the replay"
-grep -q "refused: signed before the endpoint started" /tmp/signature.log || fail "the endpoint did not log the early request"
+post 00112233445566778899aabbccddeeff 0 204
 echo "== OK"
 `

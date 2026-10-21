@@ -18,19 +18,24 @@ Settings, from the environment:
     TSIGOAT_WEBHOOK_COMMAND   command run for every operation, with the
                               operation as arguments; without it, the
                               operations are only logged
+    TSIGOAT_WEBHOOK_STATE     file where the endpoint keeps the identifiers
+                              of the requests that it accepted,
+                              tsigoat-webhook-PORT.json in the working
+                              directory by default
 
 Set at least one of the secret, the user name and the token, as in the
 configuration of tsigoat; every one that is set must match. Prefer the
 signature, which also protects the content of the requests. The endpoint
-refuses a request that comes twice, a replay, by its identifier: it remembers
-the identifiers of the requests that it accepted for as long as their
-timestamp lets them in. It forgets them when it stops: it refuses the requests
-signed before it started, which a previous run may have accepted.
+refuses a request that comes twice, a replay, by its identifier: it keeps the
+identifiers of the requests that it accepted in its state file, for as long
+as their timestamp lets them in, so that a restart forgets none. Keep the file
+on a volume that outlives the endpoint, one file per endpoint.
 
 This is a starting point, not a service to expose: it serves plain HTTP, one
 request at a time, which keeps the updates of a zone in order even when
-tsigoat gave up waiting for the previous one. Keep it on the loopback, next to
-tsigoat, or behind a proxy that serves HTTPS and bounds the connections.
+tsigoat gave up waiting for the previous one; a client has ten seconds to send
+a request whole. Keep it on the loopback, next to tsigoat, or behind a proxy
+that serves HTTPS and bounds the connections.
 
 An update succeeds when every operation does. When one fails, the endpoint
 answers 500 and tsigoat SERVFAIL, but the operations before it stay applied:
@@ -50,10 +55,12 @@ import shlex
 import socket
 import subprocess
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 LISTEN = os.environ.get("TSIGOAT_WEBHOOK_LISTEN", "127.0.0.1:8053")
+STATE = os.environ.get("TSIGOAT_WEBHOOK_STATE", "tsigoat-webhook-" + LISTEN.rpartition(":")[2] + ".json")
 SECRET = os.environ.get("TSIGOAT_WEBHOOK_SECRET", "")
 USERNAME = os.environ.get("TSIGOAT_WEBHOOK_USERNAME", "")
 PASSWORD = os.environ.get("TSIGOAT_WEBHOOK_PASSWORD", "")
@@ -65,18 +72,15 @@ COMMAND = shlex.split(os.environ.get("TSIGOAT_WEBHOOK_COMMAND", ""))
 MAX_CLOCK_SKEW = 300
 MAX_BODY_SIZE = 1 << 20
 COMMAND_TIMEOUT = 30
-# Bounds the wait for each read of a request, so that a client that stalls
-# holds the endpoint for that long at most.
-SOCKET_TIMEOUT = 10
+# Bounds the time to receive a request whole, and each read, so that a client
+# that stalls, or sends its bytes one by one, holds the endpoint for that long
+# at most.
+REQUEST_TIMEOUT = 10
 # Bounds the identifiers that the endpoint remembers: beyond, it refuses the
 # requests until the oldest identifiers expire.
 MAX_RECENT_IDS = 10000
 
 log = logging.getLogger("webhook")
-
-# The second at which the endpoint started: a request signed before may have
-# been accepted by a previous run, whose identifiers the endpoint forgot.
-STARTED = int(time.time())
 
 
 # The operations. Each one gets the zone and the canonical owner name, such as
@@ -163,11 +167,22 @@ def apply(update):
 class RecentIDs:
     """The identifiers of the requests accepted lately, each one until its
     timestamp lets the request in no more: a request whose identifier comes
-    again meanwhile is a replay."""
+    again meanwhile is a replay. They live in a file, which a restart reads
+    back."""
 
-    def __init__(self, limit):
+    def __init__(self, limit, path):
         self.limit = limit
-        self.expiries = {}
+        self.path = path
+        try:
+            with open(path, encoding="utf-8") as state:
+                stored = json.load(state)
+        except FileNotFoundError:
+            stored = {}
+        if not isinstance(stored, dict):
+            raise ValueError("it holds no identifiers")
+        now = time.time()
+        self.expiries = {i: t for i, t in stored.items() if isinstance(t, (int, float)) and t > now}
+        self.save()
 
     def admit(self, request_id, expiry):
         """Records an identifier until expiry, in seconds since the epoch.
@@ -181,17 +196,45 @@ class RecentIDs:
         if len(self.expiries) >= self.limit:
             return 429
         self.expiries[request_id] = expiry
+        self.save()
         return None
 
-
-RECENT_IDS = RecentIDs(MAX_RECENT_IDS)
+    def save(self):
+        """Writes the identifiers to the file, whole, before the endpoint
+        applies their request."""
+        temporary = self.path + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as state:
+            json.dump(self.expiries, state)
+            state.flush()
+            os.fsync(state.fileno())
+        os.replace(temporary, self.path)
 
 
 class Handler(BaseHTTPRequestHandler):
     """Authenticates the updates of tsigoat, and applies them."""
 
+    # The identifiers of the requests accepted lately, which main reads.
+    recent_ids = None
+
     # The socket of a request waits that long for each read at most.
-    timeout = SOCKET_TIMEOUT
+    timeout = REQUEST_TIMEOUT
+
+    def setup(self):
+        super().setup()
+        # Closes the connection of a request that does not come whole in
+        # time, read after read.
+        self.deadline = threading.Timer(REQUEST_TIMEOUT, self.expire)
+        self.deadline.start()
+
+    def expire(self):
+        try:
+            self.connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def finish(self):
+        self.deadline.cancel()
+        super().finish()
 
     def do_POST(self):
         declared = self.headers.get("Content-Length")
@@ -207,8 +250,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         body = self.rfile.read(length)
         if len(body) < length:
-            # The client went away.
+            # The client went away, or took too long.
             return
+        self.deadline.cancel()
         if not self.authenticated(body):
             self.reply(401)
             return
@@ -221,11 +265,7 @@ class Handler(BaseHTTPRequestHandler):
             log.warning("malformed update from %s", self.address_string())
             self.reply(400)
             return
-        if self.signed_before_start():
-            log.warning("update %s from %s refused: signed before the endpoint started", update["id"], self.address_string())
-            self.reply(409)
-            return
-        refused = RECENT_IDS.admit(update["id"], self.expiry())
+        refused = self.recent_ids.admit(update["id"], self.expiry())
         if refused:
             reason = "replay" if refused == 409 else "too many recent requests"
             log.warning("update %s from %s refused: %s", update["id"], self.address_string(), reason)
@@ -248,11 +288,6 @@ class Handler(BaseHTTPRequestHandler):
         if SECRET and timestamp.isascii() and timestamp.isdigit():
             return max(int(timestamp), now) + MAX_CLOCK_SKEW
         return now + MAX_CLOCK_SKEW
-
-    def signed_before_start(self):
-        """Tells whether the request was signed before the endpoint started."""
-        timestamp = self.headers.get("X-Tsigoat-Timestamp", "")
-        return bool(SECRET) and int(timestamp) < STARTED
 
     def authenticated(self, body):
         """Checks every authentication that the settings ask for."""
@@ -308,6 +343,10 @@ def main():
         sys.exit("set TSIGOAT_WEBHOOK_USERNAME or TSIGOAT_WEBHOOK_TOKEN, not both")
     host, _, port = LISTEN.rpartition(":")
     host = host.strip("[]")
+    try:
+        Handler.recent_ids = RecentIDs(MAX_RECENT_IDS, STATE)
+    except (OSError, ValueError) as err:
+        sys.exit(f"the state file {STATE}: {err}")
 
     class Server(HTTPServer):
         address_family = socket.AF_INET6 if ":" in host else socket.AF_INET
