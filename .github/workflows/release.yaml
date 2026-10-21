@@ -141,7 +141,8 @@ jobs:
           # No build cache when publishing: a poisoned cache could reach the
           # released artifacts.
           cache: false
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      # No QEMU: the Dockerfiles copy the binary built for each platform and
+      # run nothing, so that buildx needs no emulation.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
