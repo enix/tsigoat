@@ -1,0 +1,67 @@
+name: Tag a release
+
+# Run by a maintainer on main, to ship it. scripts/next-version.sh computes
+# the next version with svu, from the Conventional Commits since the last
+# release, or the next release candidate of it, vX.Y.Z-rc.N; the workflow
+# tags the commit with it, then starts the release workflow on the tag. A tag
+# created with the GITHUB_TOKEN starts no workflow, but a dispatch does: the
+# release runs from the tag, as when a maintainer pushes one, which stays
+# possible. `task release:next` prints the version beforehand.
+on:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Tag a release candidate, vX.Y.Z-rc.N
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag the next version
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the tag
+      actions: write # start the release workflow
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Compute the version
+        id: version
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ "$CANDIDATE" = true ]; then
+            args=(--rc)
+          fi
+          echo "version=$(scripts/next-version.sh "${args[@]}")" >> "$GITHUB_OUTPUT"
+      - name: Tag and start the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$VERSION" -f message="$VERSION" -f object="$GITHUB_SHA" -f type=commit \
+            -f "tagger[name]=github-actions[bot]" \
+            -f "tagger[email]=41898282+github-actions[bot]@users.noreply.github.com" \
+            -f "tagger[date]=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --jq .sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$VERSION" -f sha="$tag" --silent
+          gh workflow run release.yaml --repo "$GITHUB_REPOSITORY" --ref "$VERSION"
+          echo "Tagged $GITHUB_SHA as $VERSION, and started its release." >> "$GITHUB_STEP_SUMMARY"

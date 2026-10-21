@@ -1,8 +1,10 @@
 name: Release
 
-# Triggered by a vX.Y.Z tag pushed by a maintainer. The quality gates run
-# first; GoReleaser then builds the binaries and images, signs everything
-# with cosign keyless, and leaves a draft GitHub Release with a changelog
+# Runs on a version tag: the Tag a release workflow (tag.yaml) creates it,
+# with the version that svu computes, and starts this workflow on it; a tag
+# that a maintainer pushes starts it too. The quality gates run first;
+# GoReleaser then builds the binaries and images, signs everything with
+# cosign keyless, and leaves a draft GitHub Release with a changelog
 # generated from the Conventional Commits. The maintainer reviews and
 # publishes it. The Helm chart follows the images, with the same version.
 #
@@ -20,6 +22,9 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
+  # Started on its tag by tag.yaml, since a tag that the GITHUB_TOKEN
+  # creates starts no workflow.
+  workflow_dispatch:
 
 permissions: {}
 
@@ -28,7 +33,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  tag:
+    name: Version tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check that the release runs on a version tag
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [[ ! "$REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "::error::A release runs on a version tag, not on $REF."
+            exit 1
+          fi
+
   security:
+    needs: tag
     uses: ./.github/workflows/security.yaml
     permissions:
       contents: read

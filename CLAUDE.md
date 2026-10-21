@@ -126,6 +126,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | Mutation | `task test:mutation` | `dagger call mutation`: gremlins on update, zone and auth; informational, nightly |
 | Fuzzing | `task test:fuzz` | `dagger call fuzz --fuzztime=1m`: every `Fuzz*` target; 10 minutes each in the nightly workflow |
 | Security | `task security` | gitleaks, govulncheck, Trivy |
+| Next version | `task release:next` | `scripts/next-version.sh`: svu on the Conventional Commits since the last release, as the Tag a release workflow (`tag.yaml`) computes it; `-- --rc` for a release candidate |
 | Dev backend | `task dev` + `task dev:run` | PowerDNS on :8081 (API) and :5300 (DNS); tsigoat on 127.0.0.1:10053 |
 
 Dagger specifics:
@@ -192,7 +193,10 @@ with the D* decisions, tooling), which must never be committed.
 ## Conventions
 
 - Everything in the repository is in English, but `docs/local/`.
-- Conventional Commits; GoReleaser builds the changelog from them.
+- Conventional Commits; GoReleaser builds the changelog from them, svu the
+  next version (`feat:` a minor, a breaking change too in 0.x, anything else
+  a patch). Releases: `tag.yaml` tags main and dispatches `release.yaml` on
+  the tag; GoReleaser leaves a draft for review.
 - golangci-lint must pass clean, without path exclusions. Every `//nolint`
   names its linter and explains why.
 - Tests sit next to the code; table-driven for parsers; `Fuzz*` targets for

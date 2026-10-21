@@ -153,7 +153,8 @@ documentation, commit messages, pull requests and issues.
 ### Commit messages
 
 [Conventional Commits][conventional-commits]. GoReleaser builds the public
-changelog from them, so the type matters:
+changelog from them, and svu the version of the next release, so the type
+matters:
 
 - `feat:` new user-visible behavior;
 - `fix:` bug fix;
@@ -164,6 +165,8 @@ changelog from them, so the type matters:
 - `chore:`, `ci:`, `refactor:`, `test:`, `build:` stay out of the changelog.
 
 A breaking change takes a `!` after the type and a `BREAKING CHANGE:` footer.
+A `feat:` makes the next release a minor version, as a breaking change does
+while tsigoat is in 0.x; anything else, a patch.
 
 ### Code style
 
@@ -184,16 +187,22 @@ for working notes that stay on one machine.
 
 ## Releases
 
-A maintainer pushes a `vX.Y.Z` tag. The release workflow runs the quality
-gates, then GoReleaser builds and signs the binaries and images and leaves a
-draft GitHub Release, which the maintainer reviews and publishes. The Helm
-chart takes the version of the tag, and is pushed to its OCI registry and
-signed after the images.
+A maintainer dispatches the [Tag a release](.github/workflows/tag.yaml)
+workflow on `main`. [svu][svu] computes the version from the Conventional
+Commits since the last release, or the next release candidate of it,
+`vX.Y.Z-rc.N`, when the box is ticked; `task release:next` prints it
+beforehand. The workflow tags the commit, then starts the release workflow on
+the tag: it runs the quality gates, then GoReleaser builds and signs the
+binaries and images and leaves a draft GitHub Release, which the maintainer
+reviews and publishes. The Helm chart takes the version of the tag, and is
+pushed to its OCI registry and signed after the images. A maintainer may
+also push a version tag, which starts the release workflow alike.
 
 [nix]: https://nixos.org/
 [direnv]: https://direnv.net/
 [task]: https://taskfile.dev/
 [dagger]: https://dagger.io/
 [goreleaser]: https://goreleaser.com/
+[svu]: https://github.com/caarlos0/svu
 [renovate]: https://docs.renovatebot.com/
 [conventional-commits]: https://www.conventionalcommits.org/

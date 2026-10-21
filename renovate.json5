@@ -129,6 +129,16 @@
       datasourceTemplate: "github-releases",
     },
     {
+      // svu, which computes the version of the next release.
+      customType: "regex",
+      managerFilePatterns: ["/^scripts/next-version\\.sh$/"],
+      matchStrings: [
+        "SVU_VERSION=(?<currentValue>v\\d[\\w.-]*)",
+      ],
+      depNameTemplate: "github.com/caarlos0/svu/v3",
+      datasourceTemplate: "go",
+    },
+    {
       // The Helm of the release, in step with helmImage of dagger/base.go.
       customType: "regex",
       managerFilePatterns: ["/^\\.github/workflows/release\\.ya?ml$/"],

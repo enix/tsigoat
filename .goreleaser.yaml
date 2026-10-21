@@ -3,8 +3,9 @@
 # alternative with a shell), cosign keyless signatures and the GitHub
 # Release with its changelog.
 #
-# Releases start from a vX.Y.Z tag pushed by a maintainer; the release
-# workflow runs GoReleaser and leaves a draft release to review.
+# Releases start from a version tag, which the Tag a release workflow creates
+# with svu, or a maintainer pushes; the release workflow runs GoReleaser and
+# leaves a draft release to review.
 #
 # IMAGE_NAME is the only overridable knob (default: tsigoat).
 #
