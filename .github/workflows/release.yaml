@@ -97,8 +97,6 @@ jobs:
       packages: write # push to ghcr.io
       id-token: write # OIDC for cosign keyless and provenance signing
       attestations: write # upload the build provenance
-    env:
-      IMAGE_NAME: ${{ vars.IMAGE_NAME || 'tsigoat' }}
     steps:
       # GoReleaser pushes to every registry of .goreleaser.yaml, and the chart
       # job to CHART_REGISTRY: a credential missing there would stop the

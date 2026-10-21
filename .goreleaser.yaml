@@ -7,7 +7,8 @@
 # with svu, or a maintainer pushes; the release workflow runs GoReleaser and
 # leaves a draft release to review, whose publication is announced on Slack.
 #
-# IMAGE_NAME is the only overridable knob (default: tsigoat).
+# IMAGE_NAME renames the images of local snapshots (default: tsigoat). The
+# release workflow leaves it, since the chart pulls enix/tsigoat.
 #
 # Reference: https://goreleaser.com/customization/
 
