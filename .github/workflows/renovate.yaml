@@ -1,15 +1,23 @@
 name: Renovate
 
 # Self-hosted Renovate, run as a GitHub App so that its pull requests trigger
-# the regular workflows. The cron is the single source of timing truth:
-# renovate.json5 deliberately has no top-level schedule.
+# the regular workflows. It runs every morning, for the vulnerability fixes,
+# which ignore schedules; the schedule of renovate.json5 keeps the ordinary
+# updates, and the CI they start, to Tuesday morning, Paris time, when it
+# runs three times, so that the pull requests left are rebased once others
+# are merged. The Dependency Dashboard asks for a waiting update at once.
 #
-# Required secrets: RENOVATE_APP_CLIENT_ID and RENOVATE_APP_PRIVATE_KEY.
+# Required secrets: RENOVATE_APP_CLIENT_ID and RENOVATE_APP_PRIVATE_KEY. To
+# see the vulnerabilities, the App needs read access to Dependabot alerts,
+# and the repository the dependency graph and Dependabot alerts.
 # Optional: DOCKERHUB_READONLY_USERNAME and DOCKERHUB_READONLY_TOKEN, to
 # avoid the anonymous Docker Hub rate limit.
 on:
   schedule:
-    - cron: "0 8 * * 1"
+    # 05:23 UTC every day; then 07:23 and 09:23 UTC on Tuesday: from 06:23 to
+    # 11:23 in Paris, within the window of renovate.json5.
+    - cron: "23 5 * * *"
+    - cron: "23 7,9 * * 2"
   workflow_dispatch:
     inputs:
       logLevel:
@@ -57,6 +65,7 @@ jobs:
           permission-workflows: write
           permission-checks: write
           permission-statuses: write
+          permission-vulnerability-alerts: read
       - name: Run Renovate
         uses: renovatebot/github-action@a63d9a7bc606f7336fd20b47f2f32259a35e6213 # v46.3.9
         env:

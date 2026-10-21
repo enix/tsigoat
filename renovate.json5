@@ -12,22 +12,29 @@
   semanticCommitType: "deps",
   semanticCommitScope: null,
 
-  // No top-level schedule: the cron of .github/workflows/renovate.yaml is the
-  // single source of timing truth.
+  // Ordinary updates come on Tuesday morning, Paris time: Renovate runs every
+  // morning (.github/workflows/renovate.yaml), but opens and updates their
+  // branches in this window alone, so that their CI runs then. Vulnerability
+  // fixes ignore the schedule, as Renovate always does for them, and come
+  // with the next run.
   timezone: "Europe/Paris",
+  schedule: ["* 6-11 * * 2"],
+  updateNotScheduled: false,
   prConcurrentLimit: 20,
   prHourlyLimit: 20,
 
   vulnerabilityAlerts: {
     enabled: true,
     labels: ["security"],
-    schedule: "at any time",
     semanticCommitType: "security",
   },
   osvVulnerabilityAlerts: false,
 
   lockFileMaintenance: {
     enabled: true,
+    // The window of the other updates, rather than its own default, Monday
+    // before 4am.
+    schedule: ["* 6-11 * * 2"],
   },
 
   // Commits pushed by the Dagger module workflow on Renovate branches must
