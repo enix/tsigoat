@@ -222,7 +222,9 @@
     },
     {
       // dagger/go.mod belongs to `dagger develop`: the SDK-owned dependencies
-      // move with the Dagger version, never on their own.
+      // move with the Dagger version, never on their own; a vulnerability
+      // that the SDK lags behind is fixed by hand with go get, and `dagger
+      // develop` keeps the higher versions.
       matchManagers: ["gomod"],
       matchFileNames: ["dagger/go.mod"],
       matchPackageNames: [
