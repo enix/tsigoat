@@ -203,6 +203,14 @@ incoming webhook of the `SLACK_WEBHOOK` secret; the
 [Announce a release](.github/workflows/announce.yaml) workflow fails
 without it.
 
+Publish the draft once the whole release workflow succeeded: the build
+provenance, the SBOMs and the chart come after the draft. When the workflow
+fails, run its failed jobs again on the same tag: GoReleaser replaces its
+draft and pushes the images again. When Tag a release created the tag but
+did not start the release, run the release workflow on that tag. A tag
+never moves: a release that cannot succeed on its tag takes a fix on `main`
+and the next version.
+
 [nix]: https://nixos.org/
 [direnv]: https://direnv.net/
 [task]: https://taskfile.dev/

@@ -181,6 +181,9 @@ release:
     name: tsigoat
   prerelease: auto
   draft: true
+  # A release that runs again on its tag, after a failure, starts from a new
+  # draft rather than from the assets of the previous run.
+  replace_existing_draft: true
 
 # Sections mirror the Conventional Commit types; maintenance types stay out
 # of the public changelog.
