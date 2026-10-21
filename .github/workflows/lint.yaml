@@ -116,6 +116,11 @@ jobs:
       - uses: ./.github/actions/dagger
         with:
           args: check-tidy
+      # The golang image of the pipelines runs the toolchain of go.mod, which
+      # the releases build with.
+      - uses: ./.github/actions/dagger
+        with:
+          args: check-toolchain
 
   markdown:
     name: Markdown
