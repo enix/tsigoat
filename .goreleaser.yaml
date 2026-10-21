@@ -5,7 +5,7 @@
 #
 # Releases start from a version tag, which the Tag a release workflow creates
 # with svu, or a maintainer pushes; the release workflow runs GoReleaser and
-# leaves a draft release to review.
+# leaves a draft release to review, whose publication is announced on Slack.
 #
 # IMAGE_NAME is the only overridable knob (default: tsigoat).
 #

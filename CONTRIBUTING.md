@@ -198,6 +198,11 @@ reviews and publishes. The Helm chart takes the version of the tag, and is
 pushed to its OCI registry and signed after the images. A maintainer may
 also push a version tag, which starts the release workflow alike.
 
+Publishing the release announces it on Slack, with its notes, through the
+incoming webhook of the `SLACK_WEBHOOK` secret; the
+[Announce a release](.github/workflows/announce.yaml) workflow fails
+without it.
+
 [nix]: https://nixos.org/
 [direnv]: https://direnv.net/
 [task]: https://taskfile.dev/

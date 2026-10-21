@@ -6,7 +6,8 @@ name: Release
 # GoReleaser then builds the binaries and images, signs everything with
 # cosign keyless, and leaves a draft GitHub Release with a changelog
 # generated from the Conventional Commits. The maintainer reviews and
-# publishes it. The Helm chart follows the images, with the same version.
+# publishes it, which announces it on Slack (announce.yaml). The Helm chart
+# follows the images, with the same version.
 #
 # Settings of the `release` environment for the chart:
 #   - variable CHART_REGISTRY: OCI repository of the chart, without oci://;

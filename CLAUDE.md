@@ -196,7 +196,8 @@ with the D* decisions, tooling), which must never be committed.
 - Conventional Commits; GoReleaser builds the changelog from them, svu the
   next version (`feat:` a minor, a breaking change too in 0.x, anything else
   a patch). Releases: `tag.yaml` tags main and dispatches `release.yaml` on
-  the tag; GoReleaser leaves a draft for review.
+  the tag; GoReleaser leaves a draft; its publication posts on Slack
+  (`announce.yaml`, `scripts/announce-release.py`).
 - golangci-lint must pass clean, without path exclusions. Every `//nolint`
   names its linter and explains why.
 - Tests sit next to the code; table-driven for parsers; `Fuzz*` targets for
