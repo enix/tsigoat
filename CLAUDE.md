@@ -128,6 +128,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | Mutation | `task test:mutation` | `dagger call mutation`: gremlins on update, zone and auth; informational, nightly |
 | Fuzzing | `task test:fuzz` | `dagger call fuzz --fuzztime=1m`: every `Fuzz*` target; 10 minutes each in the nightly workflow |
 | Security | `task security` | gitleaks, govulncheck, Trivy |
+| Release configuration | `task test:release` | `dagger call test-release`: semantic-release in dry runs on a history made for it (versions, sections of the notes), and the Slack announcement; the Tag a release workflow has a dry run too |
 | Dev backend | `task dev` + `task dev:run` | PowerDNS on :8081 (API) and :5300 (DNS); tsigoat on 127.0.0.1:10053 |
 
 Dagger specifics:

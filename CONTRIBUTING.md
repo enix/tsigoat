@@ -216,7 +216,8 @@ exists, named after the tag and with its notes: the release workflow refuses
 a tag without one.
 
 The packages of semantic-release are pinned in `.github/release`, and move
-with Renovate.
+with Renovate; `task test:release` runs semantic-release in dry runs on a
+history made for it, and renders the Slack announcement.
 
 When the release workflow fails, run its failed jobs again on the same tag:
 GoReleaser replaces the files of the draft and pushes the images again. When

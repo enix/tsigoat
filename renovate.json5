@@ -266,5 +266,12 @@
       matchPackageNames: ["conventional-changelog-conventionalcommits"],
       allowedVersions: "<10",
     },
+    {
+      // The Node of the release workflows (.github/release/.node-version)
+      // and of the release test (nodeImage of dagger/base.go).
+      matchPackageNames: ["node"],
+      groupName: "node",
+      labels: ["dependencies", "ci"],
+    },
   ],
 }
