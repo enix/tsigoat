@@ -1,11 +1,12 @@
 # GoReleaser drives every build of tsigoat: binaries, archives, deb and rpm
-# packages, checksums and their cosign keyless signature, multi-arch container
-# images (scratch by default, busybox as an alternative with a shell), and the
-# GitHub Release with its changelog; the release workflow signs the images.
+# packages, checksums and their cosign keyless signature, and multi-arch
+# container images (scratch by default, busybox as an alternative with a
+# shell); the release workflow signs the images.
 #
-# Releases start from a version tag, which the Tag a release workflow creates
-# with svu, or a maintainer pushes; the release workflow runs GoReleaser and
-# leaves a draft release to review, whose publication is announced on Slack.
+# Releases start from a version tag, which semantic-release pushes from the
+# Tag a release workflow, with a draft GitHub release that holds its notes.
+# The release workflow runs GoReleaser on the tag, which attaches the
+# artifacts to that draft, then publishes the draft and announces it.
 #
 # IMAGE_NAME renames the images of local snapshots (default: tsigoat). The
 # release workflow leaves it, since the chart pulls enix/tsigoat.
@@ -229,42 +230,14 @@ release:
     owner: enix
     name: tsigoat
   prerelease: auto
+  # The draft that semantic-release left on the tag, whose notes GoReleaser
+  # keeps; the release workflow publishes it once every artifact is there. A
+  # run again on the tag replaces the artifacts of the previous one.
   draft: true
-  # A release that runs again on its tag, after a failure, starts from a new
-  # draft rather than from the assets of the previous run.
-  replace_existing_draft: true
+  use_existing_draft: true
+  mode: keep-existing
+  replace_existing_artifacts: true
 
-# Sections mirror the Conventional Commit types; maintenance types stay out
-# of the public changelog.
+# The notes are those of semantic-release.
 changelog:
-  use: github
-  sort: desc
-  filters:
-    exclude:
-      - "^ci[(:!]"
-      - "^chores?[(:!]"
-      - "^refactor[(:!]"
-      - "^tests?[(:!]"
-      - "^build[(:!]"
-      - "^Merge "
-  groups:
-    - title: "Security Updates"
-      regexp: "^security[(:!]"
-      order: 0
-    - title: "Features"
-      regexp: "^feat[(:!]"
-      order: 1
-    - title: "Bug Fixes"
-      regexp: "^fix[(:!]"
-      order: 2
-    - title: "Performance"
-      regexp: "^perf[(:!]"
-      order: 3
-    - title: "Dependencies"
-      regexp: "^deps[(:!]"
-      order: 4
-    - title: "Documentation"
-      regexp: "^docs[(:!]"
-      order: 5
-    - title: "Other Changes"
-      order: 999
+  disable: true

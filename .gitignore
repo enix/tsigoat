@@ -13,6 +13,7 @@
 .keyring
 .ropeproject
 __pycache__/
+node_modules/
 
 # Local working notes, never committed
 /docs/local/

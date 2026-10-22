@@ -1,13 +1,15 @@
 name: Release
 
-# Runs on a version tag: the Tag a release workflow (tag.yaml) creates it,
-# with the version that svu computes, and starts this workflow on it; a tag
-# that a maintainer pushes starts it too. The quality gates run first;
-# GoReleaser then builds the binaries and images, signs everything with
-# cosign keyless, and leaves a draft GitHub Release with a changelog
-# generated from the Conventional Commits. The maintainer reviews and
-# publishes it, which announces it on Slack (announce.yaml). The Helm chart
-# follows the images, with the same version.
+# Runs on a version tag: semantic-release pushes it from the Tag a release
+# workflow (tag.yaml), with a draft GitHub release that holds its notes, and
+# that workflow starts this one on it; a tag that a maintainer pushes, after
+# creating its draft, starts it too. The quality gates run first; GoReleaser
+# then builds the binaries, packages and images, signs them with cosign
+# keyless, and attaches them to the draft; the Helm chart follows the
+# images, with the same version. Once everything is there, the last job
+# publishes the draft and announces it on Slack, with semantic-release-slack-bot
+# (.github/release/announce.mjs) and the incoming webhook of the SLACK_WEBHOOK
+# secret of the repository.
 #
 # Secrets of the `release` environment for the images, which GoReleaser
 # pushes to ghcr.io, with the GITHUB_TOKEN, quay.io and docker.io: QUAY_USERNAME
@@ -29,7 +31,7 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
   # Started on its tag by tag.yaml, since a tag that the GITHUB_TOKEN
-  # creates starts no workflow.
+  # pushes starts no workflow.
   workflow_dispatch:
 
 permissions: {}
@@ -44,15 +46,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
-      contents: read
+      contents: write # read the draft releases, which need write access
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      # Releases come from main: tag.yaml tags main alone, but a maintainer
-      # may push a tag on any commit.
-      - name: Check that the release runs on a version tag of main
+      # Release candidates come from main, stable versions from release;
+      # tag.yaml tags those alone, but a maintainer may push a tag on any
+      # commit.
+      - name: Check that the release runs on a version tag of its branch
         env:
           REF: ${{ github.ref }}
         run: |
@@ -60,8 +63,27 @@ jobs:
             echo "::error::A release runs on a version tag, not on $REF."
             exit 1
           fi
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::$REF tags $GITHUB_SHA, which main does not hold."
+          branch=release
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            branch=main
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch"; then
+            echo "::error::$REF tags $GITHUB_SHA, which $branch does not hold."
+            exit 1
+          fi
+      # GoReleaser attaches the artifacts to the draft of the tag, which
+      # holds the notes: it would otherwise create a release without them.
+      - name: Check the draft release of the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! release=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft,name,body); then
+            echo "::error::$GITHUB_REF_NAME has no release: Tag a release leaves a draft, which a tag pushed by hand needs too."
+            exit 1
+          fi
+          if ! jq -e --arg tag "$GITHUB_REF_NAME" '.isDraft and .name == $tag and (.body | length > 0)' <<<"$release" >/dev/null; then
+            echo "::error::The release of $GITHUB_REF_NAME must be a draft named $GITHUB_REF_NAME, with notes: $(jq -c '{isDraft, name}' <<<"$release")."
             exit 1
           fi
 
@@ -93,17 +115,18 @@ jobs:
     # Protected environment: required reviewers, registry credentials.
     environment: release
     permissions:
-      contents: write # create the GitHub Release
+      contents: write # attach the artifacts to the draft release
       packages: write # push to ghcr.io
       id-token: write # OIDC for cosign keyless and provenance signing
       attestations: write # upload the build provenance
     outputs:
       digests: ${{ steps.digests.outputs.digests }}
     steps:
-      # GoReleaser pushes to every registry of .goreleaser.yaml, and the chart
-      # job to CHART_REGISTRY: a credential missing there would stop the
-      # release midway, once part of it is public.
-      - name: Check the registry credentials
+      # GoReleaser pushes to every registry of .goreleaser.yaml, the chart
+      # job to CHART_REGISTRY, and the last job announces on Slack: a secret
+      # missing there would stop the release midway, once part of it is
+      # public.
+      - name: Check the credentials
         env:
           QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
           QUAY_TOKEN: ${{ secrets.QUAY_TOKEN }}
@@ -113,9 +136,10 @@ jobs:
           CHART_REGISTRY_USERNAME: ${{ secrets.CHART_REGISTRY_USERNAME }}
           CHART_REGISTRY_TOKEN: ${{ secrets.CHART_REGISTRY_TOKEN }}
           GH_TOKEN_PUBLISH_HELM_CHART: ${{ secrets.GH_TOKEN_PUBLISH_HELM_CHART }}
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: |
           missing=()
-          required=(QUAY_USERNAME QUAY_TOKEN DOCKERHUB_USERNAME DOCKERHUB_TOKEN)
+          required=(QUAY_USERNAME QUAY_TOKEN DOCKERHUB_USERNAME DOCKERHUB_TOKEN SLACK_WEBHOOK)
           if [[ "$CHART_REGISTRY" != ghcr.io/* ]]; then
             required+=(CHART_REGISTRY_USERNAME CHART_REGISTRY_TOKEN)
           fi
@@ -335,3 +359,50 @@ jobs:
             --artifact-type application/yaml index-latest.yaml:application/yaml)
           gh workflow run helmchart-publish.yml --repo enix/helm-charts \
             -f "index_path=${CHART_REGISTRY#quay.io/}/tsigoat:index-latest.yaml"
+
+  publish:
+    name: Publish and announce
+    needs: [goreleaser, chart]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # publish the draft release
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .github/release/.node-version
+          # No cache when releasing: a poisoned cache could reach the release.
+          package-manager-cache: false
+      - name: Install semantic-release-slack-bot
+        run: npm ci --prefix .github/release --ignore-scripts --no-audit --no-fund
+      # The draft stays one until it holds every file that the checksums
+      # cover, the checksums and their signature. GitHub renames the files
+      # that it attaches: the ~ of the version of a candidate package
+      # becomes a dot.
+      - name: Check the assets of the draft
+        run: |
+          set -euo pipefail
+          dir=$(mktemp -d)
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern checksums.txt --dir "$dir"
+          want=$({ awk '{ print $2 }' "$dir/checksums.txt"; echo checksums.txt; echo checksums.txt.sigstore.json; } \
+            | sed 's/[^A-Za-z0-9._+-]/./g' | sort -u)
+          have=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | sort -u)
+          missing=$(comm -23 <(echo "$want") <(echo "$have"))
+          if [ -n "$missing" ]; then
+            echo "::error::The draft lacks $(echo "$missing" | paste -sd ' ')."
+            exit 1
+          fi
+      - name: Publish the draft
+        run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false
+      - name: Announce on Slack
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          set -euo pipefail
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json tagName,body,isPrerelease > "$RUNNER_TEMP/release.json"
+          node .github/release/announce.mjs "$RUNNER_TEMP/release.json"

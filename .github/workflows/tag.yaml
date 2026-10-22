@@ -1,17 +1,19 @@
 name: Tag a release
 
-# Run by a maintainer on main, to ship it. scripts/next-version.sh computes
-# the next version with svu, from the Conventional Commits since the last
-# release, or the next release candidate of it, vX.Y.Z-rc.N; the workflow
-# tags the commit with it, then starts the release workflow on the tag. A tag
-# created with the GITHUB_TOKEN starts no workflow, but a dispatch does: the
-# release runs from the tag, as when a maintainer pushes one, which stays
-# possible. `task release:next` prints the version beforehand.
+# Run by a maintainer: on main for a release candidate, vX.Y.Z-rc.N; on
+# release for a stable version, vX.Y.Z, once release moved forward to the
+# commit of main that a candidate tested. semantic-release (.releaserc.mjs)
+# computes the version from the Conventional Commits since the last stable
+# version, pushes its tag and leaves a draft GitHub release with its notes;
+# the workflow then starts the release workflow on the tag, which builds,
+# attaches the artifacts to the draft, publishes it and announces it. A tag
+# created with the GITHUB_TOKEN starts no workflow, but a dispatch does. A dry
+# run prints the version and its notes, and tags nothing.
 on:
   workflow_dispatch:
     inputs:
-      candidate:
-        description: Tag a release candidate, vX.Y.Z-rc.N
+      dry-run:
+        description: Print the next version and its notes, tag nothing
         type: boolean
         default: false
 
@@ -24,45 +26,49 @@ concurrency:
 jobs:
   tag:
     name: Tag the next version
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write # create the tag
+      contents: write # push the tag and its git note, create the draft release
       actions: write # start the release workflow
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          go-version-file: go.mod
-          cache: false
-      - name: Compute the version
-        id: version
+          node-version-file: .github/release/.node-version
+          # No cache when releasing: a poisoned cache could reach the release.
+          package-manager-cache: false
+      - name: Install semantic-release
+        run: npm ci --prefix .github/release --ignore-scripts --no-audit --no-fund
+      - name: Run semantic-release
+        id: release
         env:
-          CANDIDATE: ${{ inputs.candidate }}
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry-run }}
         run: |
           set -euo pipefail
           args=()
-          if [ "$CANDIDATE" = true ]; then
-            args=(--rc)
+          if [ "$DRY_RUN" = true ]; then
+            args=(--dry-run)
           fi
-          version=$(scripts/next-version.sh "${args[@]}")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Tag and start the release
+          .github/release/node_modules/.bin/semantic-release "${args[@]}"
+      - name: Start the release
+        if: steps.release.outputs.dry-run == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          tag=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" \
-            -f tag="$VERSION" -f message="$VERSION" -f object="$GITHUB_SHA" -f type=commit \
-            -f "tagger[name]=github-actions[bot]" \
-            -f "tagger[email]=41898282+github-actions[bot]@users.noreply.github.com" \
-            -f "tagger[date]=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            --jq .sha)
-          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$VERSION" -f sha="$tag" --silent
-          gh workflow run release.yaml --repo "$GITHUB_REPOSITORY" --ref "$VERSION"
-          echo "Tagged $GITHUB_SHA as $VERSION, and started its release." >> "$GITHUB_STEP_SUMMARY"
+          gh workflow run release.yaml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+          echo "Started the release of $TAG." >> "$GITHUB_STEP_SUMMARY"
+      # Nothing since the last version makes a release: the maintainer
+      # dispatched this workflow for one.
+      - name: Check that there is a version to tag
+        if: steps.release.outputs.tag == ''
+        run: |
+          echo "::error::No commit since the last version makes a release."
+          exit 1

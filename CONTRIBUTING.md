@@ -152,21 +152,21 @@ documentation, commit messages, pull requests and issues.
 
 ### Commit messages
 
-[Conventional Commits][conventional-commits]. GoReleaser builds the public
-changelog from them, and svu the version of the next release, so the type
+[Conventional Commits][conventional-commits]. semantic-release computes the
+version of the next release from them, and writes its notes, so the type
 matters:
 
-- `feat:` new user-visible behavior;
-- `fix:` bug fix;
-- `perf:` performance improvement;
-- `security:` fix or hardening that addresses a vulnerability;
-- `deps:` dependency bump;
-- `docs:` documentation only;
-- `chore:`, `ci:`, `refactor:`, `test:`, `build:` stay out of the changelog.
+- `feat:` new user-visible behavior: a minor version;
+- `fix:` bug fix: a patch;
+- `perf:` performance improvement: a patch;
+- `security:` fix or hardening that addresses a vulnerability: a patch;
+- `deps:` dependency bump, whatever the dependency: a patch;
+- `docs:` documentation only: in the notes, but no release of its own;
+- `chore:`, `ci:`, `refactor:`, `test:`, `build:` stay out of the notes, and
+  make no release.
 
-A breaking change takes a `!` after the type and a `BREAKING CHANGE:` footer.
-A `feat:` makes the next release a minor version, as a breaking change does
-while tsigoat is in 0.x; anything else, a patch.
+A breaking change takes a `!` after the type and a `BREAKING CHANGE:` footer,
+in upper case; it makes a minor version while tsigoat is in 0.x.
 
 ### Code style
 
@@ -187,36 +187,58 @@ for working notes that stay on one machine.
 
 ## Releases
 
+`main` makes release candidates, `vX.Y.Z-rc.N`; `release`, which only moves
+forward to a commit of `main`, makes stable versions, `vX.Y.Z`.
+
 A maintainer dispatches the [Tag a release](.github/workflows/tag.yaml)
-workflow on `main`. [svu][svu] computes the version from the Conventional
-Commits since the last release, or the next release candidate of it,
-`vX.Y.Z-rc.N`, when the box is ticked; `task release:next` prints it
-beforehand. The workflow tags the commit, then starts the release workflow on
-the tag: it runs the quality gates, then GoReleaser builds and signs the
-binaries, the deb and rpm packages and the images, and leaves a draft GitHub
-Release, which the maintainer
-reviews and publishes. The Helm chart takes the version of the tag, and is
-pushed to its OCI registry and signed after the images. A maintainer may
-also push a version tag, which starts the release workflow alike.
+workflow on `main` for a candidate, or on `release` for a stable version, once
+`release` moved forward to the commit that a candidate tested:
 
-Publishing the release announces it on Slack, with its notes, through the
-incoming webhook of the `SLACK_WEBHOOK` secret; the
-[Announce a release](.github/workflows/announce.yaml) workflow fails
-without it.
+```sh
+git push origin <commit>:release
+```
 
-Publish the draft once the whole release workflow succeeded: the build
-provenance, the SBOMs and the chart come after the draft. When the workflow
-fails, run its failed jobs again on the same tag: GoReleaser replaces its
-draft and pushes the images again. When Tag a release created the tag but
-did not start the release, run the release workflow on that tag. A tag
-never moves: a release that cannot succeed on its tag takes a fix on `main`
-and the next version.
+[semantic-release][semantic-release] (`.releaserc.mjs`) computes the version
+from the Conventional Commits since the last stable version, pushes its tag,
+and leaves a draft GitHub Release with its notes: those of a stable version
+hold the changes of its candidates. The workflow then starts the
+[release workflow](.github/workflows/release.yaml) on the tag. Its dry run
+prints the version and the notes, and tags nothing.
+
+The release workflow runs the quality gates, then GoReleaser builds and signs
+the binaries, the deb and rpm packages and the images, and attaches them to
+the draft; the Helm chart takes the version of the tag, and is pushed to its
+OCI registry and signed after the images. Once the draft holds every file,
+the last job publishes it and announces it on Slack, with
+semantic-release-slack-bot and the incoming webhook of the `SLACK_WEBHOOK`
+secret. A maintainer may also push a version tag, once its draft release
+exists, named after the tag and with its notes: the release workflow refuses
+a tag without one.
+
+The packages of semantic-release are pinned in `.github/release`, and move
+with Renovate.
+
+When the release workflow fails, run its failed jobs again on the same tag:
+GoReleaser replaces the files of the draft and pushes the images again. When
+Tag a release created the tag but did not start the release, run the release
+workflow on that tag. A tag moves only while nothing of its version left the
+repository: when the quality gates fail on it, before GoReleaser ran, delete
+the draft, the tag and its semantic-release note, fix `main`, and dispatch Tag
+a release again, which computes the same version:
+
+```sh
+gh release delete vX.Y.Z --yes
+git push origin :refs/tags/vX.Y.Z :refs/notes/semantic-release-vX.Y.Z
+```
+
+Once GoReleaser pushed an image, the version is out: a fix takes the next
+version.
 
 [nix]: https://nixos.org/
 [direnv]: https://direnv.net/
 [task]: https://taskfile.dev/
 [dagger]: https://dagger.io/
 [goreleaser]: https://goreleaser.com/
-[svu]: https://github.com/caarlos0/svu
+[semantic-release]: https://semantic-release.gitbook.io/
 [renovate]: https://docs.renovatebot.com/
 [conventional-commits]: https://www.conventionalcommits.org/

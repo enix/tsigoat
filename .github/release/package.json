@@ -1,0 +1,15 @@
+{
+  "name": "tsigoat-release",
+  "private": true,
+  "description": "semantic-release, which tags the versions of tsigoat, and the Slack plugin that announces them",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "dependencies": {
+    "conventional-changelog-conventionalcommits": "9.3.1",
+    "semantic-release": "25.0.9",
+    "semantic-release-slack-bot": "4.0.2"
+  }
+}

@@ -109,12 +109,6 @@ tasks:
     cmds:
       - goreleaser release --snapshot --skip=publish,sign --clean
 
-  # ─── Release ─────────────────────────────────────────────────────────────
-  release:next:
-    desc: The version of the next release from HEAD, as the Tag a release workflow computes it on main (`-- --rc` for a release candidate)
-    cmds:
-      - scripts/next-version.sh {{.CLI_ARGS}}
-
   # ─── Dependencies ────────────────────────────────────────────────────────
   go:tidy:
     desc: go mod tidy on the main module and ./dagger

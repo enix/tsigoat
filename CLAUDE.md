@@ -128,7 +128,6 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | Mutation | `task test:mutation` | `dagger call mutation`: gremlins on update, zone and auth; informational, nightly |
 | Fuzzing | `task test:fuzz` | `dagger call fuzz --fuzztime=1m`: every `Fuzz*` target; 10 minutes each in the nightly workflow |
 | Security | `task security` | gitleaks, govulncheck, Trivy |
-| Next version | `task release:next` | `scripts/next-version.sh`: svu on the Conventional Commits since the last release, as the Tag a release workflow (`tag.yaml`) computes it; `-- --rc` for a release candidate |
 | Dev backend | `task dev` + `task dev:run` | PowerDNS on :8081 (API) and :5300 (DNS); tsigoat on 127.0.0.1:10053 |
 
 Dagger specifics:
@@ -199,14 +198,21 @@ with the D* decisions, tooling), which must never be committed.
 ## Conventions
 
 - Everything in the repository is in English, but `docs/local/`.
-- Conventional Commits; GoReleaser builds the changelog from them, svu the
-  next version (`feat:` a minor, a breaking change too in 0.x, anything else
-  a patch). The types are those of `CONTRIBUTING.md`: a dependency bump is
+- Conventional Commits; semantic-release computes the next version from them
+  (`feat:` a minor, `fix:`, `perf:`, `security:` and `deps:` a patch, a
+  breaking change a minor in 0.x, the other types no release) and writes the
+  notes. The types are those of `CONTRIBUTING.md`: a dependency bump is
   `deps:`, whatever the dependency, as Renovate titles its own, and
   `security:` when it fixes a vulnerability; `chore`, `ci`, `refactor`,
-  `test` and `build` stay out of the changelog. Releases: `tag.yaml` tags main and dispatches `release.yaml` on
-  the tag; GoReleaser leaves a draft; its publication posts on Slack
-  (`announce.yaml`, `scripts/announce-release.py`).
+  `test` and `build` stay out of the notes.
+- Releases: `main` makes release candidates, `release` (moved forward to a
+  tested commit of main) stable versions. `tag.yaml` runs semantic-release
+  (`.releaserc.mjs`, packages pinned in `.github/release`): tag, draft
+  release with the notes, then a dispatch of `release.yaml` on the tag, which
+  runs the gates, GoReleaser (attaches to the draft, `use_existing_draft`),
+  the chart, then publishes the draft once it holds every file and announces
+  it with semantic-release-slack-bot (`.github/release/announce.mjs`). A tag
+  moves only before anything of its version left the repository.
 - golangci-lint must pass clean, without path exclusions. Every `//nolint`
   names its linter and explains why.
 - Tests sit next to the code; table-driven for parsers; `Fuzz*` targets for

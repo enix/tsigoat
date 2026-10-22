@@ -133,16 +133,6 @@
       datasourceTemplate: "github-releases",
     },
     {
-      // svu, which computes the version of the next release.
-      customType: "regex",
-      managerFilePatterns: ["/^scripts/next-version\\.sh$/"],
-      matchStrings: [
-        "SVU_VERSION=(?<currentValue>v\\d[\\w.-]*)",
-      ],
-      depNameTemplate: "github.com/caarlos0/svu/v3",
-      datasourceTemplate: "go",
-    },
-    {
       // The Helm of the release, in step with helmImage of dagger/base.go.
       customType: "regex",
       managerFilePatterns: ["/^\\.github/workflows/release\\.ya?ml$/"],
@@ -262,6 +252,19 @@
       matchManagers: ["nix"],
       groupName: "nix flake inputs",
       labels: ["dependencies", "nix"],
+    },
+    {
+      // semantic-release and the Slack plugin of the release workflows.
+      matchManagers: ["npm"],
+      matchFileNames: [".github/release/**"],
+      groupName: "semantic-release",
+      labels: ["dependencies", "ci"],
+    },
+    {
+      // @semantic-release/release-notes-generator renders the notes with
+      // conventional-changelog-writer 8, which the preset refuses from 10.0.
+      matchPackageNames: ["conventional-changelog-conventionalcommits"],
+      allowedVersions: "<10",
     },
   ],
 }
