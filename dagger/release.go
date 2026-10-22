@@ -7,9 +7,10 @@ import (
 )
 
 // releaseScript runs semantic-release in dry runs on a history made for it:
-// v0.1.0 on release, then a feature, a breaking fix, a dependency bump and a
-// chore on main. The GitHub plugin, which needs a token and the API, stays
-// out; the rest of .releaserc.mjs runs as in the Tag a release workflow.
+// a feature with no stable version before it, which it refuses; then v0.1.0
+// on release, and a feature, a breaking fix, a dependency bump and a chore on
+// main. The GitHub plugin, which needs a token and the API, stays out; the
+// rest of .releaserc.mjs runs as in the Tag a release workflow.
 const releaseScript = `
 sr=/src/.github/release/node_modules/.bin/semantic-release
 work=/tmp/work
@@ -19,7 +20,7 @@ git config --global init.defaultBranch main
 git init -q --bare /tmp/origin.git
 git init -q "$work"
 mkdir -p "$work/.github/release"
-cp /src/.github/release/workflow-outputs.mjs "$work/.github/release/"
+cp /src/.github/release/tag-a-release.mjs "$work/.github/release/"
 cat > "$work/.releaserc.mjs" <<'EOF'
 import config from "/src/.releaserc.mjs";
 export default {
@@ -30,14 +31,24 @@ EOF
 cd "$work"
 git add -A
 git commit -q -m "chore: start"
+git commit -q --allow-empty -m "feat: serve updates"
+git remote add origin file:///tmp/origin.git
+git push -q origin main main:release
+
+# No stable version yet: semantic-release would tag 1.0.0-rc.1.
+if "$sr" --dry-run > /tmp/log 2>&1 || ! grep -q "No stable version precedes v1.0.0-rc.1" /tmp/log; then
+  cat /tmp/log
+  echo "semantic-release should refuse a version that no stable version precedes"
+  exit 1
+fi
+echo "main: refuses v1.0.0-rc.1"
+
 git tag v0.1.0
 git commit -q --allow-empty -m "feat(policy): grant a key the names of a certificate"
 git commit -q --allow-empty -m "fix!: refuse the updates of the apex"
 git commit -q --allow-empty -m "deps: update module example.test/x to v1.2.3"
 git commit -q --allow-empty -m "chore: leave this out"
-git remote add origin file:///tmp/origin.git
 git push -q origin main v0.1.0
-git push -q origin v0.1.0:refs/heads/release
 
 # expect BRANCH TAG PRERELEASE: the dry run on BRANCH tags TAG.
 expect() {

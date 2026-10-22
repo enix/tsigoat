@@ -70,6 +70,6 @@ export default {
         releasedLabels: false,
       },
     ],
-    "./.github/release/workflow-outputs.mjs",
+    "./.github/release/tag-a-release.mjs",
   ],
 };

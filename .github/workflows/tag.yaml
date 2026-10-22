@@ -44,6 +44,15 @@ jobs:
           package-manager-cache: false
       - name: Install semantic-release
         run: npm ci --prefix .github/release --ignore-scripts --no-audit --no-fund
+      # semantic-release needs the branch of the stable versions, even for a
+      # candidate; release starts at the first stable version, which a
+      # maintainer tags by hand.
+      - name: Check the release branch
+        run: |
+          if ! git rev-parse --verify --quiet refs/remotes/origin/release >/dev/null; then
+            echo "::error::The release branch does not exist yet: it starts at the first stable version, tagged by hand, as the Releases section of CONTRIBUTING.md tells."
+            exit 1
+          fi
       - name: Run semantic-release
         id: release
         env:

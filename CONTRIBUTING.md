@@ -190,6 +190,11 @@ for working notes that stay on one machine.
 `main` makes release candidates, `vX.Y.Z-rc.N`; `release`, which only moves
 forward to a commit of `main`, makes stable versions, `vX.Y.Z`.
 
+semantic-release would make the first version 1.0.0: the first stable
+version, v0.1.0, is tagged by hand. Create `release` on its commit, then its
+draft release, named after the tag and with its notes, then push its tag,
+which starts the release workflow. Until then, Tag a release refuses to run.
+
 A maintainer dispatches the [Tag a release](.github/workflows/tag.yaml)
 workflow on `main` for a candidate, or on `release` for a stable version, once
 `release` moved forward to the commit that a candidate tested:
