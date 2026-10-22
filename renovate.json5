@@ -261,8 +261,11 @@
       labels: ["dependencies", "ci"],
     },
     {
-      // @semantic-release/release-notes-generator renders the notes with
-      // conventional-changelog-writer 8, which the preset refuses from 10.0.
+      // @semantic-release/release-notes-generator 14, which semantic-release
+      // 25 ships, renders the notes with conventional-changelog-writer 8,
+      // which the preset refuses from 10.0. The plugins of semantic-release
+      // 26 bring the preset 10 and load it first: its update drops this rule
+      // and the preset from .github/release/package.json.
       matchPackageNames: ["conventional-changelog-conventionalcommits"],
       allowedVersions: "<10",
     },
