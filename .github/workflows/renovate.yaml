@@ -58,13 +58,12 @@ jobs:
         with:
           client-id: ${{ secrets.RENOVATE_APP_CLIENT_ID }}
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
-          # What Renovate needs as a GitHub App, nothing more.
+          # The permissions of the App, all of them: a token that asks for one
+          # the App lacks is refused.
           permission-contents: write
           permission-pull-requests: write
           permission-issues: write
           permission-workflows: write
-          permission-checks: write
-          permission-statuses: write
           permission-vulnerability-alerts: read
       - name: Run Renovate
         uses: renovatebot/github-action@a63d9a7bc606f7336fd20b47f2f32259a35e6213 # v46.3.9
