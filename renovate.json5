@@ -171,6 +171,12 @@
       pinDigests: true,
     },
     {
+      // The cert-manager chart of the acceptance test is a version, with no
+      // room for a digest.
+      matchPackageNames: ["quay.io/jetstack/charts/cert-manager"],
+      pinDigests: false,
+    },
+    {
       matchManagers: ["github-actions"],
       pinDigests: true,
     },
