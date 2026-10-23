@@ -213,10 +213,7 @@ with the D* decisions, tooling), which must never be committed.
   runs the gates, GoReleaser (attaches to the draft, `use_existing_draft`),
   the chart, then publishes the draft once it holds every file and announces
   it with semantic-release-slack-bot (`.github/release/announce.mjs`). A tag
-  moves only before anything of its version left the repository. The first
-  stable version is tagged by hand: semantic-release would start from 1.0.0,
-  and `.github/release/tag-a-release.mjs` refuses a version without a stable
-  one before it.
+  moves only before anything of its version left the repository.
 - golangci-lint must pass clean, without path exclusions. Every `//nolint`
   names its linter and explains why.
 - Tests sit next to the code; table-driven for parsers; `Fuzz*` targets for
