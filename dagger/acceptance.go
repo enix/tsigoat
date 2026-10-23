@@ -194,10 +194,14 @@ kubectl -n tsigoat exec deploy/tsigoat -- /tsigoat check-config --backends
 nameserver=tsigoat.tsigoat.svc.cluster.local:53
 
 echo "== installing cert-manager @CHART@"
-helm install cert-manager oci://quay.io/jetstack/charts/cert-manager --version @CHART@ \
+if ! helm install cert-manager oci://quay.io/jetstack/charts/cert-manager --version @CHART@ \
   --namespace cert-manager --create-namespace --set crds.enabled=true \
   --set "extraArgs={--dns01-recursive-nameservers-only,--dns01-recursive-nameservers=$pdns:@PDNS_PORT@}" \
-  --wait --timeout 5m > /dev/null
+  --wait --timeout 5m > /dev/null; then
+  kubectl -n cert-manager get all,events -o wide || true
+  kubectl -n cert-manager describe pods || true
+  exit 1
+fi
 
 echo "== issuing certificates through $nameserver"
 kubectl apply -f - <<MANIFESTS
