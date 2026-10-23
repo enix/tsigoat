@@ -88,12 +88,14 @@ jobs:
           fi
 
   security:
+    name: Security
     needs: tag
     uses: ./.github/workflows/security.yaml
     permissions:
       contents: read
 
   lint:
+    name: Lint
     needs: security
     uses: ./.github/workflows/lint.yaml
     permissions:
@@ -102,6 +104,7 @@ jobs:
       skip-renovate: true
 
   test:
+    name: Test
     needs: security
     uses: ./.github/workflows/test.yaml
     permissions:
