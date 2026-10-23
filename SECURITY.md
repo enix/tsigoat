@@ -32,7 +32,7 @@ cosign verify ghcr.io/enix/tsigoat:<version> \
   --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
 cosign verify-attestation --type cyclonedx ghcr.io/enix/tsigoat:<version> \
   --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
-cosign verify ghcr.io/enix/charts/tsigoat:<version> \
+cosign verify quay.io/enix/charts/tsigoat:<version> \
   --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
 cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
   --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"

@@ -51,10 +51,17 @@ secret:
   existingSecret: tsigoat-secrets
 ```
 
-Then install the chart:
+Then install the chart, from its OCI registry:
 
 ```sh
-helm -n tsigoat install tsigoat oci://ghcr.io/enix/charts/tsigoat --values values.yaml
+helm -n tsigoat install tsigoat oci://quay.io/enix/charts/tsigoat --values values.yaml
+```
+
+or from the Helm repository of charts.enix.io:
+
+```sh
+helm repo add enix https://charts.enix.io
+helm -n tsigoat install tsigoat enix/tsigoat --values values.yaml
 ```
 
 cert-manager reaches tsigoat at `tsigoat.tsigoat.svc.cluster.local:53`, see
@@ -173,7 +180,7 @@ The chart is signed with cosign, keyless, by the release workflow, on the
 tag of its version:
 
 ```sh
-cosign verify ghcr.io/enix/charts/tsigoat:<version> \
+cosign verify quay.io/enix/charts/tsigoat:<version> \
   --certificate-identity 'https://github.com/enix/tsigoat/.github/workflows/release.yaml@refs/tags/v<version>' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
