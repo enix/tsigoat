@@ -215,8 +215,8 @@ dockers_v2:
     sbom: false
     labels: *busybox-labels
 
-# The release workflow signs the images, once per digest and registry: one
-# signature per tag, here, signed each digest again.
+# The release workflow signs the images, once per digest and registry:
+# signing them here, once per tag, would sign each digest again.
 
 # ─── Release and changelog ───────────────────────────────────────────────────
 # Among the tags of a commit, which a release may share with one of its

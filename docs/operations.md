@@ -75,8 +75,8 @@ sudo systemctl enable --now tsigoat
 The unit runs tsigoat as `tsigoat`, in a hardened sandbox, with the sole
 capability of binding the ports below 1024, such as 53. An upgrade restarts
 the service if it runs; the removal of the package stops it, and leaves
-`/etc/tsigoat` and the user. There is no apt or dnf repository yet: an
-upgrade takes the packages of the next release.
+`/etc/tsigoat` and the user. There is no apt or dnf repository: an upgrade
+takes the packages of the next release.
 
 ## Kubernetes
 

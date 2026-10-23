@@ -228,9 +228,8 @@ jobs:
           # Each image of each registry, by digest, once: its tags share it.
           jq -r '.[] | select(.type == "Docker Image") | "\(.name | sub(":[^:/]*$"; ""))@\(.extra.Digest)"' dist/artifacts.json \
             | sort -u > dist/images.txt
-      # One signature per image and registry, rather than one per tag, which
-      # GoReleaser made: signing a digest again added to its signatures, which
-      # ghcr.io refused to the GITHUB_TOKEN.
+      # One signature per image and registry, rather than one per tag: a
+      # second signature of a digest is refused to the GITHUB_TOKEN by ghcr.io.
       - name: Sign the images
         env:
           COSIGN_YES: "true"

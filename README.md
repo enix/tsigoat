@@ -28,10 +28,6 @@ certbot, nsupdate...  ─── + TSIG ──► tsigoat ───────�
                                      tsigoat ───────────► your webhook
 ```
 
-> [!WARNING]
-> tsigoat has no release yet. Its backends are PowerDNS, Cloudflare,
-> OVHcloud, Scaleway, the name servers that implement RFC 2136 and webhooks.
-
 ## Features
 
 - **RFC 2136 updates**, prerequisites included, applied whole: tsigoat

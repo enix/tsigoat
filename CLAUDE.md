@@ -7,11 +7,8 @@ PowerDNS API key.
 
 ## State of the code
 
-The project restarted from a prototype, whose core has been rewritten into
-`internal/` along the architecture below; the prototype is gone. What remains
-before a first release: live tests of the hosted providers with real zones
-(`task test:live`), which settle what their simulators assume, and the release
-itself (registries, signing environment). `docs/audit/` holds the external
+Open: live tests of the hosted providers with real zones (`task test:live`),
+which settle what their simulators assume. `docs/audit/` holds the external
 audits and the answers to their findings.
 
 ## Architecture

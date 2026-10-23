@@ -13,8 +13,8 @@ advisory unless you prefer otherwise.
 
 ## Supported versions
 
-No version has been released yet. Once releases start, security fixes target
-the latest minor release.
+Security fixes target the latest minor release, with a patch release; older
+minor releases get none.
 
 ## Verifying releases
 
