@@ -1,4 +1,4 @@
-name: Security Checks
+name: Security
 
 # Runs on every pull request, daily on main to catch newly published
 # vulnerabilities, and from the release workflow.
