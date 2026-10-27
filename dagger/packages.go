@@ -31,11 +31,13 @@ func (m *Tsigoat) TestPackages(ctx context.Context) (string, error) {
 		WithDirectory("/src", m.Source).
 		WithWorkdir("/src").
 		// The source comes without its history: a repository of one commit
-		// gives GoReleaser the commit that it reads.
+		// gives GoReleaser the commit that it reads, and a remote, without
+		// which it reads no git information at all.
 		WithExec([]string{"sh", "-euc", `
 git init -q
 git add -A
 git -c user.name=tsigoat -c user.email=tsigoat@example.test commit -q -m snapshot
+git remote add origin https://github.com/enix/tsigoat.git
 goreleaser release --snapshot --clean --skip=docker,sign,sbom
 `}).
 		Directory("/src/dist")

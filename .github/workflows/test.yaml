@@ -32,6 +32,7 @@ jobs:
       helm: ${{ steps.filter.outputs.helm }}
       webhook: ${{ steps.filter.outputs.webhook }}
       packages: ${{ steps.filter.outputs.packages }}
+      build: ${{ steps.filter.outputs.build }}
       release: ${{ steps.filter.outputs.release }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -60,6 +61,9 @@ jobs:
               - '.goreleaser.yaml'
               - 'build/package/**'
               - 'examples/config.yaml'
+            build:
+              - '.goreleaser.yaml'
+              - 'build/**'
             release:
               - '.releaserc.mjs'
               - '.github/release/**'
@@ -234,6 +238,26 @@ jobs:
         with:
           args: test-packages
 
+  # What a release builds, as a snapshot of every platform: the archives and
+  # their checksums, the version that the binary prints, both images of every
+  # platform, and those of the runner started on a minimal configuration.
+  build:
+    name: Release build
+    needs: changes
+    if: |
+      always() &&
+      (github.event_name != 'pull_request' || needs.changes.outputs.go == 'true' || needs.changes.outputs.build == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: ./.github/actions/dagger
+        with:
+          args: test-build
+
   release:
     name: Release configuration
     needs: changes
@@ -258,7 +282,7 @@ jobs:
   passed:
     name: Tests passed
     if: always()
-    needs: [changes, unit, helm, e2e, clients, acme, webhook, differential, packages, release]
+    needs: [changes, unit, helm, e2e, clients, acme, webhook, differential, packages, build, release]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

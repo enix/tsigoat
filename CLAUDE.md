@@ -119,6 +119,7 @@ Everything goes through `Taskfile.yml` (`task --list`):
 | Live providers | `task test:live` | `go test -tags live ./test/live/`: conformance suite and an ACME flow against the zones and credentials of `tmp/live.yaml` (`TSIGOAT_LIVE_CONFIG`); see `test/live/live.example.yaml` |
 | Helm chart | `task test:helm` | `dagger call test-helm`: `test/chart` (build tag `chart`) renders every example and fixture, then promtool and kubeconform; `task lint:helm` too |
 | Packages | `task test:packages` | `dagger call test-packages`: GoReleaser builds the deb and rpm packages (nfpm), installed, checked and removed on Debian and AlmaLinux |
+| Release build | `task test:build` | `dagger call test-build`: a GoReleaser snapshot of every platform (archives, checksums, the version the binary prints), both images of every platform from the Dockerfiles, those of the engine started on a minimal webhook configuration until they answer SOA and `/healthz` |
 | Chart docs | `task doc:helm` | regenerates `chart/README.md` and `chart/values.schema.json`; `task check:helm-docs` fails when stale |
 | Webhook example | `task test:webhook` | `dagger call test-webhook-example`: nsupdate through tsigoat to `examples/webhook/webhook.py`, each authentication |
 | cert-manager | `task test:acceptance` | `dagger call test-acceptance`: the chart in k3s, cert-manager through it, inside Dagger; nightly |

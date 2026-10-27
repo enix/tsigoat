@@ -160,7 +160,7 @@ tasks:
 
   # ─── Tests ───────────────────────────────────────────────────────────────
   test:
-    desc: Run all tests (unit, Helm chart, end-to-end scenarios, real clients, ACME flow, webhook example, BIND differential, packages, release configuration)
+    desc: Run all tests (unit, Helm chart, end-to-end scenarios, real clients, ACME flow, webhook example, BIND differential, packages, release build, release configuration)
     cmds:
       - task: test:unit
       - task: test:helm
@@ -170,6 +170,7 @@ tasks:
       - task: test:webhook
       - task: test:differential
       - task: test:packages
+      - task: test:build
       - task: test:release
 
   test:unit:
@@ -214,6 +215,11 @@ tasks:
     desc: The deb and rpm packages, built by GoReleaser, installed, checked and removed on Debian and AlmaLinux
     cmds:
       - "{{.DAGGER}} call test-packages"
+
+  test:build:
+    desc: What a release builds, as a GoReleaser snapshot of every platform, archives, checksums, version and images, started on a minimal configuration
+    cmds:
+      - "{{.DAGGER}} call test-build"
 
   test:release:
     desc: semantic-release, in dry runs on a history made for it, computes the versions and notes of .releaserc.mjs, and the Slack announcement renders

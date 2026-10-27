@@ -65,6 +65,7 @@ Single sources of truth:
 | Security scans | `task security` |
 | Development backend | `task dev`, then `task dev:run` in another terminal |
 | Local binary or images | `task build:binary:host`, `task build:image:host` |
+| What a release builds | `task test:build`: the archives, checksums and images of every platform, started on a minimal configuration |
 
 The end-to-end tests run entirely inside Dagger: tsigoat, PowerDNS, the DNS
 and ACME clients, toxiproxy and even the k3s cluster are containers on a
