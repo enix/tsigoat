@@ -302,9 +302,10 @@ tasks:
       - task: security:chart
 
   security:gitleaks:
-    desc: Gitleaks — scan the working tree for committed secrets
+    desc: Gitleaks — scan the working tree, then every commit, for secrets
     cmds:
       - "{{.DAGGER}} call gitleaks"
+      - "{{.DAGGER}} call gitleaks-history"
 
   security:govulncheck:
     desc: govulncheck — reachability-based CVE scan of the Go code

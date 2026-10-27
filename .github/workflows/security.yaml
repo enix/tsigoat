@@ -19,7 +19,9 @@ env:
   DO_NOT_TRACK: "1"
 
 jobs:
-  # Any file can leak a secret, so this job always runs.
+  # Any file can leak a secret, so this job always runs: on the tree, then
+  # on every commit, those of a pull request included, since a secret
+  # removed from the tree stays in the history.
   secrets:
     name: Secret leaks (Gitleaks)
     runs-on: ubuntu-latest
@@ -27,11 +29,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/dagger
         with:
           args: gitleaks
+      - uses: ./.github/actions/dagger
+        with:
+          args: gitleaks-history
 
   govulncheck:
     name: Reachable vulnerabilities (govulncheck)

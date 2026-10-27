@@ -7,11 +7,10 @@ import (
 	"dagger/tsigoat/internal/dagger"
 )
 
-// Gitleaks scans the working tree for committed secrets (`gitleaks
-// dir`, not git history: .git is excluded from the source and the
-// delivered file contents are what matter). Exits non-zero on any
-// finding, which Dagger surfaces as an error and CI as a failed job;
-// findings print (redacted) to the log.
+// Gitleaks scans the working tree for secrets (`gitleaks dir`), changes
+// not yet committed included; GitleaksHistory scans the commits. Exits
+// non-zero on any finding, which Dagger surfaces as an error and CI as a
+// failed job; findings print (redacted) to the log.
 func (m *Tsigoat) Gitleaks(
 	ctx context.Context,
 	// Working tree to scan. Drops build artifacts and vendored trees
@@ -30,6 +29,34 @@ func (m *Tsigoat) Gitleaks(
 		WithWorkdir("/scan").
 		WithExec([]string{
 			"gitleaks", "dir", ".",
+			"--no-banner",
+			"--redact",
+			"--verbose",
+			"--exit-code", "1",
+		}).
+		Stdout(ctx)
+}
+
+// GitleaksHistory scans every commit of the repository for secrets: a
+// secret removed from the tree stays in its history. `.gitleaksignore`
+// lists, by fingerprint, the findings of the history known to be test
+// values. Exits non-zero on any other finding; in a shallow clone, it scans
+// the commits that the clone holds.
+func (m *Tsigoat) GitleaksHistory(
+	ctx context.Context,
+	// The repository, its history included.
+	// +defaultPath="/"
+	// +ignore=["dist/", "tmp/", "docs/local/", ".keyring/", "kubeconfig.yaml", ".claude/worktrees/", "**/node_modules/"]
+	repository *dagger.Directory,
+) (string, error) {
+	return dag.Container().
+		From(gitleaksImage).
+		WithMountedDirectory("/scan", repository).
+		WithWorkdir("/scan").
+		// The mounted repository belongs to another user than the scanner.
+		WithExec([]string{"git", "config", "--global", "--add", "safe.directory", "/scan"}).
+		WithExec([]string{
+			"gitleaks", "git", ".",
 			"--no-banner",
 			"--redact",
 			"--verbose",

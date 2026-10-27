@@ -1,0 +1,17 @@
+# Findings of the git history that are known test or demonstration values,
+# by fingerprint (commit:file:rule:line). The tree marks them with
+# `gitleaks:allow`; the commits that added them did not.
+#
+# TSIGOAT_TEST_SECRET of the tests, "this is a test secret, thirty-two!".
+260266b788732857cefbe3c096f3318d65233b8b:cmd/tsigoat/main_test.go:generic-api-key:29
+a0cff7ff4f9ecaa7b9c8cf534b50d0bfb8da8288:internal/config/config_test.go:generic-api-key:18
+# The TSIG secret of a test configuration, "0123456789abcdef0123456789abcdef".
+da8d60e31bec5119dc741903d9733ee23c819374:internal/app/app_test.go:generic-api-key:20
+# The keys of the end-to-end tests, "secret-for-the-e2e-tests-only-32b" and
+# "e2e-api-key".
+3de78a38bbd2cf014d3912afd119767ce57aa4a7:dagger/e2e.go:generic-api-key:16
+3de78a38bbd2cf014d3912afd119767ce57aa4a7:dagger/e2e.go:generic-api-key:17
+# The API key of the local PowerDNS of `task dev`, "dev-api-key", and the
+# example of the end-to-end tests that runs against it.
+8af6862a6971493fb57382e316bd68480e9bc7ae:Taskfile.yml:generic-api-key:28
+acbf20288c2f1096cdc99eef9a40bbfa11630115:test/e2e/e2e_test.go:generic-api-key:10
