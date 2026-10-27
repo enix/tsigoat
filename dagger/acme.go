@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"dagger/tsigoat/internal/dagger"
 )
@@ -67,17 +69,22 @@ func (m *Tsigoat) TestACME(
 		defer func() { _, _ = started.Stop(context.WithoutCancel(ctx)) }()
 	}
 
+	// The steps run against services that start afresh with each run: a step
+	// that Dagger took from its cache, such as the creation of the zone, would
+	// leave the new PowerDNS without it.
+	run := strconv.FormatInt(time.Now().UnixNano(), 10)
 	var report strings.Builder
 	steps := []struct {
 		name      string
 		container *dagger.Container
 	}{
-		{"create zone " + acmeZone, apiClient(pdns).WithExec([]string{"sh", "-euc", fmt.Sprintf(
+		{"create zone " + acmeZone, apiClient(pdns).WithEnvVariable("ACME_RUN", run).WithExec([]string{"sh", "-euc", fmt.Sprintf(
 			`curl -fsS -X POST -H "X-API-Key: %s" -H "Content-Type: application/json" `+
 				`-d '{"name": "%s", "kind": "Native", "nameservers": ["ns1.%s"]}' http://pdns:%d/api/v1/servers/localhost/zones >/dev/null`,
 			e2eAPIKey, acmeZone, acmeZone, pdnsAPIPort)})},
 		{"lego", dag.Container().
 			From(legoImage).
+			WithEnvVariable("ACME_RUN", run).
 			WithServiceBinding("pdns", pdns).
 			WithServiceBinding("tsigoat", tsigoat).
 			WithServiceBinding("pebble", pebble).
@@ -98,13 +105,14 @@ func (m *Tsigoat) TestACME(
 			WithExec([]string{"/bin/sh", "-c", "ls /data/certificates/lego.acme.test.crt"})},
 		{"certbot", dag.Container().
 			From(certbotImage).
+			WithEnvVariable("ACME_RUN", run).
 			WithServiceBinding("pdns", pdns).
 			WithServiceBinding("tsigoat", tsigoat).
 			WithServiceBinding("pebble", pebble).
 			WithFile("/pebble-ca.pem", pebbleCA).
 			WithEnvVariable("REQUESTS_CA_BUNDLE", "/pebble-ca.pem").
 			WithExec([]string{"sh", "-euc", certbotScript(directory)})},
-		{"check that the challenges are gone", apiClient(pdns).WithExec([]string{"sh", "-euc", fmt.Sprintf(
+		{"check that the challenges are gone", apiClient(pdns).WithEnvVariable("ACME_RUN", run).WithExec([]string{"sh", "-euc", fmt.Sprintf(
 			`left=$(curl -fsS -H "X-API-Key: %s" http://pdns:%d/api/v1/servers/localhost/zones/%s | `+
 				`jq -r '.rrsets[] | select(.name | startswith("_acme-challenge")) | .name')
 			[ -z "$left" ] || { echo "challenge records left: $left" >&2; exit 1; }`,
