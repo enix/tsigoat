@@ -13,7 +13,7 @@ const (
 	actionlintImage   = "rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667"
 	zizmorImage       = "ghcr.io/zizmorcore/zizmor:1.31.1@sha256:42d409dbb851d4c5d35a058cf042b828bea1e3f2884378c526eb0974780e18d9"
 	hadolintImage     = "hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d"
-	renovateImage     = "renovate/renovate:44.186.7@sha256:ece4f0001262b6774786d9026799a382e2beb14c7349ae45229d26284e9f8518"
+	renovateImage     = "renovate/renovate:44.189.0@sha256:54fbd7b038c3784d02a0d0fb67328733aacdc1357276ab71dd278eb0087b6add"
 	trivyImage        = "aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c"
 	gitleaksImage     = "ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f"
 	pdns49Image       = "powerdns/pdns-auth-49:4.9.18@sha256:b2088f8bd0099a27a56b84837ae21ebbb45f83345bef34c55f63890148288f93"

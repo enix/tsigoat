@@ -89,4 +89,4 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           # An exact version rather than the series of the action, since
           # Renovate runs with the write access of the App.
-          renovate-version: 44.186.7
+          renovate-version: 44.189.0

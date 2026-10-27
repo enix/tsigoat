@@ -22,7 +22,7 @@ vars:
     sh: echo "$(./scripts/dagger-cli.sh)/dagger"
   # Shared by `renovate:plan` and `renovate:patch`, kept in lockstep with
   # `renovateImage` in dagger/base.go by a Renovate regex manager.
-  RENOVATE_IMAGE: renovate/renovate:44.186.7
+  RENOVATE_IMAGE: renovate/renovate:44.189.0
   DEV_DIR: "{{.TASKFILE_DIR}}/tmp/dev"
   DEV_LISTEN: "127.0.0.1:10053"
   DEV_PDNS_API_KEY: ZGV2LWFwaS1rZXk= # gitleaks:allow (local dev backend only)
