@@ -83,18 +83,17 @@ func (m *Tsigoat) TestACME(
 			WithServiceBinding("pebble", pebble).
 			WithFile("/pebble-ca.pem", pebbleCA).
 			WithEnvVariable("LEGO_CA_CERTIFICATES", "/pebble-ca.pem").
-			WithEnvVariable("RFC2136_NAMESERVER", fmt.Sprintf("tsigoat:%d", e2eDNSPort)).
-			WithEnvVariable("RFC2136_TSIG_KEY", acmeLegoKey).
-			WithEnvVariable("RFC2136_TSIG_SECRET", acmeLegoSecret).
-			WithEnvVariable("RFC2136_TSIG_ALGORITHM", "hmac-sha256.").
+			WithEnvVariable("DNSUPDATE_NAMESERVER", fmt.Sprintf("tsigoat:%d", e2eDNSPort)).
+			WithEnvVariable("DNSUPDATE_TSIG_KEY", acmeLegoKey).
+			WithEnvVariable("DNSUPDATE_TSIG_SECRET", acmeLegoSecret).
+			WithEnvVariable("DNSUPDATE_TSIG_ALGORITHM", "hmac-sha256.").
 			WithExec([]string{
-				"/lego", "--accept-tos", "--email", "acme@example.test", "--server", directory,
+				"/lego", "run", "--accept-tos", "--email", "acme@example.test", "--server", directory,
 				"--path", "/data", "--domains", "lego." + strings.TrimSuffix(acmeZone, "."),
-				"--dns", "rfc2136", "--dns.resolvers", fmt.Sprintf("pdns:%d", pdnsDNSPort),
+				"--dns", "dnsupdate", "--dns.resolvers", fmt.Sprintf("pdns:%d", pdnsDNSPort),
 				// PowerDNS serves an update at once; the authoritative
 				// servers of the zone have no address in the test network.
-				"--dns.propagation-wait", "1s",
-				"run",
+				"--dns.propagation.wait", "1s",
 			}).
 			WithExec([]string{"/bin/sh", "-c", "ls /data/certificates/lego.acme.test.crt"})},
 		{"certbot", dag.Container().
