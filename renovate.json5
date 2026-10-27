@@ -171,7 +171,8 @@
       pinDigests: true,
     },
     {
-      // go.mod's go directive and the bootstrap golang image move together.
+      // The toolchain directive of go.mod and the golang image of
+      // dagger/base.go move together (task check:toolchain).
       matchPackageNames: ["golang", "go"],
       groupName: "golang toolchain",
       commitMessageTopic: "Go toolchain",
