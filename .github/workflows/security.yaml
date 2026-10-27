@@ -84,3 +84,23 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+
+  # The one check of this workflow that the rules of main require: it passes
+  # when every other job passed or was skipped, the dependency review out of
+  # pull requests, and fails when one failed or was canceled.
+  passed:
+    name: Security passed
+    if: always()
+    needs: [secrets, govulncheck, vuln-deps, chart, dependency-review]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the results of the jobs
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -n "$failed" ]; then
+            echo "::error::Jobs that did not pass: $(paste -sd ' ' <<<"$failed")"
+            exit 1
+          fi

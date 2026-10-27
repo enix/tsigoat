@@ -71,6 +71,12 @@ and ACME clients, toxiproxy and even the k3s cluster are containers on a
 private network, so no port is published on the host and parallel runs do not
 collide.
 
+On a pull request, the Linting, Tests and Security workflows run the jobs
+that its changes concern. Each ends with a job, `Lint passed`, `Tests passed`
+and `Security passed`, which the rules of `main` require, rather than every
+job: it passes when every other job of its workflow passed or was skipped by
+the paths of the change, and fails when one failed or was canceled.
+
 ### Test scenarios
 
 Each file of `test/scenario/scenarios/` is a scenario: the zone before the

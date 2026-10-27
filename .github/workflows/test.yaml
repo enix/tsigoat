@@ -235,3 +235,24 @@ jobs:
       - uses: ./.github/actions/dagger
         with:
           args: test-release
+
+  # The one check of this workflow that the rules of main require: it passes
+  # when every other job passed or was skipped by the paths of the change, and
+  # fails when one failed or was canceled, the detection of the paths
+  # included, whose failure would skip the others.
+  passed:
+    name: Tests passed
+    if: always()
+    needs: [changes, unit, helm, e2e, clients, acme, webhook, differential, packages, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the results of the jobs
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -n "$failed" ]; then
+            echo "::error::Jobs that did not pass: $(paste -sd ' ' <<<"$failed")"
+            exit 1
+          fi
