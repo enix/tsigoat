@@ -33,7 +33,7 @@ const (
 	almalinuxImage    = "almalinux:9.8@sha256:9819dc675b67b595c2b59e42be7763fca1a8bb217fa5944e04daa22e9a64db16"
 	k3sImage          = "rancher/k3s:v1.37.1-k3s1@sha256:ca7f37d993d82ef0dcdcfecb2e0e2618ea541dbaffc620c8cedebe01a82acd0d"
 	kubectlImage      = "alpine/k8s:1.37.1@sha256:712dc5385d1c1a3f83b747fa9e40f64d433a97f72ff42f9755ff7dd1f62846e4"
-	certManagerChart  = "v1.21.2" // oci://quay.io/jetstack/charts/cert-manager
+	certManagerChart  = "v1.21.3" // oci://quay.io/jetstack/charts/cert-manager
 	golangciLint      = "v2.15.0" // installed via `go install`
 	gotestsumModule   = "v1.13.0" // ditto
 	gremlinsModule    = "v0.6.0"  // ditto
