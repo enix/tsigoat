@@ -77,9 +77,24 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      # The report outlives a failure of the tests: their output, JUnit, the
+      # coverage profile and the coverage of each package.
       - uses: ./.github/actions/dagger
         with:
-          args: test
+          args: test-report export --path=test-report
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: unit-tests
+          path: test-report
+          retention-days: 30
+      - name: Check the status of the tests
+        run: |
+          status=$(cat test-report/status)
+          if [ "$status" != 0 ]; then
+            echo "::error::The unit tests failed (status $status): see the log above, or the unit-tests artifact."
+            exit 1
+          fi
 
   # Renders the chart with every example and fixture, and checks the result
   # with the configuration rules of tsigoat, promtool and kubeconform.

@@ -27,9 +27,24 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: false
+      # The report outlives a failure: the output, and the inputs that made a
+      # target fail, at the paths where go test reads them.
       - uses: ./.github/actions/dagger
         with:
-          args: fuzz --fuzztime=10m
+          args: fuzz-report --fuzztime=10m export --path=fuzz-report
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: fuzzing
+          path: fuzz-report
+          retention-days: 30
+      - name: Check the status of the fuzzing
+        run: |
+          status=$(cat fuzz-report/status)
+          if [ "$status" != 0 ]; then
+            echo "::error::A fuzz target failed (status $status): the corpus of the fuzzing artifact holds the inputs, to commit as regression cases."
+            exit 1
+          fi
 
   acceptance:
     name: cert-manager acceptance (PowerDNS ${{ matrix.pdns }})

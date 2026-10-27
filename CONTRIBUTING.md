@@ -77,6 +77,13 @@ and `Security passed`, which the rules of `main` require, rather than every
 job: it passes when every other job of its workflow passed or was skipped by
 the paths of the change, and fails when one failed or was canceled.
 
+The runs keep their reports as artifacts, failures included: `unit-tests`
+holds the output, JUnit and coverage of the unit tests, and `fuzzing`, of the
+nightly workflow, the inputs that made a fuzz target fail, at the paths where
+`go test` reads them: commit them as regression cases. Locally,
+`dagger call test-report export --path=report` and
+`dagger call fuzz-report export --path=report` give the same.
+
 ### Test scenarios
 
 Each file of `test/scenario/scenarios/` is a scenario: the zone before the

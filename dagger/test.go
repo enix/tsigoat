@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"dagger/tsigoat/internal/dagger"
 )
 
 // coverageFloors are the minimum statement coverages of the packages that
@@ -16,8 +18,16 @@ var coverageFloors = map[string]int{
 
 // Test runs the unit tests through gotestsum, with the race detector, a
 // shuffled order and a coverage profile, then checks the coverage floors.
-// The race detector requires CGO, which pulls gcc and musl-dev on Alpine.
 func (m *Tsigoat) Test(ctx context.Context) (string, error) {
+	return verdict(ctx, m.TestReport(), "the unit tests")
+}
+
+// TestReport runs the unit tests as Test does, but returns their report
+// whatever their outcome, for CI to keep it when they fail: output.txt,
+// junit.xml, coverage.out (the profile), coverage.txt (the coverage of each
+// package) and status, the exit status of the run. The race detector
+// requires CGO, which pulls gcc and musl-dev on Alpine.
+func (m *Tsigoat) TestReport() *dagger.Directory {
 	floors := make([]string, 0, len(coverageFloors))
 	for pkg, floor := range coverageFloors {
 		floors = append(floors, fmt.Sprintf("%s=%d", pkg, floor))
@@ -27,12 +37,40 @@ func (m *Tsigoat) Test(ctx context.Context) (string, error) {
 		WithEnvVariable("CGO_ENABLED", "1").
 		WithExec([]string{"go", "install", "gotest.tools/gotestsum@" + gotestsumModule}).
 		WithEnvVariable("COVERAGE_FLOORS", strings.Join(floors, " ")).
-		// One shell, so that the output holds both the tests and the floors.
-		WithExec([]string{"sh", "-euc", `
-gotestsum --format=pkgname-and-test-fails --junitfile=/tmp/junit.xml -- \
-  -race -shuffle=on -coverprofile=/tmp/coverage.out ./...
-` + coverageFloorScript}).
-		Stdout(ctx)
+		// The output goes to the log as the tests run, and to the report; the
+		// status leaves the pipeline through its file.
+		WithExec([]string{"sh", "-uc", `
+mkdir -p /report
+{
+  gotestsum --format=pkgname-and-test-fails --junitfile=/report/junit.xml -- \
+    -race -shuffle=on -coverprofile=/report/coverage.out ./...
+  status=$?
+  if [ -s /report/coverage.out ]; then
+    floors=0
+    (` + coverageFloorScript + `) || floors=$?
+    if [ "$status" -eq 0 ]; then status=$floors; fi
+  fi
+  echo "$status" >/report/status
+} 2>&1 | tee /report/output.txt
+`}).
+		Directory("/report")
+}
+
+// verdict returns the output of a report, and an error when its status is
+// not zero.
+func verdict(ctx context.Context, report *dagger.Directory, what string) (string, error) {
+	output, err := report.File("output.txt").Contents(ctx)
+	if err != nil {
+		return "", err
+	}
+	status, err := report.File("status").Contents(ctx)
+	if err != nil {
+		return output, err
+	}
+	if strings.TrimSpace(status) != "0" {
+		return output, fmt.Errorf("%s failed (status %s):\n%s", what, strings.TrimSpace(status), output)
+	}
+	return output, nil
 }
 
 // coverageFloorScript computes the statement coverage of every package from
@@ -44,11 +82,11 @@ awk 'NR > 1 {
   total[pkg] += $2; if ($3 > 0) covered[pkg] += $2
 } END {
   for (pkg in total) printf "%s %.1f\n", pkg, 100 * covered[pkg] / total[pkg]
-}' /tmp/coverage.out | sort > /tmp/coverage.txt
+}' /report/coverage.out | sort > /report/coverage.txt
 status=0
 for entry in $COVERAGE_FLOORS; do
   pkg=${entry%=*}; floor=${entry#*=}
-  coverage=$(awk -v pkg="$pkg" '$1 == pkg { print $2 }' /tmp/coverage.txt)
+  coverage=$(awk -v pkg="$pkg" '$1 == pkg { print $2 }' /report/coverage.txt)
   if awk -v c="${coverage:-0}" -v f="$floor" 'BEGIN { exit !(c < f) }'; then
     echo "coverage of $pkg is ${coverage:-0}%, below its floor of $floor%"
     status=1
@@ -71,26 +109,59 @@ func (m *Tsigoat) Fuzz(
 	// +default="1m"
 	fuzztime string,
 ) (string, error) {
+	return verdict(ctx, m.FuzzReport(fuzztime), "the fuzzing")
+}
+
+// FuzzReport runs the fuzz targets as Fuzz does, every one even after a
+// failure, and returns their report whatever their outcome, for CI to keep
+// it: output.txt, status, the exit status of the run, and corpus, the inputs
+// that made a target fail, at the paths where `go test` reads them
+// (<package>/testdata/fuzz/<target>/), to commit as regression cases.
+func (m *Tsigoat) FuzzReport(
+	// Time given to each target, as a Go duration or a number of runs such
+	// as "1000x".
+	// +optional
+	// +default="1m"
+	fuzztime string,
+) *dagger.Directory {
 	return goBase(m.Source).
 		WithEnvVariable("FUZZTIME", fuzztime).
-		WithExec([]string{"sh", "-euc", `
-packages=$(go list ./...)
-count=0
-for pkg in $packages; do
-  listed=$(go test -list '^Fuzz' "$pkg")
-  for target in $(printf '%s\n' "$listed" | grep '^Fuzz' || true); do
-    echo "== $target ($pkg)"
-    go test -run '^$' -fuzz "^$target\$" -fuzztime "$FUZZTIME" "$pkg"
-    count=$((count + 1))
+		// The output goes to the log as the targets run, and to the report;
+		// the status leaves the pipeline through its file.
+		WithExec([]string{"sh", "-uc", `
+mkdir -p /report/corpus
+touch /tmp/start
+{
+  status=0
+  count=0
+  for pkg in $(go list ./...); do
+    if ! listed=$(go test -list '^Fuzz' "$pkg" 2>&1); then
+      printf '%s\n' "$listed"
+      status=1
+      continue
+    fi
+    for target in $(printf '%s\n' "$listed" | grep '^Fuzz' || true); do
+      echo "== $target ($pkg)"
+      go test -run '^$' -fuzz "^$target\$" -fuzztime "$FUZZTIME" "$pkg" || status=1
+      count=$((count + 1))
+    done
   done
-done
-echo "== $count fuzz targets"
-if [ "$count" -eq 0 ]; then
-  echo "no fuzz target found" >&2
-  exit 1
-fi
+  echo "== $count fuzz targets"
+  if [ "$count" -eq 0 ]; then
+    echo "no fuzz target found"
+    status=1
+  fi
+  # A failing input lands in testdata/fuzz of its package.
+  failing=$(find . -path '*/testdata/fuzz/*' -type f -newer /tmp/start)
+  if [ -n "$failing" ]; then
+    echo "== failing inputs, in the corpus of the report:"
+    printf '%s\n' "$failing"
+    tar -cf - $failing | tar -xf - -C /report/corpus
+  fi
+  echo "$status" >/report/status
+} 2>&1 | tee /report/output.txt
 `}).
-		Stdout(ctx)
+		Directory("/report")
 }
 
 // Mutation runs gremlins on the packages that hold the protocol and security
