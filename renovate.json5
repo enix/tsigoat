@@ -125,25 +125,6 @@
     },
     {
       customType: "regex",
-      managerFilePatterns: ["/^\\.github/workflows/release\\.ya?ml$/"],
-      matchStrings: [
-        "goreleaser-action[^\\n]+\\n\\s+with:\\n\\s+version:\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
-      ],
-      depNameTemplate: "goreleaser/goreleaser",
-      datasourceTemplate: "github-releases",
-    },
-    {
-      // The Helm of the release, in step with helmImage of dagger/base.go.
-      customType: "regex",
-      managerFilePatterns: ["/^\\.github/workflows/release\\.ya?ml$/"],
-      matchStrings: [
-        "setup-helm[^\\n]+\\n\\s+with:\\n\\s+version:\\s*\"(?<currentValue>v\\d[\\w.-]*)\"",
-      ],
-      depNameTemplate: "helm/helm",
-      datasourceTemplate: "github-releases",
-    },
-    {
-      customType: "regex",
       managerFilePatterns: ["/^flake\\.nix$/"],
       matchStrings: [
         "# goreleaser version\\s*\\n\\s*version\\s*=\\s*\"(?<currentValue>\\d[\\w.-]*)\"",
@@ -167,8 +148,13 @@
       pinDigests: false,
     },
     {
+      // The github-actions manager reads the versions of the tools that some
+      // actions install, GoReleaser, Helm and Renovate: their own groups,
+      // below, take them, with their other write sites.
       matchManagers: ["github-actions"],
       pinDigests: true,
+      groupName: "github-actions",
+      labels: ["dependencies", "ci"],
     },
     {
       // The toolchain directive of go.mod and the golang image of
@@ -200,6 +186,12 @@
       // flake.nix and the image of the package test in dagger/base.go.
       matchPackageNames: ["goreleaser/goreleaser", "ghcr.io/goreleaser/goreleaser"],
       groupName: "goreleaser",
+      labels: ["dependencies"],
+    },
+    {
+      // The Helm of the release workflow and of the pipelines.
+      matchPackageNames: ["helm/helm", "alpine/helm"],
+      groupName: "helm",
       labels: ["dependencies"],
     },
     {
@@ -243,11 +235,6 @@
       matchPackageNames: ["dagger.io/dagger"],
       groupName: "dagger SDK + engine",
       labels: ["dependencies", "dagger"],
-    },
-    {
-      matchManagers: ["github-actions"],
-      groupName: "github-actions",
-      labels: ["dependencies", "ci"],
     },
     {
       matchManagers: ["nix"],
