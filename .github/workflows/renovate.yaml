@@ -66,7 +66,7 @@ jobs:
           permission-workflows: write
           permission-vulnerability-alerts: read
       - name: Run Renovate
-        uses: renovatebot/github-action@a63d9a7bc606f7336fd20b47f2f32259a35e6213 # v46.3.9
+        uses: renovatebot/github-action@2804199d260ad00c1fae0e9e842888369391c776 # v46.3.10
         env:
           LOG_LEVEL: ${{ inputs.logLevel || 'info' }}
           RENOVATE_REPOSITORIES: ${{ github.repository }}
@@ -89,4 +89,4 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           # An exact version rather than the series of the action, since
           # Renovate runs with the write access of the App.
-          renovate-version: 44.167.7
+          renovate-version: 44.186.7
