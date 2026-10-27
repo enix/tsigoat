@@ -14,7 +14,7 @@ key declares it: set the algorithm explicitly.
 | Client | Default algorithm | Setting |
 | --- | --- | --- |
 | cert-manager | HMAC-MD5 | `tsigAlgorithm: HMACSHA256` |
-| lego, Traefik | HMAC-SHA1 | `RFC2136_TSIG_ALGORITHM=hmac-sha256.` |
+| lego, Traefik | HMAC-SHA1 | `DNSUPDATE_TSIG_ALGORITHM=hmac-sha256.`, `RFC2136_` with lego 4 |
 | certbot | HMAC-MD5 | `dns_rfc2136_algorithm = HMAC-SHA256` |
 | nsupdate `-y` | HMAC-MD5 | `-y hmac-sha256:name:secret` |
 
@@ -45,16 +45,20 @@ chart](../chart/README.md). cert-manager supports `HMACMD5`, `HMACSHA1`,
 
 ## lego and Traefik
 
+lego 5 names the provider `dnsupdate`:
+
 ```sh
-RFC2136_NAMESERVER=tsigoat.example.com:53 \
-RFC2136_TSIG_KEY=lego. \
-RFC2136_TSIG_ALGORITHM=hmac-sha256. \
-RFC2136_TSIG_SECRET=... \
-lego --dns rfc2136 --domains www.example.com --email admin@example.com run
+DNSUPDATE_NAMESERVER=tsigoat.example.com:53 \
+DNSUPDATE_TSIG_KEY=lego. \
+DNSUPDATE_TSIG_ALGORITHM=hmac-sha256. \
+DNSUPDATE_TSIG_SECRET=... \
+lego run --dns dnsupdate --domains www.example.com --email admin@example.com
 ```
 
-Traefik builds on lego: give its process the same variables, and set
-`dnsChallenge.provider` to `rfc2136`.
+lego 4 named it `rfc2136`, with `RFC2136_` variables, and took the options
+before `run`: `lego --dns rfc2136 --domains ... run`. Traefik builds on lego:
+give its process the variables of its lego, and set `dnsChallenge.provider` to
+the provider of that lego, `dnsupdate` or `rfc2136`.
 
 ## certbot
 
