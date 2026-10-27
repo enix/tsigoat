@@ -246,21 +246,38 @@ jobs:
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-checksums: dist/checksums.txt
-      # One CycloneDX SBOM per image and registry, by the digest that
-      # GoReleaser pushed, attached as a cosign attestation.
-      - name: Generate and attest image SBOMs
+      # One CycloneDX SBOM per platform of each image and registry, attached
+      # as a cosign attestation to the digest of its manifest: an SBOM of the
+      # index would describe the platform of the runner alone. Each index
+      # holds the platforms of .goreleaser.yaml, the attestation manifests of
+      # buildx aside.
+      - name: Generate and attest the SBOMs of the images
         env:
           COSIGN_YES: "true"
           GODEBUG: http2client=0
         run: |
           set -euo pipefail
+          expected=$(yq '.dockers_v2[] | select(.id == "scratch") | .platforms | length' .goreleaser.yaml)
+          attested=0
           while read -r image; do
-            echo "::group::SBOM for $image"
-            syft "$image" -o cyclonedx-json=/tmp/sbom.json
-            cosign attest --predicate /tmp/sbom.json --type cyclonedx "$image"
-            rm -f /tmp/sbom.json
-            echo "::endgroup::"
+            repository="${image%@*}"
+            manifests=$(docker buildx imagetools inspect "$image" --raw \
+              | jq -r '.manifests[] | select(.platform.os != "unknown") | "\(.platform.os)/\(.platform.architecture) \(.digest)"')
+            count=$(grep -c . <<<"$manifests" || true)
+            if [ "$count" -ne "$expected" ]; then
+              echo "::error::$image holds $count platforms, not the $expected of .goreleaser.yaml."
+              exit 1
+            fi
+            while read -r platform digest; do
+              echo "::group::SBOM of $repository@$digest ($platform)"
+              syft "$repository@$digest" -o cyclonedx-json=/tmp/sbom.json
+              cosign attest --predicate /tmp/sbom.json --type cyclonedx "$repository@$digest"
+              rm -f /tmp/sbom.json
+              attested=$((attested + 1))
+              echo "::endgroup::"
+            done <<<"$manifests"
           done < dist/images.txt
+          echo "Attested $attested SBOMs: $expected platforms of $(grep -c . dist/images.txt) images." >> "$GITHUB_STEP_SUMMARY"
 
   chart:
     name: Chart publish and sign

@@ -20,8 +20,10 @@ minor releases get none.
 
 Releases sign every image, the Helm chart, and the checksums of their
 archives and deb and rpm packages, with cosign keyless. GitHub attests the
-build provenance of the archives and packages, and every image carries a
-CycloneDX SBOM as a cosign attestation.
+build provenance of the archives and packages, and each platform of every
+image carries its CycloneDX SBOM, as a cosign attestation on the digest of
+its manifest, which `crane digest --platform` gives; v0.1.0 attached a single
+SBOM, of linux/amd64, to its index.
 Before deploying a release, check that the release workflow signed it, on
 the tag of its version:
 
@@ -30,7 +32,8 @@ identity='https://github.com/enix/tsigoat/.github/workflows/release.yaml@refs/ta
 issuer='https://token.actions.githubusercontent.com'
 cosign verify ghcr.io/enix/tsigoat:<version> \
   --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
-cosign verify-attestation --type cyclonedx ghcr.io/enix/tsigoat:<version> \
+cosign verify-attestation --type cyclonedx \
+  "ghcr.io/enix/tsigoat@$(crane digest --platform linux/amd64 ghcr.io/enix/tsigoat:<version>)" \
   --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
 cosign verify quay.io/enix/charts/tsigoat:<version> \
   --certificate-identity "$identity" --certificate-oidc-issuer "$issuer"
