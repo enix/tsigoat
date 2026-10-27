@@ -152,9 +152,15 @@
       // actions install, GoReleaser, Helm and Renovate: their own groups,
       // below, take them, with their other write sites.
       matchManagers: ["github-actions"],
-      pinDigests: true,
       groupName: "github-actions",
       labels: ["dependencies", "ci"],
+    },
+    {
+      // The actions run by the commit of their tag; the tools that they
+      // install (uses-with) by version, which their input takes alone.
+      matchManagers: ["github-actions"],
+      matchDepTypes: ["action", "workflow"],
+      pinDigests: true,
     },
     {
       // The toolchain directive of go.mod and the golang image of
