@@ -39,7 +39,7 @@ func TestServiceSettings(t *testing.T) {
 				"type": "ClusterIP", "clusterIP": "10.96.0.53", "externalIPs": []any{"192.0.2.53"},
 				"externalTrafficPolicy": "Local", "ipFamilyPolicy": "PreferDualStack",
 				"ipFamilies": []any{"IPv4", "IPv6"}, "internalTrafficPolicy": "Local",
-				"trafficDistribution": "PreferClose",
+				"trafficDistribution": "PreferSameZone",
 			},
 			absent: []string{"loadBalancerIP", "allocateLoadBalancerNodePorts", "healthCheckNodePort"},
 		},

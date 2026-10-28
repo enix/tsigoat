@@ -117,8 +117,11 @@ the addresses of the clients rather than those of the nodes.
 
 A network that routes addresses to the nodes, such as addresses that it
 announces through BGP, reaches a `ClusterIP` Service on its
-`service.externalIPs`; `service.extraLabels` gives the Service the labels
-that such an announcement or a load balancer selects. The other fields of the
+`service.externalIPs`. Kubernetes deprecates that field, and clusters with
+the `DenyServiceExternalIPs` admission plugin refuse it: where the cluster
+has a load balancer, such as one that announces its addresses through BGP,
+prefer a `LoadBalancer` Service. `service.extraLabels` gives the Service the
+labels that an announcement or a load balancer selects. The other fields of the
 Service have their values too: its IP families (`service.ipFamilyPolicy`,
 `service.ipFamilies`), its routing inside the cluster
 (`service.internalTrafficPolicy`, `service.trafficDistribution`), and those

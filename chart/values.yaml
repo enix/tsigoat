@@ -193,7 +193,10 @@ service:
   #   type: string
   # @schema
   # -- Addresses out of the cluster that reach the DNS Service, such as those
-  # that the network announces through BGP; a `ClusterIP` Service serves them
+  # that the network announces through BGP; a `ClusterIP` Service serves them.
+  # Kubernetes deprecates this field, which some clusters refuse: a
+  # `LoadBalancer` Service serves such addresses where the cluster has a load
+  # balancer
   externalIPs: []
   # @schema
   # type: string
@@ -219,7 +222,7 @@ service:
   # -- internalTrafficPolicy of the DNS Service: `Local` sends the requests of
   # the pods of a node to the tsigoat pods of that node alone
   internalTrafficPolicy: ""
-  # -- trafficDistribution of the DNS Service, such as `PreferClose`, which
+  # -- trafficDistribution of the DNS Service, such as `PreferSameZone`, which
   # prefers the pods of the zone of the client
   trafficDistribution: ""
   # @schema

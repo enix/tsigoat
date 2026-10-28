@@ -117,8 +117,11 @@ the addresses of the clients rather than those of the nodes.
 
 A network that routes addresses to the nodes, such as addresses that it
 announces through BGP, reaches a `ClusterIP` Service on its
-`service.externalIPs`; `service.extraLabels` gives the Service the labels
-that such an announcement or a load balancer selects. The other fields of the
+`service.externalIPs`. Kubernetes deprecates that field, and clusters with
+the `DenyServiceExternalIPs` admission plugin refuse it: where the cluster
+has a load balancer, such as one that announces its addresses through BGP,
+prefer a `LoadBalancer` Service. `service.extraLabels` gives the Service the
+labels that an announcement or a load balancer selects. The other fields of the
 Service have their values too: its IP families (`service.ipFamilyPolicy`,
 `service.ipFamilies`), its routing inside the cluster
 (`service.internalTrafficPolicy`, `service.trafficDistribution`), and those
@@ -232,11 +235,11 @@ covers the images and the binaries.
 | service.annotations | object | `{}` | Annotations of the DNS Service, such as those of a cloud load balancer |
 | service.extraLabels | object | `{}` | Labels of the DNS Service, such as those that a BGP advertisement or a load balancer selects; they win over `extraLabels`, and the labels of the chart over both |
 | service.clusterIP | string | `""` | Cluster IP of the DNS Service, in the service range of the cluster; Kubernetes assigns one when empty |
-| service.externalIPs | list | `[]` | Addresses out of the cluster that reach the DNS Service, such as those that the network announces through BGP; a `ClusterIP` Service serves them |
+| service.externalIPs | list | `[]` | Addresses out of the cluster that reach the DNS Service, such as those that the network announces through BGP; a `ClusterIP` Service serves them. Kubernetes deprecates this field, which some clusters refuse: a `LoadBalancer` Service serves such addresses where the cluster has a load balancer |
 | service.ipFamilyPolicy | string | `""` | IP family policy of the DNS Service; `SingleStack` when empty |
 | service.ipFamilies | list | `[]` | IP families of the DNS Service, the first one being that of its cluster IP; the families of the cluster when empty |
 | service.internalTrafficPolicy | string | `""` | internalTrafficPolicy of the DNS Service: `Local` sends the requests of the pods of a node to the tsigoat pods of that node alone |
-| service.trafficDistribution | string | `""` | trafficDistribution of the DNS Service, such as `PreferClose`, which prefers the pods of the zone of the client |
+| service.trafficDistribution | string | `""` | trafficDistribution of the DNS Service, such as `PreferSameZone`, which prefers the pods of the zone of the client |
 | service.externalTrafficPolicy | string | `""` | externalTrafficPolicy of a `NodePort` or `LoadBalancer` Service, or of one with `externalIPs`: `Local` keeps the addresses of the clients in the logs |
 | service.healthCheckNodePort | int | `0` | Node port of the health check of a `LoadBalancer` Service whose `externalTrafficPolicy` is `Local`; 0 lets Kubernetes choose |
 | service.loadBalancerSourceRanges | list | `[]` | Sources allowed to reach a `LoadBalancer` Service, as CIDR blocks |

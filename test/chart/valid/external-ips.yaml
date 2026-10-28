@@ -25,7 +25,7 @@ service:
   ipFamilyPolicy: PreferDualStack
   ipFamilies: [IPv4, IPv6]
   internalTrafficPolicy: Local
-  trafficDistribution: PreferClose
+  trafficDistribution: PreferSameZone
   extraLabels:
     announce.example.test/bgp: "true"
     app.kubernetes.io/component: other
