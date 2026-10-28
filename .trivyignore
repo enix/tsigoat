@@ -1,8 +1,11 @@
 # Trivy suppressions. Each entry needs a comment explaining why it is safe.
 
-# undici 6.29.0 (denial of service) is the copy that npm bundles for node-gyp,
-# in the npm that @semantic-release/npm brings with semantic-release: the
-# release workflows load neither that plugin nor node-gyp, and install the
-# packages without their scripts. A bundled copy moves with npm alone: the
-# expiry makes Trivy report it again, until an npm bundles a fixed undici.
+# undici 6.29.0 (denial of service; certificate validation bypass in its
+# Agent) is the copy that npm bundles for node-gyp, in the npm that
+# @semantic-release/npm brings with semantic-release: the release workflows
+# load neither that plugin nor node-gyp, and install the packages without
+# their scripts. A bundled copy moves with npm alone: the expiry makes Trivy
+# report it again, until an npm bundles a fixed undici.
 CVE-2026-109869 exp:2026-12-31
+CVE-2026-87018 exp:2026-12-31
+CVE-2026-109383 exp:2026-12-31
