@@ -1,0 +1,16 @@
+# The IP families of the DNS Service are IPv4 and IPv6.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns.example.test:8081
+        apiKeyFile: /run/secrets/tsigoat/pdns
+  zones:
+    - name: example.test.
+      keys: [acme.]
+service:
+  ipFamilies: [IPv4, IPv5]

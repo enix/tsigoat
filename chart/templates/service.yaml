@@ -1,4 +1,7 @@
-{{- $exposed := ne .Values.service.type "ClusterIP" }}
+{{- $nodePorts := ne .Values.service.type "ClusterIP" }}
+{{- $external := or $nodePorts (not (empty .Values.service.externalIPs)) }}
+{{- $loadBalancer := eq .Values.service.type "LoadBalancer" }}
+{{- $chartLabels := set (include "tsigoat.labels" . | fromYaml) "app.kubernetes.io/component" "dns" }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,22 +10,56 @@ metadata:
   labels:
     {{- include "tsigoat.labels" . | nindent 4 }}
     app.kubernetes.io/component: dns
+    {{- range $key, $value := .Values.service.extraLabels }}
+    {{- if not (hasKey $chartLabels $key) }}
+    {{ $key }}: {{ $value | quote }}
+    {{- end }}
+    {{- end }}
   {{- with .Values.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
   type: {{ .Values.service.type }}
-  {{- if and $exposed .Values.service.externalTrafficPolicy }}
+  {{- with .Values.service.clusterIP }}
+  clusterIP: {{ . }}
+  {{- end }}
+  {{- with .Values.service.externalIPs }}
+  externalIPs:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.service.ipFamilyPolicy }}
+  ipFamilyPolicy: {{ . }}
+  {{- end }}
+  {{- with .Values.service.ipFamilies }}
+  ipFamilies:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.service.internalTrafficPolicy }}
+  internalTrafficPolicy: {{ . }}
+  {{- end }}
+  {{- with .Values.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+  {{- end }}
+  {{- if and $external .Values.service.externalTrafficPolicy }}
   externalTrafficPolicy: {{ .Values.service.externalTrafficPolicy }}
   {{- end }}
-  {{- if eq .Values.service.type "LoadBalancer" }}
+  {{- if $loadBalancer }}
+  {{- if and .Values.service.healthCheckNodePort (eq .Values.service.externalTrafficPolicy "Local") }}
+  healthCheckNodePort: {{ .Values.service.healthCheckNodePort }}
+  {{- end }}
   {{- with .Values.service.loadBalancerClass }}
   loadBalancerClass: {{ . }}
+  {{- end }}
+  {{- with .Values.service.loadBalancerIP }}
+  loadBalancerIP: {{ . }}
   {{- end }}
   {{- with .Values.service.loadBalancerSourceRanges }}
   loadBalancerSourceRanges:
     {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if not .Values.service.allocateLoadBalancerNodePorts }}
+  allocateLoadBalancerNodePorts: false
   {{- end }}
   {{- end }}
   sessionAffinity: {{ .Values.service.sessionAffinity }}
@@ -38,13 +75,13 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: dns-udp
       protocol: UDP
-      {{- if and $exposed .Values.service.nodePort }}
+      {{- if and $nodePorts .Values.service.nodePort }}
       nodePort: {{ .Values.service.nodePort }}
       {{- end }}
     - name: dns-tcp
       port: {{ .Values.service.port }}
       targetPort: dns-tcp
       protocol: TCP
-      {{- if and $exposed .Values.service.nodePort }}
+      {{- if and $nodePorts .Values.service.nodePort }}
       nodePort: {{ .Values.service.nodePort }}
       {{- end }}

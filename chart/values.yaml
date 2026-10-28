@@ -168,12 +168,67 @@ service:
   # -- Annotations of the DNS Service, such as those of a cloud load balancer
   annotations: {}
   # @schema
+  # type: object
+  # additionalProperties:
+  #   type: string
+  # @schema
+  # -- Labels of the DNS Service, such as those that a BGP advertisement or a
+  # load balancer selects; the labels of the chart win over them
+  extraLabels: {}
+  # -- Cluster IP of the DNS Service, in the service range of the cluster;
+  # Kubernetes assigns one when empty
+  clusterIP: ""
+  # @schema
+  # type: array
+  # items:
+  #   type: string
+  # @schema
+  # -- Addresses out of the cluster that reach the DNS Service, such as those
+  # that the network announces through BGP; a `ClusterIP` Service serves them
+  externalIPs: []
+  # @schema
+  # type: string
+  # enum: ["", SingleStack, PreferDualStack, RequireDualStack]
+  # @schema
+  # -- IP family policy of the DNS Service; `SingleStack` when empty
+  ipFamilyPolicy: ""
+  # @schema
+  # type: array
+  # uniqueItems: true
+  # maxItems: 2
+  # items:
+  #   type: string
+  #   enum: [IPv4, IPv6]
+  # @schema
+  # -- IP families of the DNS Service, the first one being that of its cluster
+  # IP; the families of the cluster when empty
+  ipFamilies: []
+  # @schema
   # type: string
   # enum: ["", Cluster, Local]
   # @schema
-  # -- externalTrafficPolicy of a `NodePort` or `LoadBalancer` Service: `Local`
-  # keeps the addresses of the clients in the logs
+  # -- internalTrafficPolicy of the DNS Service: `Local` sends the requests of
+  # the pods of a node to the tsigoat pods of that node alone
+  internalTrafficPolicy: ""
+  # -- trafficDistribution of the DNS Service, such as `PreferClose`, which
+  # prefers the pods of the zone of the client
+  trafficDistribution: ""
+  # @schema
+  # type: string
+  # enum: ["", Cluster, Local]
+  # @schema
+  # -- externalTrafficPolicy of a `NodePort` or `LoadBalancer` Service, or of
+  # one with `externalIPs`: `Local` keeps the addresses of the clients in the
+  # logs
   externalTrafficPolicy: ""
+  # @schema
+  # type: integer
+  # minimum: 0
+  # maximum: 65535
+  # @schema
+  # -- Node port of the health check of a `LoadBalancer` Service whose
+  # `externalTrafficPolicy` is `Local`; 0 lets Kubernetes choose
+  healthCheckNodePort: 0
   # @schema
   # type: array
   # items:
@@ -183,6 +238,15 @@ service:
   loadBalancerSourceRanges: []
   # -- Class of a `LoadBalancer` Service
   loadBalancerClass: ""
+  # -- Address of a `LoadBalancer` Service, for the load balancers that read
+  # this field, which Kubernetes deprecates for their own annotations
+  loadBalancerIP: ""
+  # @schema
+  # type: boolean
+  # @schema
+  # -- Allocate node ports to a `LoadBalancer` Service; false for a load
+  # balancer that reaches the pods directly
+  allocateLoadBalancerNodePorts: true
   # @schema
   # type: string
   # enum: [None, ClientIP]

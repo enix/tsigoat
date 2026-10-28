@@ -115,6 +115,16 @@ serve clients outside of it, set `service.type` to `LoadBalancer` or
 or a NetworkPolicy, and set `service.externalTrafficPolicy` to `Local` to log
 the addresses of the clients rather than those of the nodes.
 
+A network that routes addresses to the nodes, such as addresses that it
+announces through BGP, reaches a `ClusterIP` Service on its
+`service.externalIPs`; `service.extraLabels` gives the Service the labels
+that such an announcement or a load balancer selects. The other fields of the
+Service have their values too: its IP families (`service.ipFamilyPolicy`,
+`service.ipFamilies`), its routing inside the cluster
+(`service.internalTrafficPolicy`, `service.trafficDistribution`), and those
+of a load balancer (`service.loadBalancerIP`,
+`service.allocateLoadBalancerNodePorts`, `service.healthCheckNodePort`).
+
 The administration server, which serves the probes and the metrics, has no
 authentication: it has its own Service, always of type `ClusterIP`.
 

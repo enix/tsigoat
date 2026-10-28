@@ -115,6 +115,16 @@ serve clients outside of it, set `service.type` to `LoadBalancer` or
 or a NetworkPolicy, and set `service.externalTrafficPolicy` to `Local` to log
 the addresses of the clients rather than those of the nodes.
 
+A network that routes addresses to the nodes, such as addresses that it
+announces through BGP, reaches a `ClusterIP` Service on its
+`service.externalIPs`; `service.extraLabels` gives the Service the labels
+that such an announcement or a load balancer selects. The other fields of the
+Service have their values too: its IP families (`service.ipFamilyPolicy`,
+`service.ipFamilies`), its routing inside the cluster
+(`service.internalTrafficPolicy`, `service.trafficDistribution`), and those
+of a load balancer (`service.loadBalancerIP`,
+`service.allocateLoadBalancerNodePorts`, `service.healthCheckNodePort`).
+
 The administration server, which serves the probes and the metrics, has no
 authentication: it has its own Service, always of type `ClusterIP`.
 
@@ -219,9 +229,19 @@ covers the images and the binaries.
 | service.port | int | `53` | DNS port of the Service, for both UDP and TCP |
 | service.nodePort | int | `0` | Node port for both UDP and TCP, with `NodePort` and `LoadBalancer`; 0 lets Kubernetes choose |
 | service.annotations | object | `{}` | Annotations of the DNS Service, such as those of a cloud load balancer |
-| service.externalTrafficPolicy | string | `""` | externalTrafficPolicy of a `NodePort` or `LoadBalancer` Service: `Local` keeps the addresses of the clients in the logs |
+| service.extraLabels | object | `{}` | Labels of the DNS Service, such as those that a BGP advertisement or a load balancer selects; the labels of the chart win over them |
+| service.clusterIP | string | `""` | Cluster IP of the DNS Service, in the service range of the cluster; Kubernetes assigns one when empty |
+| service.externalIPs | list | `[]` | Addresses out of the cluster that reach the DNS Service, such as those that the network announces through BGP; a `ClusterIP` Service serves them |
+| service.ipFamilyPolicy | string | `""` | IP family policy of the DNS Service; `SingleStack` when empty |
+| service.ipFamilies | list | `[]` | IP families of the DNS Service, the first one being that of its cluster IP; the families of the cluster when empty |
+| service.internalTrafficPolicy | string | `""` | internalTrafficPolicy of the DNS Service: `Local` sends the requests of the pods of a node to the tsigoat pods of that node alone |
+| service.trafficDistribution | string | `""` | trafficDistribution of the DNS Service, such as `PreferClose`, which prefers the pods of the zone of the client |
+| service.externalTrafficPolicy | string | `""` | externalTrafficPolicy of a `NodePort` or `LoadBalancer` Service, or of one with `externalIPs`: `Local` keeps the addresses of the clients in the logs |
+| service.healthCheckNodePort | int | `0` | Node port of the health check of a `LoadBalancer` Service whose `externalTrafficPolicy` is `Local`; 0 lets Kubernetes choose |
 | service.loadBalancerSourceRanges | list | `[]` | Sources allowed to reach a `LoadBalancer` Service, as CIDR blocks |
 | service.loadBalancerClass | string | `""` | Class of a `LoadBalancer` Service |
+| service.loadBalancerIP | string | `""` | Address of a `LoadBalancer` Service, for the load balancers that read this field, which Kubernetes deprecates for their own annotations |
+| service.allocateLoadBalancerNodePorts | bool | `true` | Allocate node ports to a `LoadBalancer` Service; false for a load balancer that reaches the pods directly |
 | service.sessionAffinity | string | `"None"` | Session affinity of the DNS Service: `ClientIP` sends the requests of a client to one pod, which serializes the updates of that client, not those of other clients |
 | service.sessionAffinityTimeoutSeconds | int | `10800` | How long a client stays with its pod after its last request, in seconds, with `ClientIP` |
 | admin.port | int | `9153` | Port of the administration server, which serves `/healthz`, `/readyz` and `/metrics` to the probes and Prometheus, through its own `ClusterIP` Service |

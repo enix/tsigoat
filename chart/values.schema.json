@@ -319,12 +319,26 @@
     "service": {
       "additionalProperties": false,
       "properties": {
+        "allocateLoadBalancerNodePorts": {
+          "default": true,
+          "type": "boolean"
+        },
         "annotations": {
           "additionalProperties": {
             "type": "string"
           },
           "required": [],
           "type": "object"
+        },
+        "clusterIP": {
+          "default": "",
+          "type": "string"
+        },
+        "externalIPs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         },
         "externalTrafficPolicy": {
           "default": "",
@@ -335,7 +349,55 @@
           ],
           "type": "string"
         },
+        "extraLabels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "required": [],
+          "type": "object"
+        },
+        "healthCheckNodePort": {
+          "default": 0,
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "internalTrafficPolicy": {
+          "default": "",
+          "enum": [
+            "",
+            "Cluster",
+            "Local"
+          ],
+          "type": "string"
+        },
+        "ipFamilies": {
+          "items": {
+            "enum": [
+              "IPv4",
+              "IPv6"
+            ],
+            "type": "string"
+          },
+          "maxItems": 2,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "ipFamilyPolicy": {
+          "default": "",
+          "enum": [
+            "",
+            "SingleStack",
+            "PreferDualStack",
+            "RequireDualStack"
+          ],
+          "type": "string"
+        },
         "loadBalancerClass": {
+          "default": "",
+          "type": "string"
+        },
+        "loadBalancerIP": {
           "default": "",
           "type": "string"
         },
@@ -371,6 +433,10 @@
           "minimum": 1,
           "type": "integer"
         },
+        "trafficDistribution": {
+          "default": "",
+          "type": "string"
+        },
         "type": {
           "default": "ClusterIP",
           "enum": [
@@ -382,7 +448,10 @@
         }
       },
       "required": [
-        "loadBalancerClass"
+        "clusterIP",
+        "trafficDistribution",
+        "loadBalancerClass",
+        "loadBalancerIP"
       ],
       "type": "object"
     },

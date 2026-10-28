@@ -1,0 +1,31 @@
+# The DNS Service reached on addresses that the network announces, through
+# BGP for instance, with the labels that the announcement selects; a label of
+# the chart wins over the same label of service.extraLabels.
+config:
+  keys:
+    - name: cert-manager.
+      secretFile: /run/secrets/tsigoat/cert-manager
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: https://pdns.example.test
+        apiKeyFile: /run/secrets/tsigoat/pdns
+  zones:
+    - name: example.test.
+      policy:
+        - key: cert-manager.
+          acme: ["example.test.", "**.example.test."]
+secret:
+  existingSecret: tsigoat
+service:
+  clusterIP: 10.96.0.53
+  externalIPs: [192.0.2.53]
+  externalTrafficPolicy: Local
+  ipFamilyPolicy: PreferDualStack
+  ipFamilies: [IPv4, IPv6]
+  internalTrafficPolicy: Local
+  trafficDistribution: PreferClose
+  extraLabels:
+    announce.example.test/bgp: "true"
+    app.kubernetes.io/component: other

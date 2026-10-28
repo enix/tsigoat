@@ -22,7 +22,10 @@ service:
   port: 53
   nodePort: 30053
   externalTrafficPolicy: Local
+  healthCheckNodePort: 30054
   loadBalancerClass: example.test/lb
+  loadBalancerIP: 192.0.2.10
   loadBalancerSourceRanges: [192.0.2.0/24, 2001:db8::/32]
+  allocateLoadBalancerNodePorts: false
   annotations:
     lb.example.test/internal: "true"
