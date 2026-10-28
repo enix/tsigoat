@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -68,6 +69,16 @@ func (o *serveOptions) run(ctx context.Context, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// From here on, the log tells why serve stops, in its format.
+	if err := o.serve(ctx, logger); err != nil {
+		logger.ErrorContext(ctx, "stopped", stopAttrs(err)...)
+		return errLogged
+	}
+	logger.InfoContext(ctx, "stopped")
+	return nil
+}
+
+func (o *serveOptions) serve(ctx context.Context, logger *slog.Logger) error {
 	logger.InfoContext(ctx, "starting", product.VariadicBuildInfo()...)
 
 	if o.autoMemLimit {
@@ -78,7 +89,7 @@ func (o *serveOptions) run(ctx context.Context, stderr io.Writer) error {
 
 	c, warnings, err := config.Load(o.configPath)
 	if err != nil {
-		return err
+		return &configError{path: o.configPath, err: err}
 	}
 	for _, warning := range warnings {
 		logger.WarnContext(ctx, "risky configuration", "warning", warning)
@@ -97,9 +108,46 @@ func (o *serveOptions) run(ctx context.Context, stderr io.Writer) error {
 		return err
 	}
 	a.ShutdownDelay = o.shutdownDelay
-	if err := a.Run(ctx); err != nil {
-		return fmt.Errorf("%s stopped: %w", product.Slug, err)
+	return a.Run(ctx)
+}
+
+// errLogged is the error of a command that told why it failed in its log,
+// which main does not repeat.
+var errLogged = errors.New("logged")
+
+// configError is a configuration that does not load.
+type configError struct {
+	path string
+	err  error
+}
+
+func (e *configError) Error() string {
+	return fmt.Sprintf("invalid configuration %s: %v", e.path, e.err)
+}
+
+func (e *configError) Unwrap() error {
+	return e.err
+}
+
+// stopAttrs returns the attributes of the log record of a failure of serve:
+// the errors of a configuration that does not load as a list, one entry per
+// setting, rather than a string of several lines.
+func stopAttrs(err error) []any {
+	invalid, ok := errors.AsType[*configError](err)
+	if !ok {
+		return []any{slog.String("error", err.Error())}
 	}
-	logger.InfoContext(ctx, "stopped")
-	return nil
+	errs := []error{invalid.err}
+	if joined, ok := invalid.err.(interface{ Unwrap() []error }); ok {
+		errs = joined.Unwrap()
+	}
+	messages := make([]string, 0, len(errs))
+	for _, e := range errs {
+		messages = append(messages, e.Error())
+	}
+	return []any{
+		slog.String("error", "invalid configuration"),
+		slog.String("path", invalid.path),
+		slog.Any("errors", messages),
+	}
 }

@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -34,8 +35,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	root := newRootCommand(stdout, stderr)
 	root.SetArgs(args)
 	if err := root.ExecuteContext(ctx); err != nil {
-		for line := range strings.SplitSeq(err.Error(), "\n") {
-			_, _ = fmt.Fprintln(stderr, "error:", line)
+		if !errors.Is(err, errLogged) {
+			for line := range strings.SplitSeq(err.Error(), "\n") {
+				_, _ = fmt.Fprintln(stderr, "error:", line)
+			}
 		}
 		return 1
 	}

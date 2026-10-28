@@ -144,6 +144,13 @@ whole, and a webhook endpoint applies the updates of a zone one at a time.
 
 tsigoat logs to the standard error, one line per event, as text or JSON.
 
+`serve` ends with one entry, `msg=stopped`: at `INFO` after SIGINT or SIGTERM,
+and at `ERROR` when it stops on a failure, which its `error` field tells. A
+configuration that does not load gives `error="invalid configuration"`, its
+`path`, and its `errors`, one per setting, such as `keys[0].secretFile: not
+valid base64, in /run/secrets/tsigoat/acme`. Only the flags that come before the
+log, such as an unknown `--log-format`, fail with a plain line.
+
 Every update ends with one entry, `msg=update`:
 
 | Field | Content |
