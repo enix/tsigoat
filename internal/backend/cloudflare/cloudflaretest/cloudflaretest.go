@@ -71,8 +71,9 @@ type failure struct {
 	code    int
 	message string
 	// late holds the request until its client gives up on it, then keeps it
-	// for Land.
-	late bool
+	// for Land; holding is closed once it holds the request, read whole.
+	late    bool
+	holding chan struct{}
 }
 
 // New starts a simulated API until the end of the test.
@@ -141,11 +142,14 @@ func (a *API) FailBatch(status, code int, message string) {
 
 // HoldBatch makes the next batch request wait until its client gives up on
 // it, then keeps it, not applied, until Land applies it: a request that still
-// applies after its timeout, or the cancellation of its update.
-func (a *API) HoldBatch() {
+// applies after its timeout, or the cancellation of its update. The channel
+// that it returns is closed once the request waits, read whole.
+func (a *API) HoldBatch() <-chan struct{} {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.failures = append(a.failures, failure{late: true})
+	holding := make(chan struct{})
+	a.failures = append(a.failures, failure{late: true, holding: holding})
+	return holding
 }
 
 // Land applies the batch requests that HoldBatch kept, as Cloudflare would
@@ -355,6 +359,7 @@ func (a *API) batch(w http.ResponseWriter, r *http.Request, zoneID string) {
 		a.mu.Lock()
 		a.waiting++
 		a.mu.Unlock()
+		close(next.holding)
 		<-r.Context().Done()
 		a.mu.Lock()
 		a.waiting--

@@ -325,17 +325,25 @@ func TestLateWrite(t *testing.T) {
 			t.Parallel()
 			api := cloudflaretest.New(t)
 			api.CreateZone(testZone, "ns1.example.test.", "ns2.example.test.")
-			b, err := cloudflare.New(&cloudflare.Options{URL: api.URL, APIToken: cloudflaretest.Token, Timeout: 200 * time.Millisecond})
+			// The timeout leaves the requests before the batch a margin, on a
+			// loaded machine.
+			b, err := cloudflare.New(&cloudflare.Options{URL: api.URL, APIToken: cloudflaretest.Token, Timeout: 2 * time.Second})
 			if err != nil {
 				t.Fatal(err)
 			}
+			held := api.HoldBatch()
 			ctx := t.Context()
 			if canceled {
+				// The update is canceled once its batch reached the API
+				// whole: before, it fails without leaving.
 				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				ctx, cancel = context.WithCancel(ctx)
 				defer cancel()
+				go func() {
+					<-held
+					cancel()
+				}()
 			}
-			api.HoldBatch()
 			change := replace(t, `www.example.test. 300 IN TXT "late"`)
 			if applyErr := b.Apply(ctx, testZone, []backend.Change{change}); !backend.IsIndeterminate(applyErr) {
 				t.Fatalf("Apply() = %v, want an unknown outcome", applyErr)

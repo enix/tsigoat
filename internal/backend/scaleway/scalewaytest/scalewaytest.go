@@ -62,8 +62,9 @@ type failure struct {
 	status  int
 	message string
 	// late holds the request until its client gives up on it, then keeps it
-	// for Land.
-	late bool
+	// for Land; holding is closed once it holds the request, read whole.
+	late    bool
+	holding chan struct{}
 }
 
 // heldPatch is a PATCH request that applies after its client gave up on it.
@@ -124,11 +125,14 @@ func (a *API) FailPatch(status int, message string) {
 
 // HoldPatch makes the next PATCH request wait until its client gives up on it,
 // then keeps it, not applied, until Land applies it: a request that still
-// applies after its timeout, or the cancellation of its update.
-func (a *API) HoldPatch() {
+// applies after its timeout, or the cancellation of its update. The channel
+// that it returns is closed once the request waits, read whole.
+func (a *API) HoldPatch() <-chan struct{} {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.failures = append(a.failures, failure{late: true})
+	holding := make(chan struct{})
+	a.failures = append(a.failures, failure{late: true, holding: holding})
+	return holding
 }
 
 // Land applies the PATCH requests that HoldPatch kept, as Scaleway would once
@@ -275,6 +279,7 @@ func (a *API) patch(w http.ResponseWriter, r *http.Request, zone string) {
 		a.mu.Lock()
 		a.waiting++
 		a.mu.Unlock()
+		close(next.holding)
 		<-r.Context().Done()
 		a.mu.Lock()
 		a.waiting--

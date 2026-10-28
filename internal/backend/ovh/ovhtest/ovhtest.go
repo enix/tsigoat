@@ -83,8 +83,10 @@ type Failure struct {
 	AfterCommit bool
 	// Late holds the request until the client gives up on it, then keeps
 	// it, not applied, until Land applies it: a request that still applies
-	// after its timeout.
+	// after its timeout, or the cancellation of its update.
 	Late bool
+	// Held, when set, is closed once Late holds the request, read whole.
+	Held chan struct{}
 }
 
 // New starts a simulated API until the end of the test.
@@ -186,9 +188,9 @@ type lateRequest struct {
 	body  []byte
 }
 
-// Waiting returns the number of requests that Late failures hold, which wait
-// for their client to give up.
-func (a *API) Waiting() int {
+// waitingRequests returns the number of requests that Late failures hold,
+// which wait for their client to give up.
+func (a *API) waitingRequests() int {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.waiting
@@ -198,7 +200,7 @@ func (a *API) Waiting() int {
 // application by OVHcloud, once none waits for its client to give up: the
 // server learns it after the client.
 func (a *API) Land() {
-	for deadline := time.Now().Add(5 * time.Second); a.Waiting() > 0 && time.Now().Before(deadline); {
+	for deadline := time.Now().Add(5 * time.Second); a.waitingRequests() > 0 && time.Now().Before(deadline); {
 		time.Sleep(5 * time.Millisecond)
 	}
 	a.mu.Lock()
@@ -284,6 +286,9 @@ func (a *API) fail(w http.ResponseWriter, r *http.Request, parts []string, body 
 		a.mu.Lock()
 		a.waiting++
 		a.mu.Unlock()
+		if f.Held != nil {
+			close(f.Held)
+		}
 		<-r.Context().Done()
 		a.mu.Lock()
 		a.waiting--

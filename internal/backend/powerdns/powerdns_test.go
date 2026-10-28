@@ -789,7 +789,9 @@ func TestUnansweredPatch(t *testing.T) {
 			t.Parallel()
 			api, server := newFakeAPI(t)
 			api.hold, api.holding = true, make(chan struct{})
-			b, err := New(&Options{URL: server.URL, APIKey: apiKey, Timeout: 200 * time.Millisecond})
+			// The timeout leaves the requests before the PATCH a margin, on a
+			// loaded machine.
+			b, err := New(&Options{URL: server.URL, APIKey: apiKey, Timeout: 2 * time.Second})
 			if err != nil {
 				t.Fatal(err)
 			}

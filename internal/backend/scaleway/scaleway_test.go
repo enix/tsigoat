@@ -228,17 +228,25 @@ func TestLateWrite(t *testing.T) {
 			t.Parallel()
 			api := scalewaytest.New(t)
 			api.CreateZone(testZone)
-			b, err := scaleway.New(&scaleway.Options{URL: api.URL, SecretKey: scalewaytest.SecretKey, Timeout: 200 * time.Millisecond})
+			// The timeout leaves the requests before the PATCH a margin, on a
+			// loaded machine.
+			b, err := scaleway.New(&scaleway.Options{URL: api.URL, SecretKey: scalewaytest.SecretKey, Timeout: 2 * time.Second})
 			if err != nil {
 				t.Fatal(err)
 			}
+			held := api.HoldPatch()
 			ctx := t.Context()
 			if canceled {
+				// The update is canceled once its PATCH reached the API
+				// whole: before, it fails without leaving.
 				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
+				ctx, cancel = context.WithCancel(ctx)
 				defer cancel()
+				go func() {
+					<-held
+					cancel()
+				}()
 			}
-			api.HoldPatch()
 			change := replace(t, `www.example.test. 300 IN TXT "late"`)
 			if applyErr := b.Apply(ctx, testZone, []backend.Change{change}); !backend.IsIndeterminate(applyErr) {
 				t.Fatalf("Apply() = %v, want an unknown outcome", applyErr)

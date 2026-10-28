@@ -93,7 +93,9 @@ func TestConcurrentInstances(t *testing.T) {
 							m.Remove([]dns.RR{record})
 						}
 						m.SetTsig("key.example.", dns.HmacSHA256, 300, time.Now().Unix())
-						client := &dns.Client{Net: "tcp", TsigSecret: map[string]string{"key.example.": minimalSecret}}
+						// Each instance applies the updates of the zone one
+						// at a time: the last ones wait for the others.
+						client := &dns.Client{Net: "tcp", Timeout: 30 * time.Second, TsigSecret: map[string]string{"key.example.": minimalSecret}}
 						resp, _, err := client.ExchangeContext(t.Context(), m, instances[i%len(instances)])
 						if err != nil || resp.Rcode != dns.RcodeSuccess {
 							t.Errorf("update of %s: %v %v", value, resp, err)

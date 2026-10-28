@@ -163,7 +163,7 @@ func TestRecovery(t *testing.T) {
 		op            backend.Op
 		failures      []ovhtest.Failure
 		indeterminate bool
-		// canceled cancels the update while its requests run.
+		// canceled cancels the update once OVHcloud holds its late request.
 		canceled bool
 	}{
 		// Delete "old", then create "new", which OVHcloud rejects: the
@@ -203,18 +203,29 @@ func TestRecovery(t *testing.T) {
 			t.Parallel()
 			api := ovhtest.New(t)
 			api.CreateZone(testZone, rr(t, `www.example.test. 300 IN TXT "old"`))
-			b := newRecoveringBackend(t, api)
+			// The timeout ends the late requests, and leaves the others a
+			// margin, on a loaded machine.
+			b := newRecoveringBackend(t, api, 2*time.Second)
 			before := api.Records(testZone)
-			api.FailWrites(c.failures...)
+			failures := slices.Clone(c.failures)
+			ctx := t.Context()
+			if c.canceled {
+				// The update is canceled once its request reached the API
+				// whole: before, it fails without leaving.
+				held := make(chan struct{})
+				failures[slices.Index(failures, late)].Held = held
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				defer cancel()
+				go func() {
+					<-held
+					cancel()
+				}()
+			}
+			api.FailWrites(failures...)
 			change := replace(t, c.change)
 			if c.op != 0 {
 				change.Op = c.op
-			}
-			ctx := t.Context()
-			if c.canceled {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithTimeout(ctx, 50*time.Millisecond)
-				defer cancel()
 			}
 			err := b.Apply(ctx, testZone, []backend.Change{change})
 			switch {
@@ -240,13 +251,14 @@ func TestRecovery(t *testing.T) {
 	}
 }
 
-// newRecoveringBackend returns a backend on api, with short delays.
-func newRecoveringBackend(t *testing.T, api *ovhtest.API) *ovh.Backend {
+// newRecoveringBackend returns a backend on api that refreshes again at once,
+// and whose requests time out after timeout.
+func newRecoveringBackend(t *testing.T, api *ovhtest.API, timeout time.Duration) *ovh.Backend {
 	t.Helper()
 	b, err := ovh.New(&ovh.Options{
 		Endpoint:       api.URL,
 		ApplicationKey: ovhtest.ApplicationKey, ApplicationSecret: ovhtest.ApplicationSecret, ConsumerKey: ovhtest.ConsumerKey,
-		RefreshDelay: time.Millisecond, Timeout: 200 * time.Millisecond,
+		RefreshDelay: time.Millisecond, Timeout: timeout,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -256,26 +268,33 @@ func newRecoveringBackend(t *testing.T, api *ovhtest.API) *ovh.Backend {
 
 // TestRecoveryBesideAnotherWriter checks that the recovery of an update keeps
 // what another writer does meanwhile: the first instance adds a value whose
-// request OVHcloud holds past its timeout, the second one adds the same
-// value, and succeeds. The first one must keep the record of the second one,
-// and report an unknown outcome, since its own request may still apply.
+// request OVHcloud holds until the first instance gives up on it, the second
+// one adds the same value meanwhile, and succeeds. The first one must keep
+// the record of the second one, and report an unknown outcome, since its own
+// request may still apply.
 func TestRecoveryBesideAnotherWriter(t *testing.T) {
 	t.Parallel()
 	api := ovhtest.New(t)
 	api.CreateZone(testZone, rr(t, `www.example.test. 300 IN TXT "old"`))
-	first, second := newRecoveringBackend(t, api), newRecoveringBackend(t, api)
+	// The first instance gives up on its request once the second one is
+	// done: their timeout leaves that to the test.
+	first, second := newRecoveringBackend(t, api, time.Minute), newRecoveringBackend(t, api, time.Minute)
 	addition := func() []backend.Change {
 		change := replace(t, `www.example.test. 300 IN TXT "new"`)
 		change.Op = backend.Add
 		return []backend.Change{change}
 	}
 
-	api.FailWrites(ovhtest.Failure{Late: true})
+	held := make(chan struct{})
+	api.FailWrites(ovhtest.Failure{Late: true, Held: held})
+	ctx, giveUp := context.WithCancel(t.Context())
+	defer giveUp()
 	done := make(chan error, 1)
-	go func() { done <- first.Apply(t.Context(), testZone, addition()) }()
-	deadline := time.Now().Add(5 * time.Second)
-	for api.Waiting() == 0 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
+	go func() { done <- first.Apply(ctx, testZone, addition()) }()
+	select {
+	case <-held:
+	case err := <-done:
+		t.Fatalf("the first Apply() = %v, before OVHcloud held its request", err)
 	}
 	if err := second.Apply(t.Context(), testZone, addition()); err != nil {
 		t.Fatalf("the second Apply() = %v", err)
@@ -286,6 +305,7 @@ func TestRecoveryBesideAnotherWriter(t *testing.T) {
 			kept = append(kept, r.ID)
 		}
 	}
+	giveUp()
 	if err := <-done; !backend.IsIndeterminate(err) {
 		t.Errorf("the first Apply() = %v, want an unknown outcome", err)
 	}
