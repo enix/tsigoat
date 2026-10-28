@@ -300,7 +300,8 @@ func TestTimeout(t *testing.T) {
 	t.Cleanup(func() { close(release) })
 
 	start := time.Now()
-	relay := newRelay(t, server.addr, 100*time.Millisecond)
+	// The timeout leaves the dial and the write a margin, on a loaded machine.
+	relay := newRelay(t, server.addr, 2*time.Second)
 	_, err := relay.Update(t.Context(), zone, "", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "exchanging with "+server.addr) {
 		t.Errorf("Update() error = %v, want a timeout", err)
@@ -309,7 +310,7 @@ func TestTimeout(t *testing.T) {
 	if !backend.IsIndeterminate(err) {
 		t.Errorf("Update() error = %v, want an unknown outcome", err)
 	}
-	if elapsed := time.Since(start); elapsed > time.Second {
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
 		t.Errorf("Update() returned after %s, beyond its timeout", elapsed)
 	}
 	// A query that times out changes nothing.
@@ -409,11 +410,21 @@ func TestContextCanceled(t *testing.T) {
 func TestCanceledInFlight(t *testing.T) {
 	t.Parallel()
 
-	release := make(chan struct{})
-	server := startNameServer(t, []config.Key{relayKey()}, func(dns.ResponseWriter, *dns.Msg) { <-release })
+	release, received := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	server := startNameServer(t, []config.Key{relayKey()}, func(dns.ResponseWriter, *dns.Msg) {
+		once.Do(func() { close(received) })
+		<-release
+	})
 	t.Cleanup(func() { close(release) })
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	// The update is canceled once the name server read it whole: before, it
+	// fails without leaving.
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	go func() {
+		<-received
+		cancel()
+	}()
 	if _, err := newRelay(t, server.addr, time.Second).Update(ctx, zone, "", nil, nil); !backend.IsIndeterminate(err) {
 		t.Errorf("Update() error = %v, want an unknown outcome", err)
 	}

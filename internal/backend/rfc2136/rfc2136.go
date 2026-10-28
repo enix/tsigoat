@@ -185,6 +185,10 @@ func (r *Relay) exchange(ctx context.Context, zone string, m *dns.Msg) (*dns.Msg
 	defer func() { _ = conn.Close() }()
 	watched := &watchedConn{Conn: conn.Conn}
 	conn.Conn = watched
+	// miekg/dns honours the deadline of ctx, but not its cancellation: a
+	// canceled update stops waiting at once, rather than at the deadline.
+	stopWatching := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
+	defer stopWatching()
 	resp, _, err := client.ExchangeWithConnContext(ctx, m, conn)
 	// miekg/dns leaves the signature of a NOTAUTH response unverified, and a
 	// server that rejects the signature of a message answers NOTAUTH with a
