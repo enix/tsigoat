@@ -205,6 +205,7 @@ covers the images and the binaries.
 | nameOverride | string | `""` | Partially override the name of the resources, which the release name prefixes |
 | fullnameOverride | string | `""` | Fully override the name of the resources |
 | namespaceOverride | string | `""` | Override the namespace of the resources |
+| enabled | bool | `true` | Read by a parent chart that installs this one under a `condition`, such as `tsigoat.enabled`; the chart itself ignores it |
 | extraLabels | object | `{}` | Labels added to every object of the chart; `podLabels` labels the pod. The labels of the chart win over them, and so do those of each object |
 | image.registry | string | `"ghcr.io"` | Image registry; an empty string lets the container runtime choose |
 | image.repository | string | `"enix/tsigoat"` | Image repository |

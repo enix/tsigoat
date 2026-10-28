@@ -4,6 +4,9 @@ nameOverride: ""
 fullnameOverride: ""
 # -- Override the namespace of the resources
 namespaceOverride: ""
+# -- Read by a parent chart that installs this one under a `condition`, such
+# as `tsigoat.enabled`; the chart itself ignores it
+enabled: true
 # @schema
 # type: object
 # additionalProperties:

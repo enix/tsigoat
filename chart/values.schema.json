@@ -25,6 +25,10 @@
       "required": [],
       "type": "object"
     },
+    "enabled": {
+      "default": true,
+      "type": "boolean"
+    },
     "extraDeploy": {
       "items": {
         "required": []
@@ -555,6 +559,7 @@
     "nameOverride",
     "fullnameOverride",
     "namespaceOverride",
+    "enabled",
     "image",
     "podDisruptionBudget",
     "secret",

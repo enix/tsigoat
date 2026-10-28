@@ -140,3 +140,5 @@ extraDeploy:
       namespace: {{ include "tsigoat.namespace" . }}
     data:
       release: {{ .Release.Name }}
+# A parent chart installs this one under the condition tsigoat.enabled.
+enabled: true
