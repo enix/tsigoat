@@ -216,15 +216,15 @@ covers the images and the binaries.
 | image.pullPolicy | string | `"IfNotPresent"` | Image pull policy |
 | imagePullSecrets | list | `[]` | Names of the Secrets to pull the image with |
 | replicaCount | int | `2` | Number of pods. Several pods keep the records of each other's updates, on PowerDNS since 4.9.12 and 5.0.2, but not every guarantee of RFC 2136 across pods. 1, with the `Recreate` strategy, keeps them all, but while a pod deleted or evicted outside a rollout finishes its updates beside its replacement: see [Replicas](#replicas) |
-| strategy | object | a rolling update that starts a new pod before stopping an old one | Update strategy of the Deployment |
+| strategy | object | a rolling update that starts a new pod before stopping an old one | Update strategy of the Deployment. Helm merges the fields given here with these defaults: with `maxSurge: 0`, set `maxUnavailable` above 0 too |
 | podDisruptionBudget.enabled | bool | `true` | Create a PodDisruptionBudget, with more than one replica |
-| podDisruptionBudget.maxUnavailable | int | `1` | Pods that a voluntary disruption, such as the drain of a node, may stop at once |
+| podDisruptionBudget.maxUnavailable | int | `1` | Pods that a voluntary disruption, such as the drain of a node, may stop at once: a number, or a percentage such as `50%` |
 | config | object | none: the chart refuses to install without zones and backends | Configuration of tsigoat: `keys`, `backends` and `zones`, as [docs/configuration.md](https://github.com/enix/tsigoat/blob/main/docs/configuration.md) describes them. The chart sets the listen addresses itself. Secret files are read from `/run/secrets/tsigoat`, see `secret`. |
 | secret.existingSecret | string | `""` | Name of an existing Secret, mounted in `/run/secrets/tsigoat`, whose keys the configuration reads with `secretFile` and `apiKeyFile` |
 | secret.files | object | `{}` | Files of a Secret that the chart creates and mounts in `/run/secrets/tsigoat`, by file name; prefer `existingSecret`, which keeps the secrets out of the release |
 | log.format | string | `"json"` | Log format |
 | log.level | string | `"info"` | Log level |
-| listenHost | string | `"[::]"` | Host part of the listen addresses in the pod: `[::]` serves IPv4 and IPv6, `0.0.0.0` serves IPv4 on nodes without IPv6 |
+| listenHost | string | `"[::]"` | Host part of the listen addresses in the pod: `[::]` serves IPv4 and IPv6, `0.0.0.0` serves IPv4 on nodes without IPv6; the chart puts an IPv6 address in brackets |
 | service.type | string | `"ClusterIP"` | Type of the DNS Service: `LoadBalancer` or `NodePort` exposes tsigoat out of the cluster |
 | service.port | int | `53` | DNS port of the Service, for both UDP and TCP |
 | service.nodePort | int | `0` | Node port for both UDP and TCP, with `NodePort` and `LoadBalancer`; 0 lets Kubernetes choose |
@@ -244,7 +244,7 @@ covers the images and the binaries.
 | service.allocateLoadBalancerNodePorts | bool | `true` | Allocate node ports to a `LoadBalancer` Service; false for a load balancer that reaches the pods directly |
 | service.sessionAffinity | string | `"None"` | Session affinity of the DNS Service: `ClientIP` sends the requests of a client to one pod, which serializes the updates of that client, not those of other clients |
 | service.sessionAffinityTimeoutSeconds | int | `10800` | How long a client stays with its pod after its last request, in seconds, with `ClientIP` |
-| admin.port | int | `9153` | Port of the administration server, which serves `/healthz`, `/readyz` and `/metrics` to the probes and Prometheus, through its own `ClusterIP` Service |
+| admin.port | int | `9153` | Port of the administration server, which serves `/healthz`, `/readyz` and `/metrics` to the probes and Prometheus, through its own `ClusterIP` Service; any port but 5353, the DNS port of the container |
 | serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor for the Prometheus operator |
 | serviceMonitor.interval | string | `""` | Scrape interval; the default of Prometheus when empty |
 | serviceMonitor.scrapeTimeout | string | `""` | Scrape timeout; the default of Prometheus when empty |
@@ -264,8 +264,8 @@ covers the images and the binaries.
 | podSecurityContext | object | non-root, with the runtime default seccomp profile | Security context of the pod |
 | securityContext | object | no privilege escalation, read-only root, no capability | Security context of the container |
 | resources | object | requests of 10m CPU and 32Mi, limit of 128Mi | Resources of the container |
-| livenessProbe | object | `/healthz` on the administration port | Liveness probe of the container |
-| readinessProbe | object | `/readyz` on the administration port | Readiness probe of the container |
+| livenessProbe | object | `/healthz` on the administration port | Liveness probe of the container. Helm merges the fields given here with the default: set `httpGet: null` for another kind of probe |
+| readinessProbe | object | `/readyz` on the administration port | Readiness probe of the container. Helm merges the fields given here with the default: set `httpGet: null` for another kind of probe |
 | extraEnv | list | `[]` | Environment variables of the container, for the `secretEnv` and `apiKeyEnv` settings of the configuration |
 | extraVolumes | list | `[]` | Volumes added to the pod, such as a CA bundle for the PowerDNS API |
 | extraVolumeMounts | list | `[]` | Volume mounts added to the container |

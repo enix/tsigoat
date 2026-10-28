@@ -116,14 +116,27 @@ digest of a multi-platform image, the same on every registry.
 {{- end -}}
 
 {{/*
-Listen addresses inside the pod.
+Listen addresses inside the pod, an IPv6 host in brackets. The DNS server
+listens on 5353, which the administration server cannot take.
 */}}
+{{- define "tsigoat.listenHost" -}}
+{{- $host := .Values.listenHost -}}
+{{- if and (contains ":" $host) (not (hasPrefix "[" $host)) -}}
+{{- printf "[%s]" $host -}}
+{{- else -}}
+{{- $host -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "tsigoat.dnsListen" -}}
-{{- printf "%s:5353" .Values.listenHost -}}
+{{- printf "%s:5353" (include "tsigoat.listenHost" .) -}}
 {{- end -}}
 
 {{- define "tsigoat.adminListen" -}}
-{{- printf "%s:%d" .Values.listenHost (int .Values.admin.port) -}}
+{{- if eq (int .Values.admin.port) 5353 -}}
+{{- fail "admin.port is 5353, the DNS port of the container: choose another port" -}}
+{{- end -}}
+{{- printf "%s:%d" (include "tsigoat.listenHost" .) (int .Values.admin.port) -}}
 {{- end -}}
 
 {{/*
@@ -147,30 +160,30 @@ the secrets out of the ConfigMap: they belong in the Secret mounted in
 {{- end -}}
 {{- range $i, $key := $config.keys -}}
 {{- if and (kindIs "map" $key) (hasKey $key "secret") -}}
-{{- fail (printf "config.keys[%d].secret would store a TSIG secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with secretFile" $i) -}}
+{{- fail (printf "config.keys[%v].secret would store a TSIG secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with secretFile" $i) -}}
 {{- end -}}
 {{- end -}}
 {{- range $i, $backend := $config.backends -}}
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.powerdns) (hasKey $backend.powerdns "apiKey") -}}
-{{- fail (printf "config.backends[%d].powerdns.apiKey would store an API key in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with apiKeyFile" $i) -}}
+{{- fail (printf "config.backends[%v].powerdns.apiKey would store an API key in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with apiKeyFile" $i) -}}
 {{- end -}}
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.rfc2136) (kindIs "map" $backend.rfc2136.key) (hasKey $backend.rfc2136.key "secret") -}}
-{{- fail (printf "config.backends[%d].rfc2136.key.secret would store a TSIG secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with secretFile" $i) -}}
+{{- fail (printf "config.backends[%v].rfc2136.key.secret would store a TSIG secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with secretFile" $i) -}}
 {{- end -}}
 {{- range $setting := list "cloudflare.apiToken" "ovh.applicationSecret" "ovh.consumerKey" "scaleway.secretKey" -}}
 {{- $section := index (splitList "." $setting) 0 -}}
 {{- $field := index (splitList "." $setting) 1 -}}
 {{- if and (kindIs "map" $backend) (kindIs "map" (index $backend $section)) (hasKey (index $backend $section) $field) -}}
-{{- fail (printf "config.backends[%d].%s would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with %sFile" $i $setting $field) -}}
+{{- fail (printf "config.backends[%v].%s would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with %sFile" $i $setting $field) -}}
 {{- end -}}
 {{- end -}}
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.ovh) (kindIs "map" $backend.ovh.oauth2) (hasKey $backend.ovh.oauth2 "clientSecret") -}}
-{{- fail (printf "config.backends[%d].ovh.oauth2.clientSecret would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with clientSecretFile" $i) -}}
+{{- fail (printf "config.backends[%v].ovh.oauth2.clientSecret would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with clientSecretFile" $i) -}}
 {{- end -}}
 {{- if and (kindIs "map" $backend) (kindIs "map" $backend.webhook) -}}
 {{- range $j, $header := $backend.webhook.headers -}}
 {{- if and (kindIs "map" $header) (hasKey $header "value") -}}
-{{- fail (printf "config.backends[%d].webhook.headers[%d].value would store a header in a ConfigMap, where the chart cannot tell a secret header from another: put it in the Secret, see secret.files and secret.existingSecret, and read it with valueFile" $i $j) -}}
+{{- fail (printf "config.backends[%v].webhook.headers[%v].value would store a header in a ConfigMap, where the chart cannot tell a secret header from another: put it in the Secret, see secret.files and secret.existingSecret, and read it with valueFile" $i $j) -}}
 {{- end -}}
 {{- end -}}
 {{- range $setting := list "signature.secret" "basicAuth.password" "bearer.token" -}}
@@ -178,7 +191,7 @@ the secrets out of the ConfigMap: they belong in the Secret mounted in
 {{- $field := index (splitList "." $setting) 1 -}}
 {{- $settings := index $backend.webhook $section -}}
 {{- if and (kindIs "map" $settings) (hasKey $settings $field) -}}
-{{- fail (printf "config.backends[%d].webhook.%s would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with %sFile" $i $setting $field) -}}
+{{- fail (printf "config.backends[%v].webhook.%s would store a secret in a ConfigMap: put it in the Secret, see secret.files and secret.existingSecret, and read it with %sFile" $i $setting $field) -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

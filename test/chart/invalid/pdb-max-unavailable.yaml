@@ -1,0 +1,16 @@
+# A string maxUnavailable is a percentage, as the API takes it.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns.example.test:8081
+        apiKeyFile: /run/secrets/tsigoat/pdns
+  zones:
+    - name: example.test.
+      keys: [acme.]
+podDisruptionBudget:
+  maxUnavailable: "1"

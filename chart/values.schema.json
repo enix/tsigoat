@@ -202,6 +202,8 @@
         },
         "maxUnavailable": {
           "default": 1,
+          "minimum": 0,
+          "pattern": "^[0-9]+%$",
           "required": [],
           "type": [
             "integer",

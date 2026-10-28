@@ -72,7 +72,8 @@ replicaCount: 2
 # additionalProperties: true
 # properties: {}
 # @schema
-# -- Update strategy of the Deployment
+# -- Update strategy of the Deployment. Helm merges the fields given here
+# with these defaults: with `maxSurge: 0`, set `maxUnavailable` above 0 too
 # @default -- a rolling update that starts a new pod before stopping an old one
 strategy:
   type: RollingUpdate
@@ -85,9 +86,11 @@ podDisruptionBudget:
   enabled: true
   # @schema
   # type: [integer, string]
+  # minimum: 0
+  # pattern: ^[0-9]+%$
   # @schema
   # -- Pods that a voluntary disruption, such as the drain of a node, may stop
-  # at once
+  # at once: a number, or a percentage such as `50%`
   maxUnavailable: 1
 
 # @schema
@@ -135,7 +138,8 @@ log:
 # minLength: 1
 # @schema
 # -- Host part of the listen addresses in the pod: `[::]` serves IPv4 and
-# IPv6, `0.0.0.0` serves IPv4 on nodes without IPv6
+# IPv6, `0.0.0.0` serves IPv4 on nodes without IPv6; the chart puts an IPv6
+# address in brackets
 listenHost: "[::]"
 
 service:
@@ -274,7 +278,7 @@ admin:
   # @schema
   # -- Port of the administration server, which serves `/healthz`, `/readyz`
   # and `/metrics` to the probes and Prometheus, through its own `ClusterIP`
-  # Service
+  # Service; any port but 5353, the DNS port of the container
   port: 9153
 
 serviceMonitor:
@@ -416,7 +420,8 @@ resources:
 # additionalProperties: true
 # properties: {}
 # @schema
-# -- Liveness probe of the container
+# -- Liveness probe of the container. Helm merges the fields given here with
+# the default: set `httpGet: null` for another kind of probe
 # @default -- `/healthz` on the administration port
 livenessProbe:
   httpGet:
@@ -428,7 +433,8 @@ livenessProbe:
 # additionalProperties: true
 # properties: {}
 # @schema
-# -- Readiness probe of the container
+# -- Readiness probe of the container. Helm merges the fields given here with
+# the default: set `httpGet: null` for another kind of probe
 # @default -- `/readyz` on the administration port
 readinessProbe:
   httpGet:
