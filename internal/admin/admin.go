@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"sync"
@@ -35,8 +36,10 @@ type Server struct {
 }
 
 // New returns a server for the address. ready tells whether tsigoat serves
-// DNS.
-func New(address string, gatherer prometheus.Gatherer, ready func() bool) *Server {
+// DNS. The errors of the HTTP server, such as a handler that panics, and
+// those of the metrics go to logger, at the error level.
+func New(address string, gatherer prometheus.Gatherer, ready func() bool, logger *slog.Logger) *Server {
+	errorLog := slog.NewLogLogger(logger.With("server", "admin").Handler(), slog.LevelError)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ok\n")
@@ -50,6 +53,7 @@ func New(address string, gatherer prometheus.Gatherer, ready func() bool) *Serve
 		_, _ = io.WriteString(w, "ready\n")
 	})
 	mux.Handle("GET /metrics", promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
+		ErrorLog:      errorLog,
 		ErrorHandling: promhttp.ContinueOnError,
 	}))
 	return &Server{server: &http.Server{
@@ -58,6 +62,7 @@ func New(address string, gatherer prometheus.Gatherer, ready func() bool) *Serve
 		ReadHeaderTimeout: readTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,
+		ErrorLog:          errorLog,
 	}}
 }
 

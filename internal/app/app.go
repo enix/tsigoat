@@ -68,7 +68,7 @@ func New(c *config.Config, logger *slog.Logger, newBackend BackendFactory) (*App
 	if c.AdminListen != "" {
 		info := product.BuildInfo()
 		m = metrics.New(&info)
-		a.admin = admin.New(c.AdminListen, m.Gatherer(), a.ready)
+		a.admin = admin.New(c.AdminListen, m.Gatherer(), a.ready, logger)
 	}
 
 	backends, relays, floors, err := newBackends(c.Backends, newBackend, m)
