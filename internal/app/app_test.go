@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -162,13 +163,20 @@ func TestAdminServer(t *testing.T) {
 		t.Fatalf("query signed with an unknown key: %v, %v", resp, err)
 	}
 
-	status, body := httpGet(t, "http://"+a.AdminAddr()+"/metrics")
-	for _, want := range []string{
+	// The server counts a request once it sent the response, which the
+	// client may read first.
+	wanted := []string{
 		`tsigoat_dns_responses_total{algorithm="",key="",opcode="QUERY",rcode="NOTIMP",zone="example.test."} 1`,
 		`tsigoat_tsig_failures_total{error="BADKEY"} 1`,
-	} {
-		if status != http.StatusOK || !strings.Contains(body, want) {
-			t.Errorf("/metrics = %d, without %s:\n%s", status, want, body)
+	}
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		status, body := httpGet(t, "http://"+a.AdminAddr()+"/metrics")
+		missing := slices.DeleteFunc(slices.Clone(wanted), func(want string) bool { return strings.Contains(body, want) })
+		if status == http.StatusOK && len(missing) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("/metrics = %d, without %q:\n%s", status, missing, body)
 		}
 	}
 

@@ -559,7 +559,12 @@ func TestRunStopsWithTheContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- server.Run(ctx) }()
-	time.Sleep(50 * time.Millisecond)
+	// Canceled once it listens: before, Run fails to start.
+	for deadline := time.Now().Add(5 * time.Second); len(server.Addrs()) == 0; time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the server did not listen")
+		}
+	}
 	cancel()
 	select {
 	case err := <-done:

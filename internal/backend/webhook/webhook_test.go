@@ -258,13 +258,15 @@ func TestFailures(t *testing.T) {
 		{"unavailable", status(http.StatusServiceUnavailable), 0, "answered 503 Service Unavailable", true},
 		{"bad gateway", status(http.StatusBadGateway), 0, "answered 502 Bad Gateway", true},
 		{"gateway timeout", status(http.StatusGatewayTimeout), 0, "answered 504 Gateway Timeout", true},
+		// The timeout leaves the connection and the write a margin, on a
+		// loaded machine; the endpoint answers once the client gave up.
 		{"timeout", func(w http.ResponseWriter, r *http.Request) {
 			select {
 			case <-r.Context().Done():
-			case <-time.After(2 * time.Second):
+			case <-time.After(30 * time.Second):
 			}
 			w.WriteHeader(http.StatusOK)
-		}, 100 * time.Millisecond, "Timeout exceeded", true},
+		}, 2 * time.Second, "Timeout exceeded", true},
 		{"connection closed without a response", func(w http.ResponseWriter, _ *http.Request) {
 			if hijacker, ok := w.(http.Hijacker); ok {
 				if conn, _, err := hijacker.Hijack(); err == nil {
@@ -519,10 +521,21 @@ func TestNew(t *testing.T) {
 // it: the endpoint received it, and may apply it still.
 func TestCanceledInFlight(t *testing.T) {
 	t.Parallel()
-	e := newEndpoint(t, false, func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	received := make(chan struct{})
+	var once sync.Once
+	e := newEndpoint(t, false, func(_ http.ResponseWriter, r *http.Request) {
+		once.Do(func() { close(received) })
+		<-r.Context().Done()
+	})
 	relay := newRelay(t, &webhook.Options{URL: e.server.URL})
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	// The update is canceled once the endpoint read it whole: before, it
+	// fails without leaving.
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
+	go func() {
+		<-received
+		cancel()
+	}()
 	if _, err := relay.Update(ctx, zone, "", nil, records(t, `a.example.test. 60 IN TXT "x"`)); !backend.IsIndeterminate(err) {
 		t.Errorf("Update() error = %v, want an unknown outcome", err)
 	}

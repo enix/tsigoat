@@ -45,9 +45,11 @@ func (b *slowBackend) count() int {
 // when the next query arrives.
 func TestSOAFailureCachedFromTheEndOfTheRead(t *testing.T) {
 	t.Parallel()
-	b := &slowBackend{delay: 200 * time.Millisecond}
+	// The read lasts longer than the cache keeps its failure, which leaves
+	// the second query a margin of a second, on a loaded machine.
+	b := &slowBackend{delay: 2 * time.Second}
 	z := newServedZone(&Zone{Name: testZone, Backend: b})
-	z.soaFailureTTL = 100 * time.Millisecond
+	z.soaFailureTTL = time.Second
 
 	if _, fetched, err := z.cachedSOA(t.Context()); err == nil || !fetched {
 		t.Fatalf("first query: fetched = %v, error %v, want a failure read from the backend", fetched, err)
