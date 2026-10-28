@@ -165,14 +165,15 @@ func (v *validator) key(path string, k *fileKey, holder keyHolder) (Key, bool) {
 	encoded, secretOK := v.secret(path, "secret", k.Secret, k.SecretFile, k.SecretEnv)
 	var secret []byte
 	if secretOK {
+		setting, origin := secretOrigin(path, "secret", k.SecretFile, k.SecretEnv)
 		decoded, err := base64.StdEncoding.DecodeString(encoded)
 		switch {
 		case err != nil:
-			v.errorf(path+".secret", "not valid base64: %v", err)
+			v.errorf(setting, "not valid base64%s: %v", origin, err)
 		case len(decoded) == 0:
-			v.errorf(path+".secret", "empty secret")
+			v.errorf(setting, "empty secret%s", origin)
 		case len(decoded) < algorithmSize(algorithm):
-			v.warnf(path+".secret", "%d bytes is shorter than the %d-byte output of %s, as RFC 8945 advises against",
+			v.warnf(setting, "%d bytes is shorter than the %d-byte output of %s, as RFC 8945 advises against",
 				len(decoded), algorithmSize(algorithm), algorithm)
 		}
 		secret = decoded
@@ -217,6 +218,20 @@ func algorithmSize(algorithm Algorithm) int {
 		return 16
 	default:
 		return 0
+	}
+}
+
+// secretOrigin returns the path of the setting that gives a secret, and the
+// file or the variable that the errors on its value name, never the value
+// itself; nothing for a secret written inline.
+func secretOrigin(path, field, fromFile, fromEnv string) (setting, origin string) {
+	switch {
+	case fromFile != "":
+		return path + "." + field + "File", ", in " + fromFile
+	case fromEnv != "":
+		return path + "." + field + "Env", ", in " + fromEnv
+	default:
+		return path + "." + field, ""
 	}
 }
 

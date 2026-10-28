@@ -168,7 +168,7 @@ func TestParseFull(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"keys[1].secret: 28 bytes is shorter than the 32-byte output of hmac-sha256",
+		"keys[1].secretFile: 28 bytes is shorter than the 32-byte output of hmac-sha256",
 		"keys[2].algorithm: RFC 8945 forbids HMAC-MD5",
 		"backends[2].rfc2136.key.algorithm: RFC 8945 recommends against HMAC-SHA1: switch the name server",
 		"backends[3].webhook.insecureSkipVerify: accepts any certificate: someone in the middle may read the requests, " +
