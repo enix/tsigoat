@@ -21,9 +21,371 @@
       "type": "object"
     },
     "config": {
-      "additionalProperties": true,
+      "additionalProperties": false,
       "required": [],
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "admin": {
+          "additionalProperties": false,
+          "properties": {
+            "listen": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "backends": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "cloudflare": {
+                "additionalProperties": false,
+                "properties": {
+                  "apiToken": {
+                    "type": "string"
+                  },
+                  "apiTokenEnv": {
+                    "type": "string"
+                  },
+                  "apiTokenFile": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "string"
+                  },
+                  "zoneIds": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "name": {
+                "type": "string"
+              },
+              "ovh": {
+                "additionalProperties": false,
+                "properties": {
+                  "applicationKey": {
+                    "type": "string"
+                  },
+                  "applicationSecret": {
+                    "type": "string"
+                  },
+                  "applicationSecretEnv": {
+                    "type": "string"
+                  },
+                  "applicationSecretFile": {
+                    "type": "string"
+                  },
+                  "consumerKey": {
+                    "type": "string"
+                  },
+                  "consumerKeyEnv": {
+                    "type": "string"
+                  },
+                  "consumerKeyFile": {
+                    "type": "string"
+                  },
+                  "endpoint": {
+                    "type": "string"
+                  },
+                  "oauth2": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "clientId": {
+                        "type": "string"
+                      },
+                      "clientSecret": {
+                        "type": "string"
+                      },
+                      "clientSecretEnv": {
+                        "type": "string"
+                      },
+                      "clientSecretFile": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "timeout": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "powerdns": {
+                "additionalProperties": false,
+                "properties": {
+                  "apiKey": {
+                    "type": "string"
+                  },
+                  "apiKeyEnv": {
+                    "type": "string"
+                  },
+                  "apiKeyFile": {
+                    "type": "string"
+                  },
+                  "caFile": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "rfc2136": {
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "algorithm": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "secret": {
+                        "type": "string"
+                      },
+                      "secretEnv": {
+                        "type": "string"
+                      },
+                      "secretFile": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "server": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "scaleway": {
+                "additionalProperties": false,
+                "properties": {
+                  "secretKey": {
+                    "type": "string"
+                  },
+                  "secretKeyEnv": {
+                    "type": "string"
+                  },
+                  "secretKeyFile": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "type": {
+                "type": "string"
+              },
+              "webhook": {
+                "additionalProperties": false,
+                "properties": {
+                  "basicAuth": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "password": {
+                        "type": "string"
+                      },
+                      "passwordEnv": {
+                        "type": "string"
+                      },
+                      "passwordFile": {
+                        "type": "string"
+                      },
+                      "username": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "bearer": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "token": {
+                        "type": "string"
+                      },
+                      "tokenEnv": {
+                        "type": "string"
+                      },
+                      "tokenFile": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "caFile": {
+                    "type": "string"
+                  },
+                  "followRedirects": {
+                    "type": "boolean"
+                  },
+                  "headers": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        },
+                        "valueEnv": {
+                          "type": "string"
+                        },
+                        "valueFile": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "insecureSkipVerify": {
+                    "type": "boolean"
+                  },
+                  "signature": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "secret": {
+                        "type": "string"
+                      },
+                      "secretEnv": {
+                        "type": "string"
+                      },
+                      "secretFile": {
+                        "type": "string"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "timeout": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "keys": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "algorithm": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "secret": {
+                "type": "string"
+              },
+              "secretEnv": {
+                "type": "string"
+              },
+              "secretFile": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "listen": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "zones": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "allowUnauthenticated": {
+                "type": "boolean"
+              },
+              "backend": {
+                "type": "string"
+              },
+              "keys": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              },
+              "policy": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "acme": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "content": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "maxRecords": {
+                      "type": "integer"
+                    },
+                    "maxTTL": {
+                      "type": "integer"
+                    },
+                    "names": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "types": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      }
     },
     "enabled": {
       "default": true,

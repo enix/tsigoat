@@ -13,7 +13,8 @@ const chartValues = "examples/helm/*.values.yaml test/chart/valid/*.yaml"
 
 // HelmDocs generates the files of the chart that derive from values.yaml:
 // README.md, from README.md.gotmpl and the `# --` comments of the values, and
-// values.schema.json, from the values and their `# @schema` annotations.
+// values.schema.json, from the values and their `# @schema` annotations, with
+// the schema of config from the types of the configuration file.
 // `task doc:helm` exports them into chart/.
 func (m *Tsigoat) HelmDocs() *dagger.Directory {
 	chart := m.Source.Directory("chart")
@@ -43,6 +44,20 @@ func (m *Tsigoat) HelmDocs() *dagger.Directory {
 			dagger.ContainerWithExecOpts{UseEntrypoint: true},
 		).
 		File("/src/chart/values.schema.json")
+	// The schema of config comes from the types that decode the
+	// configuration file: it refuses the fields that tsigoat does not know.
+	configSchema := goBase(m.Source).
+		WithExec([]string{"go", "run", "./internal/config/printschema"},
+			dagger.ContainerWithExecOpts{RedirectStdout: "/tmp/config.schema.json"}).
+		File("/tmp/config.schema.json")
+	schema = dag.Container().
+		From(alpineImage).
+		WithExec([]string{"apk", "add", "--no-cache", "jq"}).
+		WithFile("/tmp/values.schema.json", schema).
+		WithFile("/tmp/config.schema.json", configSchema).
+		WithExec([]string{"sh", "-euc",
+			`jq --slurpfile config /tmp/config.schema.json '.properties.config += $config[0]' /tmp/values.schema.json > /tmp/merged.json`}).
+		File("/tmp/merged.json")
 	return dag.Directory().
 		WithFile("README.md", readme).
 		WithFile("values.schema.json", schema)

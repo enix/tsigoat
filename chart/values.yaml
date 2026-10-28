@@ -98,7 +98,6 @@ podDisruptionBudget:
 
 # @schema
 # type: object
-# additionalProperties: true
 # properties: {}
 # @schema
 # -- Configuration of tsigoat: `keys`, `backends` and `zones`, as

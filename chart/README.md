@@ -74,10 +74,12 @@ complete values files.
 `config` holds the configuration file of tsigoat, as
 [its reference](https://github.com/enix/tsigoat/blob/main/docs/configuration.md)
 describes it, without `listen` and `admin`: the chart sets the listen
-addresses. The chart refuses a configuration without zones or backends, and
-one that writes a secret inline, which would land in a ConfigMap: the values
-of the headers of a webhook too, since the chart cannot tell a secret header
-from another.
+addresses. The schema of the values holds the one of the configuration file:
+a field that tsigoat does not know, or a field of the wrong shape, fails the
+installation, rather than the pod. The chart refuses a configuration without
+zones or backends, and one that writes a secret inline, which would land in a
+ConfigMap: the values of the headers of a webhook too, since the chart cannot
+tell a secret header from another.
 
 The secrets, the TSIG secrets of the clients and those of the backends, come
 from one of:

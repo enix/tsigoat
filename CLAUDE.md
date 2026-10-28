@@ -174,6 +174,11 @@ removed with the fix.
   `# @schema` block (helm-schema drops the inferred one), and
   `properties: {}` on free-form objects with defaults (it would otherwise
   forbid their unknown nested keys).
+- The schema of `config` comes from the types that decode the configuration
+  file (`config.Schema`, printed by `internal/config/printschema`), which
+  `task doc:helm` inserts into `values.schema.json`: a change of those types
+  needs `task doc:helm`, and the schema refuses the fields that tsigoat does
+  not know, as its decoder does.
 - The release writes `image.digests` (tag → digest of the multi-platform
   image, checked on every registry) into the packaged chart, which pulls those
   tags by digest unless `image.pinDigest` is false; in the repository it is

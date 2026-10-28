@@ -58,7 +58,7 @@ Single sources of truth:
 | Webhook example | `task test:webhook`: nsupdate through tsigoat to `examples/webhook/webhook.py` |
 | Scenarios against BIND 9 | `task test:differential`; intended divergences go to `test/differential/divergences.yaml` |
 | Hosted providers, for real | `task test:live`, with your test zones and credentials, see [Live tests](#live-tests) |
-| Helm chart | `task lint:helm`, `task test:helm`; `task doc:helm` after a change to `chart/values.yaml` |
+| Helm chart | `task lint:helm`, `task test:helm`; `task doc:helm` after a change to `chart/values.yaml` or to the configuration file |
 | cert-manager in Kubernetes | `task test:acceptance`, which installs the chart in k3s inside Dagger; nightly in CI |
 | Fuzzing | `task test:fuzz`, `FUZZTIME=10m` for longer runs; nightly in CI |
 | Linters | `task lint`, or `task lint:go`, `lint:markdown`, `lint:actions`... |
@@ -147,7 +147,9 @@ simulation to correct, then at the backend.
 the values: a `# --` comment describes each value for helm-docs, and a
 `# @schema` block constrains it for helm-schema, with an explicit `type`.
 `task doc:helm` regenerates `chart/README.md`, from `chart/README.md.gotmpl`,
-and `chart/values.schema.json`; CI fails when they are stale.
+and `chart/values.schema.json`, whose `config` takes the schema of the
+configuration file from the types that decode it in `internal/config`; CI
+fails when they are stale.
 
 `task test:helm` renders the chart with every values file of `examples/helm`
 and `test/chart/valid`, validates the rendered configuration with the rules of

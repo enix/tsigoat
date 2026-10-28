@@ -1,0 +1,15 @@
+# A misspelled field of the configuration fails the installation, rather than
+# reach the ConfigMap, a secret with it.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: http://pdns.example.test:8081
+        api_key: inline-api-key-of-the-chart-test # gitleaks:allow (fixture)
+  zones:
+    - name: example.test.
+      keys: [acme.]

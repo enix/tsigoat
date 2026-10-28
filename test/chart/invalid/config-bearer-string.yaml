@@ -1,0 +1,15 @@
+# The bearer token of a webhook is read from a file or the environment: a
+# string fails the installation, rather than reach the ConfigMap.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: hook
+      type: webhook
+      webhook:
+        url: https://hooks.example.test/tsigoat
+        bearer: inline-token-of-the-chart-test # gitleaks:allow (fixture)
+  zones:
+    - name: example.test.
+      keys: [acme.]

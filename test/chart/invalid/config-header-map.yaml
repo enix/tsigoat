@@ -1,0 +1,16 @@
+# The headers of a webhook are a list of names and files: a map of values
+# fails the installation, rather than reach the ConfigMap.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: hook
+      type: webhook
+      webhook:
+        url: https://hooks.example.test/tsigoat
+        headers:
+          Authorization: Bearer inline-token-of-the-chart-test # gitleaks:allow (fixture)
+  zones:
+    - name: example.test.
+      keys: [acme.]
