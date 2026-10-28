@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -56,15 +57,41 @@ func (s *Server) ServeDNS(w dns.ResponseWriter, req *dns.Msg) {
 	if addr := w.RemoteAddr(); addr != nil {
 		ex.logger = ex.logger.With("remote", addr.String())
 	}
+	written := false
+	defer func() {
+		if panicked := recover(); panicked != nil {
+			s.recovered(ctx, ex, panicked, written, time.Since(start))
+		}
+	}()
 	resp := s.handle(ctx, ex)
 	if _, tcp := w.RemoteAddr().(*net.TCPAddr); !tcp {
 		s.fit(resp, udpSize(req))
 	}
+	written = true
 	if err := w.WriteMsg(resp); err != nil {
 		ex.logger.WarnContext(ctx, "writing the response failed", "error", err)
 	}
 	if s.observer != nil {
 		s.observer.Observe(ex.answer(resp, time.Since(start)))
+	}
+}
+
+// recovered answers a request whose processing panicked with SERVFAIL, unless
+// a response left already, and logs the panic with its stack: a bug that a
+// request triggers fails that request alone, not the process with every
+// request in progress. miekg/dns recovers no panic of its handlers.
+func (s *Server) recovered(ctx context.Context, ex *exchange, panicked any, written bool, elapsed time.Duration) {
+	ex.logger.ErrorContext(ctx, "panic serving a request", "panic", fmt.Sprint(panicked), "stack", string(debug.Stack()))
+	if written {
+		return
+	}
+	resp := new(dns.Msg)
+	resp.SetRcode(ex.req, dns.RcodeServerFailure)
+	if err := ex.w.WriteMsg(resp); err != nil {
+		ex.logger.WarnContext(ctx, "writing the response failed", "error", err)
+	}
+	if s.observer != nil {
+		s.observer.Observe(ex.answer(resp, elapsed))
 	}
 }
 

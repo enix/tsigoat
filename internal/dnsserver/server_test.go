@@ -714,3 +714,43 @@ func TestShutdownStopsEveryListener(t *testing.T) {
 		t.Errorf("Shutdown() = %v", err)
 	}
 }
+
+// panickingBackend is a backend whose lookups panic, as a bug would.
+type panickingBackend struct {
+	backend.Backend
+}
+
+func (panickingBackend) Lookup(context.Context, string, string) ([]backend.RRset, error) {
+	panic("lookup broken")
+}
+
+// TestPanicRecovery checks that a request that panics gets SERVFAIL, and the
+// log the panic with its stack, and that the server goes on: the second
+// update gets the lock of the zone, which the first one released.
+func TestPanicRecovery(t *testing.T) {
+	t.Parallel()
+	f := newFixtureWith(t, func(z *Zone) { z.Backend = panickingBackend{z.Backend} })
+
+	for range 2 {
+		resp, err := f.exchange(t, "udp", updateMsg(t), time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Rcode != dns.RcodeServerFailure {
+			t.Errorf("rcode %s, want SERVFAIL", dns.RcodeToString[resp.Rcode])
+		}
+	}
+	logs := f.logs.String()
+	for _, want := range []string{"level=ERROR", `msg="panic serving a request"`, `panic="lookup broken"`, "stack="} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("logs without %s:\n%s", want, logs)
+		}
+	}
+
+	m := new(dns.Msg)
+	m.SetQuestion("www.example.test.", dns.TypeA)
+	resp, err := f.exchange(t, "udp", m, time.Time{})
+	if err != nil || resp.Rcode != dns.RcodeNotImplemented {
+		t.Errorf("a query after the panics: %v, %v", resp, err)
+	}
+}

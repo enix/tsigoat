@@ -151,6 +151,11 @@ configuration that does not load gives `error="invalid configuration"`, its
 valid base64, in /run/secrets/tsigoat/acme`. Only the flags that come before the
 log, such as an unknown `--log-format`, fail with a plain line.
 
+A request whose processing panics, on a bug, gets SERVFAIL, and the log gets
+`msg="panic serving a request"` at `ERROR`, with the `panic` and its `stack`:
+tsigoat goes on serving the other requests. Please report such an entry. The
+administration server logs its own errors with `server=admin`.
+
 Every update ends with one entry, `msg=update`:
 
 | Field | Content |
