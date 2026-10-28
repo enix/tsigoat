@@ -1,0 +1,39 @@
+# Labels of the values that collide with those of the chart, which win, and
+# with each other: the labels of an object win over extraLabels.
+config:
+  keys:
+    - name: acme.
+      secretFile: /run/secrets/tsigoat/acme
+  backends:
+    - name: pdns
+      type: powerdns
+      powerdns:
+        url: https://pdns.example.test
+        apiKeyFile: /run/secrets/tsigoat/pdns
+  zones:
+    - name: example.test.
+      keys: [acme.]
+secret:
+  existingSecret: tsigoat
+extraLabels:
+  app.kubernetes.io/name: other
+  app.kubernetes.io/component: other
+  team: dns
+  tier: base
+podLabels:
+  app.kubernetes.io/instance: other
+  team: pods
+service:
+  extraLabels:
+    app.kubernetes.io/managed-by: other
+    tier: edge
+serviceMonitor:
+  enabled: true
+  extraLabels:
+    helm.sh/chart: other
+    release: prometheus
+prometheusRules:
+  enabled: true
+  extraLabels:
+    app.kubernetes.io/version: other
+    tier: rules

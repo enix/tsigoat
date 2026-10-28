@@ -31,14 +31,32 @@ contains it already. Truncated to 57 characters, so that suffixes such as
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
-{{- define "tsigoat.labels" -}}
-helm.sh/chart: {{ include "tsigoat.chart" . }}
-{{ include "tsigoat.selectorLabels" . }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-{{- with .Values.extraLabels }}
+{{/*
+Labels of an object, from a dict: "root", the context of the chart, and
+optionally "component", the component of the object, and "extra", the labels
+of the object that the values give, which win over extraLabels. The labels of
+the chart win over both: its selectors rely on them.
+*/}}
+{{- define "tsigoat.objectLabels" -}}
+{{- $root := .root -}}
+helm.sh/chart: {{ include "tsigoat.chart" $root }}
+{{ include "tsigoat.selectorLabels" $root }}
+app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+{{- with .component }}
+app.kubernetes.io/component: {{ . }}
+{{- end }}
+{{- $extra := merge (deepCopy (.extra | default dict)) ($root.Values.extraLabels | default dict) }}
+{{- with omit $extra "helm.sh/chart" "app.kubernetes.io/name" "app.kubernetes.io/instance" "app.kubernetes.io/version" "app.kubernetes.io/managed-by" "app.kubernetes.io/component" }}
 {{ toYaml . }}
 {{- end }}
+{{- end -}}
+
+{{/*
+Labels of an object with neither a component nor labels of its own.
+*/}}
+{{- define "tsigoat.labels" -}}
+{{- include "tsigoat.objectLabels" (dict "root" .) -}}
 {{- end -}}
 
 {{- define "tsigoat.selectorLabels" -}}

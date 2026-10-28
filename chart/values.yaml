@@ -9,7 +9,8 @@ namespaceOverride: ""
 # additionalProperties:
 #   type: string
 # @schema
-# -- Labels added to every object of the chart; `podLabels` labels the pod
+# -- Labels added to every object of the chart; `podLabels` labels the pod.
+# The labels of the chart win over them, and so do those of each object
 extraLabels: {}
 
 image:
@@ -173,7 +174,8 @@ service:
   #   type: string
   # @schema
   # -- Labels of the DNS Service, such as those that a BGP advertisement or a
-  # load balancer selects; the labels of the chart win over them
+  # load balancer selects; they win over `extraLabels`, and the labels of the
+  # chart over both
   extraLabels: {}
   # -- Cluster IP of the DNS Service, in the service range of the cluster;
   # Kubernetes assigns one when empty
@@ -287,7 +289,8 @@ serviceMonitor:
   # additionalProperties:
   #   type: string
   # @schema
-  # -- Labels of the ServiceMonitor, such as those that Prometheus selects
+  # -- Labels of the ServiceMonitor, such as those that Prometheus selects;
+  # they win over `extraLabels`, and the labels of the chart over both
   extraLabels: {}
   # @schema
   # type: array
@@ -312,7 +315,8 @@ prometheusRules:
   # additionalProperties:
   #   type: string
   # @schema
-  # -- Labels of the PrometheusRule, such as those that Prometheus selects
+  # -- Labels of the PrometheusRule, such as those that Prometheus selects;
+  # they win over `extraLabels`, and the labels of the chart over both
   extraLabels: {}
   # @schema
   # type: object
@@ -363,7 +367,7 @@ podAnnotations: {}
 # additionalProperties:
 #   type: string
 # @schema
-# -- Labels of the pod
+# -- Labels of the pod; its selector labels win over them
 podLabels: {}
 
 # @schema

@@ -205,7 +205,7 @@ covers the images and the binaries.
 | nameOverride | string | `""` | Partially override the name of the resources, which the release name prefixes |
 | fullnameOverride | string | `""` | Fully override the name of the resources |
 | namespaceOverride | string | `""` | Override the namespace of the resources |
-| extraLabels | object | `{}` | Labels added to every object of the chart; `podLabels` labels the pod |
+| extraLabels | object | `{}` | Labels added to every object of the chart; `podLabels` labels the pod. The labels of the chart win over them, and so do those of each object |
 | image.registry | string | `"ghcr.io"` | Image registry; an empty string lets the container runtime choose |
 | image.repository | string | `"enix/tsigoat"` | Image repository |
 | image.tag | string | `""` | Image tag; the appVersion of the chart by default |
@@ -229,7 +229,7 @@ covers the images and the binaries.
 | service.port | int | `53` | DNS port of the Service, for both UDP and TCP |
 | service.nodePort | int | `0` | Node port for both UDP and TCP, with `NodePort` and `LoadBalancer`; 0 lets Kubernetes choose |
 | service.annotations | object | `{}` | Annotations of the DNS Service, such as those of a cloud load balancer |
-| service.extraLabels | object | `{}` | Labels of the DNS Service, such as those that a BGP advertisement or a load balancer selects; the labels of the chart win over them |
+| service.extraLabels | object | `{}` | Labels of the DNS Service, such as those that a BGP advertisement or a load balancer selects; they win over `extraLabels`, and the labels of the chart over both |
 | service.clusterIP | string | `""` | Cluster IP of the DNS Service, in the service range of the cluster; Kubernetes assigns one when empty |
 | service.externalIPs | list | `[]` | Addresses out of the cluster that reach the DNS Service, such as those that the network announces through BGP; a `ClusterIP` Service serves them |
 | service.ipFamilyPolicy | string | `""` | IP family policy of the DNS Service; `SingleStack` when empty |
@@ -248,11 +248,11 @@ covers the images and the binaries.
 | serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor for the Prometheus operator |
 | serviceMonitor.interval | string | `""` | Scrape interval; the default of Prometheus when empty |
 | serviceMonitor.scrapeTimeout | string | `""` | Scrape timeout; the default of Prometheus when empty |
-| serviceMonitor.extraLabels | object | `{}` | Labels of the ServiceMonitor, such as those that Prometheus selects |
+| serviceMonitor.extraLabels | object | `{}` | Labels of the ServiceMonitor, such as those that Prometheus selects; they win over `extraLabels`, and the labels of the chart over both |
 | serviceMonitor.relabelings | list | `[]` | Relabelings of the targets |
 | serviceMonitor.metricRelabelings | list | `[]` | Relabelings of the metrics |
 | prometheusRules.enabled | bool | `false` | Create a PrometheusRule with the alerts of tsigoat |
-| prometheusRules.extraLabels | object | `{}` | Labels of the PrometheusRule, such as those that Prometheus selects |
+| prometheusRules.extraLabels | object | `{}` | Labels of the PrometheusRule, such as those that Prometheus selects; they win over `extraLabels`, and the labels of the chart over both |
 | prometheusRules.alertLabels | object | `{}` | Labels added to every alert, which override the severity of the alerts too |
 | prometheusRules.selector | string | `""` | PromQL label matchers that select the metrics of the release, such as `job="tsigoat"`; the namespace of the release and the job of the ServiceMonitor by default |
 | prometheusRules.disabledAlerts | list | `[]` | Alerts to leave out, by name: `TsigoatBackendErrors`, `TsigoatUncertainUpdates`, `TsigoatUpdatesFailing`, `TsigoatSignatureFailures`, `TsigoatLegacyAlgorithm` |
@@ -260,7 +260,7 @@ covers the images and the binaries.
 | serviceAccount.name | string | `""` | Name of the ServiceAccount; the name of the release by default |
 | serviceAccount.annotations | object | `{}` | Annotations of the ServiceAccount |
 | podAnnotations | object | `{}` | Annotations of the pod |
-| podLabels | object | `{}` | Labels of the pod |
+| podLabels | object | `{}` | Labels of the pod; its selector labels win over them |
 | podSecurityContext | object | non-root, with the runtime default seccomp profile | Security context of the pod |
 | securityContext | object | no privilege escalation, read-only root, no capability | Security context of the container |
 | resources | object | requests of 10m CPU and 32Mi, limit of 128Mi | Resources of the container |

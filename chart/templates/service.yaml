@@ -1,20 +1,13 @@
 {{- $nodePorts := ne .Values.service.type "ClusterIP" }}
 {{- $external := or $nodePorts (not (empty .Values.service.externalIPs)) }}
 {{- $loadBalancer := eq .Values.service.type "LoadBalancer" }}
-{{- $chartLabels := set (include "tsigoat.labels" . | fromYaml) "app.kubernetes.io/component" "dns" }}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "tsigoat.fullname" . }}
   namespace: {{ include "tsigoat.namespace" . }}
   labels:
-    {{- include "tsigoat.labels" . | nindent 4 }}
-    app.kubernetes.io/component: dns
-    {{- range $key, $value := .Values.service.extraLabels }}
-    {{- if not (hasKey $chartLabels $key) }}
-    {{ $key }}: {{ $value | quote }}
-    {{- end }}
-    {{- end }}
+    {{- include "tsigoat.objectLabels" (dict "root" . "component" "dns" "extra" .Values.service.extraLabels) | nindent 4 }}
   {{- with .Values.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

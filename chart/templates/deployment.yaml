@@ -28,7 +28,7 @@ spec:
     metadata:
       labels:
         {{- include "tsigoat.selectorLabels" . | nindent 8 }}
-        {{- with .Values.podLabels }}
+        {{- with omit (.Values.podLabels | default dict) "app.kubernetes.io/name" "app.kubernetes.io/instance" }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:

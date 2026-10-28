@@ -8,10 +8,7 @@ metadata:
   name: {{ include "tsigoat.fullname" . }}
   namespace: {{ include "tsigoat.namespace" . }}
   labels:
-    {{- include "tsigoat.labels" . | nindent 4 }}
-    {{- with $rules.extraLabels }}
-    {{- toYaml . | nindent 4 }}
-    {{- end }}
+    {{- include "tsigoat.objectLabels" (dict "root" . "extra" $rules.extraLabels) | nindent 4 }}
 spec:
   groups:
     - name: tsigoat

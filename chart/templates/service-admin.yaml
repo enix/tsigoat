@@ -6,8 +6,7 @@ metadata:
   name: {{ include "tsigoat.fullname" . }}-admin
   namespace: {{ include "tsigoat.namespace" . }}
   labels:
-    {{- include "tsigoat.labels" . | nindent 4 }}
-    app.kubernetes.io/component: admin
+    {{- include "tsigoat.objectLabels" (dict "root" . "component" "admin") | nindent 4 }}
 spec:
   type: ClusterIP
   selector:
