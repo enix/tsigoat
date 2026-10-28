@@ -187,7 +187,12 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # The installer defaults to cosign 3.0, whose signature fails when its
+      # upload to Rekor goes again after a server error: cosign 3.1 takes the
+      # entry that the first attempt wrote.
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.1.4"
       - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7
         with:
@@ -299,6 +304,8 @@ jobs:
         with:
           version: "v4.3.1"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: "v3.1.4" # as in the goreleaser job
       # helm and cosign keep their own credentials.
       - name: Login to the chart registry
         env:

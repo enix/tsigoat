@@ -124,6 +124,17 @@
       datasourceTemplate: "docker",
     },
     {
+      // The cosign that sigstore/cosign-installer installs: the
+      // github-actions manager does not read that input.
+      customType: "regex",
+      managerFilePatterns: ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      matchStrings: [
+        "cosign-release:\\s*[\"']?(?<currentValue>v\\d[\\w.-]*)[\"']?",
+      ],
+      depNameTemplate: "sigstore/cosign",
+      datasourceTemplate: "github-releases",
+    },
+    {
       customType: "regex",
       managerFilePatterns: ["/^flake\\.nix$/"],
       matchStrings: [
