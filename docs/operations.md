@@ -175,6 +175,7 @@ With `admin.listen` set, tsigoat serves over HTTP:
 | `tsigoat_dns_responses_total` | `opcode`, `rcode`, `zone`, `key`, `algorithm` |
 | `tsigoat_dns_response_duration_seconds` | `opcode` |
 | `tsigoat_tsig_failures_total` | `error`: BADKEY, BADSIG, BADTIME or BADTRUNC |
+| `tsigoat_tsig_key_last_use_timestamp_seconds` | `key`, `algorithm`: time of the last request that the key signed |
 | `tsigoat_backend_calls_total` | `backend`, `operation` (lookup, apply; relay and check for the `rfc2136` and `webhook` backends), `result` (success, error, or indeterminate when tsigoat could not tell whether a write applied) |
 | `tsigoat_backend_call_duration_seconds` | `backend`, `operation` |
 | `tsigoat_backend_last_indeterminate_timestamp_seconds` | `backend`: time of the last call whose outcome is unknown, 0 when there was none |

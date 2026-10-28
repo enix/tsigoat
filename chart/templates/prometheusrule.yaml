@@ -61,7 +61,7 @@ spec:
         {{- end }}
         {{- if not (has "TsigoatLegacyAlgorithm" $rules.disabledAlerts) }}
         - alert: TsigoatLegacyAlgorithm
-          expr: sum by (namespace, key, algorithm) (increase(tsigoat_dns_responses_total{ {{- $selector }}, algorithm=~"hmac-md5|hmac-sha1"}[1d])) > 0
+          expr: time() - max by (namespace, key, algorithm) (max_over_time(tsigoat_tsig_key_last_use_timestamp_seconds{ {{- $selector }}, algorithm=~"hmac-md5|hmac-sha1"}[1d]) > 0) < 86400
           labels:
             {{- merge (deepCopy $rules.alertLabels) (dict "severity" "info") | toYaml | nindent 12 }}
           annotations:

@@ -26,6 +26,7 @@ func TestObserve(t *testing.T) {
 	t.Parallel()
 	m := newMetrics(t)
 
+	before := time.Now()
 	m.Observe(&dnsserver.Answer{
 		Opcode: "UPDATE", Rcode: "NOERROR", Zone: "example.test.", Key: "key.",
 		Algorithm: "hmac-md5.sig-alg.reg.int.", Duration: 3 * time.Millisecond,
@@ -40,6 +41,15 @@ func TestObserve(t *testing.T) {
 	}
 	if count := testutil.CollectAndCount(m.responseTime); count != 1 {
 		t.Errorf("%d response time series, want 1", count)
+	}
+	// The time of the last use of key., which the unsigned request leaves
+	// alone.
+	if count := testutil.CollectAndCount(m.keyLastUse); count != 1 {
+		t.Errorf("%d last use series, want the one of key.", count)
+	}
+	lastUse := testutil.ToFloat64(m.keyLastUse.WithLabelValues("key.", "hmac-md5"))
+	if lastUse < float64(before.Unix()) || lastUse > float64(time.Now().Unix()+1) {
+		t.Errorf("last use of key. = %v, want the time of its request", lastUse)
 	}
 	want := `
 # HELP tsigoat_build_info Always 1, labeled with the build of tsigoat.

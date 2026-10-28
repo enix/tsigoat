@@ -37,6 +37,10 @@ type Metrics struct {
 	// outcome is unknown, which an alert compares with the current time,
 	// whatever the time of the scrapes.
 	lastIndeterminate *prometheus.GaugeVec
+	// keyLastUse holds the time of the last request that each key signed,
+	// which the alert on the legacy algorithms compares with the current
+	// time: a counter that its first request creates at 1 shows no increase.
+	keyLastUse *prometheus.GaugeVec
 }
 
 var _ dnsserver.Observer = (*Metrics)(nil)
@@ -82,6 +86,11 @@ func New(info *product.Info) *Metrics {
 			Help: "Time of the last call of a backend whose outcome is unknown, in seconds since the epoch; " +
 				"0 when there was none.",
 		}, []string{labelBackend}),
+		keyLastUse: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "tsig_key_last_use_timestamp_seconds",
+			Help:      "Time of the last request that a key signed, in seconds since the epoch, by key and its TSIG algorithm.",
+		}, []string{"key", "algorithm"}),
 	}
 	buildInfo := prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: namespace,
@@ -91,7 +100,7 @@ func New(info *product.Info) *Metrics {
 	buildInfo.WithLabelValues(info.Version, info.GitCommit, info.Runtime).Set(1)
 
 	m.registry.MustRegister(
-		m.responses, m.responseTime, m.tsigFailures, m.backendCalls, m.backendCallTime, m.lastIndeterminate, buildInfo,
+		m.responses, m.responseTime, m.tsigFailures, m.backendCalls, m.backendCallTime, m.lastIndeterminate, m.keyLastUse, buildInfo,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -109,6 +118,9 @@ func (m *Metrics) Observe(a *dnsserver.Answer) {
 	m.responseTime.WithLabelValues(a.Opcode).Observe(a.Duration.Seconds())
 	if a.TSIGError != "" {
 		m.tsigFailures.WithLabelValues(a.TSIGError).Inc()
+	}
+	if a.Key != "" {
+		m.keyLastUse.WithLabelValues(a.Key, algorithmName(a.Algorithm)).SetToCurrentTime()
 	}
 }
 
