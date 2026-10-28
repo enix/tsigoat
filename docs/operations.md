@@ -4,7 +4,7 @@
 
 | Command | Purpose |
 | --- | --- |
-| `tsigoat serve` | Serve DNS updates until SIGINT or SIGTERM, then finish the updates in progress |
+| `tsigoat serve` | Serve DNS updates until SIGINT or SIGTERM, then for the shutdown delay, then finish the updates in progress |
 | `tsigoat check-config` | Validate the configuration and print its warnings; `--backends` also reads every zone through its backend; exit code 1 when a check fails |
 | `tsigoat version` | Print the version and the build details; `--short` for the version only |
 
@@ -18,13 +18,17 @@ default. `serve` also takes:
 | `--log-format` | `text`, the default, or `json` |
 | `--log-level` | `debug`, `info`, the default, `warn` or `error` |
 | `--auto-gomemlimit` | Set the Go memory limit from the cgroup; on by default |
+| `--shutdown-delay` | Time to go on serving after SIGINT or SIGTERM, while `/readyz` answers 503; 0 by default, 5 seconds in the chart |
 
 A request runs for at most ten seconds, backend calls included; an update
 that fails at a hosted provider may go on for up to fifteen seconds more, to
-read its records back or to restore them. On SIGINT or SIGTERM, tsigoat stops
-listening on every address at once, then finishes the requests in progress,
-for 26 seconds at most: give it that much time to stop, as the 30 seconds of
-the `terminationGracePeriodSeconds` of the chart do.
+read its records back or to restore them. On SIGINT or SIGTERM, `/readyz`
+answers 503 at once, and tsigoat goes on serving for its `--shutdown-delay`,
+so that the Services and the load balancers stop sending it requests first.
+Then it stops listening on every address at once, and finishes the requests
+in progress, for 26 seconds at most: give it the delay and 26 seconds to
+stop, as the 40 seconds of the `terminationGracePeriodSeconds` of the chart
+do with its delay of 5 seconds.
 
 ## Container images
 
@@ -123,7 +127,8 @@ To keep them all, run a single instance: with the chart, set `replicaCount`
 to 1, and `strategy.type` to `Recreate`, which stops the old pod before it
 starts the new one. Kubernetes holds that during the rollouts of the
 Deployment alone: a pod deleted by hand or evicted gets its replacement at
-once, while it finishes its updates in progress, for 26 seconds at most,
+once, while it serves for its shutdown delay, then finishes its updates in
+progress, for 26 seconds at most,
 which may then race with those of the new pod. Avoid deleting the pod while
 updates run, such as during the renewals of cert-manager. Session affinity
 keeps the guarantees above for the updates of one
@@ -167,7 +172,7 @@ With `admin.listen` set, tsigoat serves over HTTP:
 | Endpoint | Answer |
 | --- | --- |
 | `/healthz` | 200 while the process runs |
-| `/readyz` | 200 while tsigoat serves DNS, 503 before and once it shuts down |
+| `/readyz` | 200 while tsigoat serves DNS, 503 before, and from SIGINT or SIGTERM on |
 | `/metrics` | Prometheus metrics |
 
 | Metric | Labels |

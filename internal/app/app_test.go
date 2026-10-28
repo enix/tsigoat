@@ -144,19 +144,7 @@ func TestAdminServer(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()
-
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if addr := a.AdminAddr(); addr != "" {
-			if status, _ := httpGet(t, "http://"+addr+"/readyz"); status == http.StatusOK {
-				break
-			}
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("tsigoat did not get ready")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitReady(t, a)
 
 	m := new(dns.Msg)
 	m.SetQuestion("www.example.test.", dns.TypeA)
@@ -187,6 +175,70 @@ func TestAdminServer(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Errorf("Run() = %v", err)
+	}
+}
+
+// waitReady waits until /readyz of a running app answers 200.
+func waitReady(t *testing.T, a *app.App) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if addr := a.AdminAddr(); addr != "" {
+			if status, _ := httpGet(t, "http://"+addr+"/readyz"); status == http.StatusOK {
+				return
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("tsigoat did not get ready")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestShutdownDelay checks that tsigoat goes on answering for its shutdown
+// delay once asked to stop, while /readyz tells that it stops, and stops
+// after it.
+func TestShutdownDelay(t *testing.T) {
+	t.Parallel()
+
+	const delay = 3 * time.Second
+	c := minimalConfig(t)
+	c.AdminListen = "127.0.0.1:0"
+	a, err := app.New(c, slog.New(slog.DiscardHandler), func(*config.Backend) (backend.Backend, error) {
+		return memory.New(), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.ShutdownDelay = delay
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- a.Run(ctx) }()
+	waitReady(t, a)
+
+	stopped := time.Now()
+	cancel()
+	readyz := "http://" + a.AdminAddr() + "/readyz"
+	for deadline := time.Now().Add(delay); ; time.Sleep(10 * time.Millisecond) {
+		if status, _ := httpGet(t, readyz); status == http.StatusServiceUnavailable {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("/readyz still answers 200 once tsigoat is asked to stop")
+		}
+	}
+	m := new(dns.Msg)
+	m.SetQuestion("www.example.test.", dns.TypeA)
+	client := &dns.Client{Timeout: 2 * time.Second}
+	if resp, _, err := client.ExchangeContext(t.Context(), m, a.Server.Addrs()[0]); err != nil || resp.Rcode != dns.RcodeNotImplemented {
+		t.Errorf("a query during the shutdown delay: %v, %v", resp, err)
+	}
+	if err := <-done; err != nil {
+		t.Errorf("Run() = %v", err)
+	}
+	if elapsed := time.Since(stopped); elapsed < delay {
+		t.Errorf("Run() returned %s after the stop, before the end of the shutdown delay of %s", elapsed, delay)
 	}
 }
 

@@ -65,6 +65,7 @@ func TestServeErrors(t *testing.T) {
 		{[]string{"serve", "--config", "/nonexistent/tsigoat.yaml"}, "error: reading the configuration"},
 		{[]string{"serve", "--log-level", "loud"}, "error: unknown log level"},
 		{[]string{"serve", "--log-format", "xml"}, "error: unknown log format"},
+		{[]string{"serve", "--shutdown-delay", "-1s"}, "error: --shutdown-delay is -1s: a delay cannot be negative"},
 		{[]string{"serve", "extra"}, "error: unknown command"},
 	} {
 		code, _, stderr := execute(tt.args...)

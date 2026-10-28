@@ -530,13 +530,18 @@
       ],
       "type": "object"
     },
+    "shutdownDelaySeconds": {
+      "default": 5,
+      "minimum": 0,
+      "type": "integer"
+    },
     "strategy": {
       "additionalProperties": true,
       "required": [],
       "type": "object"
     },
     "terminationGracePeriodSeconds": {
-      "default": 30,
+      "default": 40,
       "minimum": 0,
       "type": "integer"
     },

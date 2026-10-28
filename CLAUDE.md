@@ -48,7 +48,9 @@ build/                 Dockerfiles; package/: systemd unit, sysusers and scripts
   client affinity keeps them between the updates of one client alone, and
   an older PowerDNS (no EXTEND/PRUNE) needs a single instance. `Recreate`
   keeps a single replica alone during rollouts only: a pod deleted or
-  evicted finishes its updates (26 s at most) beside its replacement.
+  evicted serves for its shutdown delay (5 s in the chart, while `/readyz`
+  answers 503), then finishes its updates (26 s at most), beside its
+  replacement.
 - A zone on an `rfc2136` or `webhook` backend skips the engine: once the
   policy allows an update, `backend.Relay` sends it whole to the name server or
   the endpoint, which applies it; no zone lock in the server (the webhook

@@ -69,6 +69,7 @@ spec:
             - --admin-listen={{ include "tsigoat.adminListen" . }}
             - --log-format={{ .Values.log.format }}
             - --log-level={{ .Values.log.level }}
+            - --shutdown-delay={{ .Values.shutdownDelaySeconds }}s
           ports:
             - name: dns-udp
               containerPort: 5353

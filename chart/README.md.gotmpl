@@ -134,7 +134,10 @@ authentication: it has its own Service, always of type `ClusterIP`.
 ## Replicas
 
 tsigoat runs two replicas by default, with a rolling update and a
-PodDisruptionBudget, so that one of them may stop while the other serves. Each
+PodDisruptionBudget, so that one of them may stop while the other serves. A
+stopping pod goes on serving for `shutdownDelaySeconds`, while its readiness
+probe fails, so that the Services stop sending it requests before it closes
+its listeners. Each
 pod serializes the updates of a zone; the records that an update adds and
 removes apply to the records as they stand, so that the pods keep the records
 of each other's updates, such as the challenges of a certificate and of its
@@ -145,8 +148,9 @@ pod alone: see
 To keep every guarantee of RFC 2136, or in front of an older PowerDNS, set
 `replicaCount` to 1, and `strategy.type` to `Recreate`, which stops the old
 pod before it starts the new one during a rollout alone: a pod deleted by hand
-or evicted gets its replacement at once, while it finishes its updates in
-progress, for 26 seconds at most. Avoid deleting the pod while updates run.
+or evicted gets its replacement at once, while it serves for its shutdown
+delay, then finishes its updates in progress, for 26 seconds at most. Avoid
+deleting the pod while updates run.
 `service.sessionAffinity` set to `ClientIP` sends the requests of
 a client to one pod, which keeps these guarantees between the updates of that
 client, not between clients. `topologySpreadConstraints` spreads the replicas

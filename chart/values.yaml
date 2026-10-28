@@ -506,9 +506,16 @@ priorityClassName: ""
 # type: integer
 # minimum: 0
 # @schema
-# -- Time given to the updates in progress when a pod stops: tsigoat needs 26
-# seconds at most
-terminationGracePeriodSeconds: 30
+# -- Time that a stopping pod goes on serving, while its readiness probe
+# fails, so that the Services stop sending it requests first
+shutdownDelaySeconds: 5
+# @schema
+# type: integer
+# minimum: 0
+# @schema
+# -- Time given to a stopping pod: the shutdown delay, then the updates in
+# progress, which take 26 seconds at most
+terminationGracePeriodSeconds: 40
 
 # -- Additional objects to deploy with the release, as YAML objects or
 # strings, both rendered as templates

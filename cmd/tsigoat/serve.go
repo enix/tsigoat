@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/KimMachineGun/automemlimit/memlimit"
 	"github.com/spf13/cobra"
@@ -17,12 +18,13 @@ import (
 )
 
 type serveOptions struct {
-	configPath   string
-	listen       []string
-	adminListen  string
-	logFormat    string
-	logLevel     string
-	autoMemLimit bool
+	configPath    string
+	listen        []string
+	adminListen   string
+	logFormat     string
+	logLevel      string
+	autoMemLimit  bool
+	shutdownDelay time.Duration
 }
 
 func newServeCommand(stderr io.Writer) *cobra.Command {
@@ -30,8 +32,9 @@ func newServeCommand(stderr io.Writer) *cobra.Command {
 	command := &cobra.Command{
 		Use:   "serve",
 		Short: "Serve DNS updates",
-		Long: `Serve DNS updates over UDP and TCP until SIGINT or SIGTERM, then finish
-the updates in progress and exit. Logs go to the standard error.`,
+		Long: `Serve DNS updates over UDP and TCP until SIGINT or SIGTERM, then for the
+shutdown delay, while /readyz answers 503, then finish the updates in
+progress and exit. Logs go to the standard error.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return o.run(cmd.Context(), stderr)
@@ -48,10 +51,15 @@ the updates in progress and exit. Logs go to the standard error.`,
 		"log format: "+strings.Join(logging.Formats(), ", "))
 	flags.StringVar(&o.logLevel, "log-level", "info", "log level: "+strings.Join(logging.Levels(), ", "))
 	flags.BoolVar(&o.autoMemLimit, "auto-gomemlimit", true, "set GOMEMLIMIT from the memory limit of the cgroup")
+	flags.DurationVar(&o.shutdownDelay, "shutdown-delay", 0,
+		"time to go on serving after SIGINT or SIGTERM, while /readyz answers 503, so that load balancers stop sending requests first")
 	return command
 }
 
 func (o *serveOptions) run(ctx context.Context, stderr io.Writer) error {
+	if o.shutdownDelay < 0 {
+		return fmt.Errorf("--shutdown-delay is %s: a delay cannot be negative", o.shutdownDelay)
+	}
 	level, err := logging.ParseLevel(o.logLevel)
 	if err != nil {
 		return err
@@ -88,6 +96,7 @@ func (o *serveOptions) run(ctx context.Context, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	a.ShutdownDelay = o.shutdownDelay
 	if err := a.Run(ctx); err != nil {
 		return fmt.Errorf("%s stopped: %w", product.Slug, err)
 	}

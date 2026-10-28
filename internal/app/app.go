@@ -46,6 +46,10 @@ type App struct {
 	logger *slog.Logger
 	// stopping turns true when the app starts shutting down.
 	stopping atomic.Bool
+	// ShutdownDelay is the time that the servers go on once Run is asked to
+	// stop, while /readyz answers 503, so that the load balancers stop
+	// sending requests first.
+	ShutdownDelay time.Duration
 }
 
 // New assembles tsigoat. newBackend builds the backends; NewBackend when
@@ -258,7 +262,7 @@ func (a *App) AdminAddr() string {
 
 // Run checks the zones, then serves until ctx is done or a server fails. A
 // zone that fails the check only draws a warning: its backend may come back
-// later.
+// later. Once ctx is done, the servers go on for ShutdownDelay.
 func (a *App) Run(ctx context.Context) error {
 	checkCtx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
@@ -266,16 +270,13 @@ func (a *App) Run(ctx context.Context) error {
 		a.logger.WarnContext(ctx, "zone check failed", "error", err)
 	}
 
-	ctx, stop := context.WithCancel(ctx)
+	serveCtx, stop := context.WithCancel(context.WithoutCancel(ctx))
 	defer stop()
-	go func() {
-		<-ctx.Done()
-		a.stopping.Store(true)
-	}()
+	go a.stopAfterDelay(ctx, serveCtx, stop)
 
 	var adminDone <-chan error
 	if a.admin != nil {
-		if err := a.admin.Start(ctx); err != nil {
+		if err := a.admin.Start(serveCtx); err != nil {
 			return err
 		}
 		a.logger.InfoContext(ctx, "administration server listening", "address", a.admin.Addr())
@@ -283,7 +284,7 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	served := make(chan error, 1)
-	go func() { served <- a.Server.Run(ctx) }()
+	go func() { served <- a.Server.Run(serveCtx) }()
 
 	var err error
 	select {
@@ -304,4 +305,27 @@ func (a *App) Run(ctx context.Context) error {
 		return fmt.Errorf("serving: %w", err)
 	}
 	return nil
+}
+
+// stopAfterDelay marks the app as stopping once ctx is done, which /readyz
+// tells, then stops the servers after the shutdown delay. When the servers
+// stop first, on a failure, it only marks the app as stopping.
+func (a *App) stopAfterDelay(ctx, serveCtx context.Context, stop context.CancelFunc) {
+	select {
+	case <-serveCtx.Done():
+		a.stopping.Store(true)
+		return
+	case <-ctx.Done():
+	}
+	a.stopping.Store(true)
+	if a.ShutdownDelay > 0 {
+		a.logger.InfoContext(serveCtx, "stopping after the shutdown delay", slog.Duration("delay", a.ShutdownDelay))
+		timer := time.NewTimer(a.ShutdownDelay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+		case <-serveCtx.Done():
+		}
+	}
+	stop()
 }
