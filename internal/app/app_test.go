@@ -212,7 +212,10 @@ func TestShutdownDelay(t *testing.T) {
 	const delay = 3 * time.Second
 	c := minimalConfig(t)
 	c.AdminListen = "127.0.0.1:0"
-	a, err := app.New(c, slog.New(slog.DiscardHandler), func(*config.Backend) (backend.Backend, error) {
+	// The handlers of slog serialize their writes; the test reads the logs
+	// once Run returned.
+	logs := &strings.Builder{}
+	a, err := app.New(c, slog.New(slog.NewJSONHandler(logs, nil)), func(*config.Backend) (backend.Backend, error) {
 		return memory.New(), nil
 	})
 	if err != nil {
@@ -247,6 +250,9 @@ func TestShutdownDelay(t *testing.T) {
 	}
 	if elapsed := time.Since(stopped); elapsed < delay {
 		t.Errorf("Run() returned %s after the stop, before the end of the shutdown delay of %s", elapsed, delay)
+	}
+	if want := `"msg":"stopping after the shutdown delay","delay_seconds":3}`; !strings.Contains(logs.String(), want) {
+		t.Errorf("the logs do not hold %s:\n%s", want, logs)
 	}
 }
 

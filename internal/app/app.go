@@ -319,7 +319,7 @@ func (a *App) stopAfterDelay(ctx, serveCtx context.Context, stop context.CancelF
 	}
 	a.stopping.Store(true)
 	if a.ShutdownDelay > 0 {
-		a.logger.InfoContext(serveCtx, "stopping after the shutdown delay", slog.Duration("delay", a.ShutdownDelay))
+		a.logger.InfoContext(serveCtx, "stopping after the shutdown delay", slog.Float64("delay_seconds", a.ShutdownDelay.Seconds()))
 		timer := time.NewTimer(a.ShutdownDelay)
 		defer timer.Stop()
 		select {

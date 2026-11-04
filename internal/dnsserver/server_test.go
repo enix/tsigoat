@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -190,7 +191,14 @@ func TestUpdateOverUDPAndTCP(t *testing.T) {
 		!strings.Contains(logs, `add www.example.test. TXT 60`) {
 		t.Errorf("the update is missing from the logs:\n%s", logs)
 	}
+	if !secondsAttr.MatchString(f.logs.String()) {
+		t.Errorf("the update logs no duration_seconds, a number of seconds:\n%s", f.logs)
+	}
 }
+
+// secondsAttr matches a duration_seconds attribute, a number of seconds that
+// the text handler writes as strconv 'g' does.
+var secondsAttr = regexp.MustCompile(`duration_seconds=\d+(\.\d+)?(e-\d+)? `)
 
 func TestTSIGErrors(t *testing.T) {
 	t.Parallel()

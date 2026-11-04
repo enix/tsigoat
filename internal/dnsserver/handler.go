@@ -325,7 +325,7 @@ func (s *Server) update(ctx context.Context, ex *exchange) *dns.Msg {
 	var out outcome
 	s.processUpdate(ctx, ex, &out)
 
-	attrs := []any{"zone", out.zone, "rcode", dns.RcodeToString[out.rcode], "duration", time.Since(start)}
+	attrs := []any{"zone", out.zone, "rcode", dns.RcodeToString[out.rcode], "duration_seconds", time.Since(start).Seconds()}
 	if out.reason != "" {
 		attrs = append(attrs, "reason", out.reason)
 	}
