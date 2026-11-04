@@ -1,11 +1,9 @@
 name: Tests
 
 # Same shape as lint.yaml: scoped by path detection on pull requests, runs
-# everything on main and when called from another workflow (the release).
+# everything when called from another workflow (the release).
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_call:
     inputs:
       skip-e2e:

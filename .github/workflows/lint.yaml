@@ -1,13 +1,11 @@
 name: Linting
 
 # Run only what is relevant to the change. On a pull request,
-# dorny/paths-filter inspects the diff to decide which linters to fire. On a
-# push to main or when called from another workflow (the release), every
-# linter runs.
+# dorny/paths-filter inspects the diff to decide which linters to fire. When
+# called from another workflow (the release), every linter runs. A push to a
+# branch starts nothing: the pull requests and the release check the code.
 on:
   pull_request:
-  push:
-    branches: [main]
   workflow_call:
     inputs:
       skip-renovate:

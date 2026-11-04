@@ -6,9 +6,10 @@ description: Pick and run the checks of tsigoat that a change needs, the way the
 # Verify a change
 
 On a pull request, the Linting, Tests and Security workflows run the jobs of
-the paths that changed; on `main`, they run every job. Run the same checks
-locally, through `task`, before committing: the CI should only confirm them.
-`task check` runs everything.
+the paths that changed; a push to a branch starts none, and the release runs
+every job. Run the same checks locally, through `task`, before committing:
+the CI should only confirm them, and nothing checks a commit pushed to `main`
+directly before the release. `task check` runs everything.
 
 ## Pick the checks
 

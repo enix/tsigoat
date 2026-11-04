@@ -9,8 +9,6 @@ name: Scorecard
 on:
   schedule:
     - cron: "32 4 * * 1"
-  push:
-    branches: [main]
   branch_protection_rule:
 
 permissions: read-all

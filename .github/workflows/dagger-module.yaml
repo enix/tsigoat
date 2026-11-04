@@ -10,11 +10,6 @@ on:
     paths:
       - "dagger.json"
       - "dagger/**"
-  push:
-    branches: [main]
-    paths:
-      - "dagger.json"
-      - "dagger/**"
   workflow_dispatch:
 
 permissions:

@@ -17,9 +17,14 @@ do.
 
 ## Before tagging
 
-- Every workflow of the commit to release passed: `gh run list --commit
-  <sha>`. A red Security run often comes from an advisory published since the
-  last run: the release gates would fail on it too.
+- The changes since the last version were checked: the pull request that
+  brought each passed, and a commit pushed to `main` directly, which starts no
+  workflow, passed `task check` (the `verify` skill). The release gates run
+  every job of Linting, Tests and Security again on the tag.
+- The last scheduled Security run passed: `gh run list --workflow
+  security.yaml --event schedule --limit 1`. A red one often comes from an
+  advisory published since the run before: the release gates would fail on it
+  too.
 - The last Nightly passed: the release does not require it, but its
   acceptance test and fuzzing run nowhere else.
 - For a stable version, `release` first moves forward to the commit that a

@@ -1,13 +1,12 @@
 name: CodeQL
 
-# Static analysis with GitHub CodeQL on every push to main, every pull
-# request targeting main, and weekly to pick up new queries against
+# Static analysis with GitHub CodeQL on every pull request targeting main,
+# and weekly on main, which gives the pull requests the analysis of the
+# default branch that they compare against and picks up new queries against
 # unchanged code. Committed as a workflow rather than GitHub's default setup
 # to get SHA-pinned actions and concurrency cancellation.
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   schedule:

@@ -72,6 +72,10 @@ and ACME clients, toxiproxy and even the k3s cluster are containers on a
 private network, so no port is published on the host and parallel runs do not
 collide.
 
+A push to a branch starts no workflow: the pull requests, the schedules
+(Security and the Nightly daily, CodeQL and Scorecard weekly) and the release,
+whose gates run every job of Linting, Tests and Security, check the code.
+
 On a pull request, the Linting, Tests and Security workflows run the jobs
 that its changes concern. Each ends with a job, `Lint passed`, `Tests passed`
 and `Security passed`, which the rules of `main` require, rather than every

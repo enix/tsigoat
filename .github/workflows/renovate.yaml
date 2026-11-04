@@ -30,11 +30,6 @@ on:
         type: choice
         default: disabled
         options: [disabled, extract, lookup, full]
-  push:
-    branches: [main]
-    paths:
-      - "renovate.json5"
-      - ".github/workflows/renovate.yaml"
 
 permissions:
   contents: read
