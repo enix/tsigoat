@@ -26,7 +26,7 @@ const (
 	prometheusImage   = "quay.io/prometheus/prometheus:v3.15.1@sha256:fa3302279710be2f21a8301ec17a8b4f2301fd829bd113839b3b6b02b6f191a2"
 	pebbleImage       = "ghcr.io/letsencrypt/pebble:2.10.1@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199"
 	legoImage         = "goacme/lego:v5.6.0@sha256:6f1583fc026a455ea46a7a5858c576105bb69c2e2de69db391cab7f14750350c"
-	certbotImage      = "certbot/dns-rfc2136:v5.8.0@sha256:55d52a5de51df312cadbcce1dc105f20d639bc127699e791323c2a27db05ac1f"
+	certbotImage      = "certbot/dns-rfc2136:v5.9.0@sha256:0af1a886b92233e9ac928eef4b42e24092a3ce92d588d40a501d98e98ed63c3b"
 	goreleaserImage   = "ghcr.io/goreleaser/goreleaser:v2.19.0@sha256:b62e651c2fd9e7b1c94133a4e5d131187649e45aeeca137fbf4940f0f654ad08"
 	nodeImage         = "node:24.22.2-alpine@sha256:8a32c8cf649a49915a66e81e7a609223c708d0adabf288ee3f4077d765542f85"
 	debianImage       = "debian:13.7-slim@sha256:f6b08b09a05725f9431502d3b5714f5c4576e82c1a84fa1debe0c24a7e0c3ec4"
