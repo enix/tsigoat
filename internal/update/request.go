@@ -211,6 +211,26 @@ func Operation(rr dns.RR) string {
 	}
 }
 
+// Prerequisite describes a record of the prerequisite section as nsupdate
+// writes it (RFC 2136 2.4): yxdomain or nxdomain with the name, yxrrset or
+// nxrrset with the name and the type, and the RDATA when the RRset must hold
+// it.
+func Prerequisite(rr dns.RR) string {
+	h := rr.Header()
+	switch {
+	case h.Class == dns.ClassANY && h.Rrtype == dns.TypeANY:
+		return "yxdomain " + h.Name
+	case h.Class == dns.ClassANY:
+		return fmt.Sprintf("yxrrset %s %s", h.Name, dns.Type(h.Rrtype))
+	case h.Class == dns.ClassNONE && h.Rrtype == dns.TypeANY:
+		return "nxdomain " + h.Name
+	case h.Class == dns.ClassNONE:
+		return fmt.Sprintf("nxrrset %s %s", h.Name, dns.Type(h.Rrtype))
+	default:
+		return fmt.Sprintf("yxrrset %s %s %s", h.Name, dns.Type(h.Rrtype), backend.RData(rr))
+	}
+}
+
 // missingRDATA reports whether a record came without the RDATA that its type
 // requires, such as an A record without an address. miekg/dns decodes an
 // RDLENGTH of zero into a record whose fields keep their zero value, as the

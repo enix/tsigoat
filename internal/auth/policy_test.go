@@ -258,22 +258,22 @@ func TestAuthorize(t *testing.T) {
 		},
 		{
 			"other content", "acme.", nil, mustRRs(t, `_acme-challenge.example.test. 60 IN TXT "v=spf1 -all"`),
-			"update _acme-challenge.example.test. IN TXT: not the value of an ACME challenge",
+			`add _acme-challenge.example.test. 60 TXT "v=spf1 -all": not the value of an ACME challenge`,
 		},
 		{
 			"TTL", "acme.", nil, mustRRs(t, `_acme-challenge.example.test. 3600 IN TXT "`+valueA+`"`),
-			"update _acme-challenge.example.test. IN TXT: TTL 3600 is above 300",
+			`add _acme-challenge.example.test. 3600 TXT "` + valueA + `": TTL 3600 is above 300`,
 		},
 		{
 			"other name", "acme.", nil, mustRRs(t, `www.example.test. 60 IN TXT "`+valueA+`"`),
-			"the policy does not allow update www.example.test. IN TXT",
+			`the policy does not allow add www.example.test. 60 TXT "` + valueA + `"`,
 		},
 		{"deletion of the RRset", "acme.", nil, []dns.RR{deletion("_acme-challenge.www.example.test.", dns.TypeTXT)}, ""},
 		{"deletion of any content", "acme.", nil, mustRRs(t, `_acme-challenge.www.example.test. 0 NONE TXT "stale"`), ""},
 		{
 			"deletion of the name", "acme.", nil,
 			[]dns.RR{deletion("_acme-challenge.www.example.test.", dns.TypeANY)},
-			"the policy does not allow update _acme-challenge.www.example.test. CLASS255 ANY",
+			"the policy does not allow delete _acme-challenge.www.example.test.",
 		},
 		{"TTL of a rule, no content", "dhcp.", nil, mustRRs(t, "host.dhcp.example.test. 600 IN A 192.0.2.1"), ""},
 		{
@@ -286,7 +286,7 @@ func TestAuthorize(t *testing.T) {
 			"prerequisite", "acme.",
 			[]dns.RR{deletion("www.example.test.", dns.TypeA)},
 			nil,
-			"the policy does not allow prerequisite www.example.test.",
+			"the policy does not allow prerequisite yxrrset www.example.test. A",
 		},
 	}
 	for _, tt := range tests {

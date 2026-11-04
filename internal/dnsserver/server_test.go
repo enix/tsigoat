@@ -194,6 +194,44 @@ func TestUpdateOverUDPAndTCP(t *testing.T) {
 	if !secondsAttr.MatchString(f.logs.String()) {
 		t.Errorf("the update logs no duration_seconds, a number of seconds:\n%s", f.logs)
 	}
+	// Both updates log the request; the second one, which changes nothing,
+	// says so.
+	logs := f.logs.String()
+	if n := strings.Count(logs, `updates="[add www.example.test. 60 TXT \"hello\"]"`); n != 2 {
+		t.Errorf("%d updates logged as requested, want 2:\n%s", n, logs)
+	}
+	if !strings.Contains(logs, "changes=[]") {
+		t.Errorf("the update that changes nothing logs no empty changes:\n%s", logs)
+	}
+}
+
+// TestFailedPrerequisiteLog checks that an update whose prerequisite fails
+// logs its request, and no changes, which the engine did not compute.
+func TestFailedPrerequisiteLog(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+
+	m := updateMsg(t)
+	m.RRsetUsed([]dns.RR{&dns.ANY{Hdr: dns.RR_Header{Name: "missing.example.test.", Rrtype: dns.TypeTXT}}})
+	resp, err := f.exchange(t, "udp", m, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Rcode != dns.RcodeNXRrset {
+		t.Fatalf("rcode %s, want NXRRSET", dns.RcodeToString[resp.Rcode])
+	}
+	logs := f.logs.String()
+	for _, want := range []string{
+		`prerequisites="[yxrrset missing.example.test. TXT]"`,
+		`updates="[add www.example.test. 60 TXT \"hello\"]"`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("the logs miss %s:\n%s", want, logs)
+		}
+	}
+	if strings.Contains(logs, "changes=") {
+		t.Errorf("an update whose prerequisite failed logs changes:\n%s", logs)
+	}
 }
 
 // secondsAttr matches a duration_seconds attribute, a number of seconds that

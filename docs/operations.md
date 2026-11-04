@@ -164,12 +164,16 @@ Every update ends with one entry, `msg=update`:
 | `key` | Key that signed the update; absent when unsigned |
 | `zone` | Zone of the update |
 | `rcode` | Response code |
-| `reason` | Why the update was rejected, for REFUSED, FORMERR, NOTZONE and failed prerequisites, or why the backend turned it down |
+| `reason` | Why the update was rejected, for REFUSED, FORMERR, NOTZONE and failed prerequisites, or why the backend turned it down, such as `the policy does not allow delete _acme-challenge.example.com. TXT "challenge-value"` |
 | `error` | Why it failed, for SERVFAIL |
-| `changes` | Changes applied, such as `add _acme-challenge.www.example.com. TXT 60 ["challenge-value"]`, `remove` for the records removed, and `replace` or `delete` for whole RRsets |
+| `prerequisites` | Prerequisite section of the request, as nsupdate writes it: `yxdomain`, `nxdomain`, `yxrrset` or `nxrrset`, with the name, then the type and the data that it names |
+| `updates` | Update section of the request, as nsupdate writes it, such as `add _acme-challenge.www.example.com. 60 TXT "challenge-value"`, or `delete` with the name, then the type and the data that it names |
+| `changes` | Changes applied, such as `add _acme-challenge.www.example.com. TXT 60 ["challenge-value"]`, `remove` for the records removed, and `replace` or `delete` for whole RRsets; `[]` for an update that changed nothing, such as an addition of a record that the zone holds; absent when tsigoat did not compute them: a rejected update, or one that a relay applied |
 | `ttl_raised` | RRsets whose TTL tsigoat raised to the minimum of the provider, such as `www.example.com. TXT 30 to 60` |
-| `updates` | Updates relayed to an `rfc2136` or `webhook` backend, as requested, such as `add _acme-challenge.www.example.com. 60 TXT "challenge-value"` |
-| `duration_seconds` | Time to process the update, in seconds |
+| `duration_seconds` | Time to process the update, in seconds, including the wait behind the other updates of the zone |
+
+The request fields come with every update of a zone that tsigoat serves,
+once its sections parse.
 
 The level tells the outcome: `INFO` for applied updates and failed
 prerequisites, `WARN` for rejected ones, `ERROR` for failures. A request whose

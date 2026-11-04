@@ -564,6 +564,29 @@ func TestOperation(t *testing.T) {
 	}
 }
 
+func TestPrerequisite(t *testing.T) {
+	t.Parallel()
+
+	condition := func(name string, rrtype, class uint16) dns.RR {
+		return &dns.ANY{Hdr: dns.RR_Header{Name: name, Rrtype: rrtype, Class: class}}
+	}
+	tests := []struct {
+		rr   dns.RR
+		want string
+	}{
+		{condition("used.example.test.", dns.TypeANY, dns.ClassANY), "yxdomain used.example.test."},
+		{condition("free.example.test.", dns.TypeANY, dns.ClassNONE), "nxdomain free.example.test."},
+		{condition("www.example.test.", dns.TypeA, dns.ClassANY), "yxrrset www.example.test. A"},
+		{condition("www.example.test.", dns.TypeAAAA, dns.ClassNONE), "nxrrset www.example.test. AAAA"},
+		{mustRR(t, `txt.example.test. 0 IN TXT "a b"`), `yxrrset txt.example.test. TXT "a b"`},
+	}
+	for _, tt := range tests {
+		if got := update.Prerequisite(tt.rr); got != tt.want {
+			t.Errorf("Prerequisite(%v) = %q, want %q", tt.rr, got, tt.want)
+		}
+	}
+}
+
 func mustRR(t *testing.T, text string) dns.RR {
 	t.Helper()
 	rr, err := dns.NewRR(text)

@@ -11,6 +11,7 @@ import (
 	"github.com/miekg/dns"
 
 	"github.com/enix/tsigoat/internal/config"
+	"github.com/enix/tsigoat/internal/update"
 )
 
 // Unauthenticated is the identity of unsigned requests.
@@ -85,9 +86,9 @@ func (p *Policy) Authorize(identity string, class uint16, prerequisites, updates
 		switch {
 		case allowed:
 		case constraint != "":
-			return "the policy does not allow update " + describe(rr) + ": " + constraint
+			return "the policy does not allow " + update.Operation(rr) + ": " + constraint
 		default:
-			return "the policy does not allow update " + describe(rr)
+			return "the policy does not allow " + update.Operation(rr)
 		}
 	}
 	for i := range p.rules {
@@ -98,7 +99,7 @@ func (p *Policy) Authorize(identity string, class uint16, prerequisites, updates
 	}
 	for _, rr := range prerequisites {
 		if !p.AllowsName(identity, dns.CanonicalName(rr.Header().Name)) {
-			return "the policy does not allow prerequisite " + describe(rr)
+			return "the policy does not allow prerequisite " + update.Prerequisite(rr)
 		}
 	}
 	return ""
@@ -198,11 +199,6 @@ func isACMEChallengeValue(rr dns.RR) bool {
 }
 
 // describe names a record in messages: owner name, class and type.
-func describe(rr dns.RR) string {
-	h := rr.Header()
-	return fmt.Sprintf("%s %s %s", h.Name, dns.Class(h.Class), dns.Type(h.Rrtype))
-}
-
 func (r *rule) allowsType(rrtype uint16) bool {
 	if r.types == nil {
 		return rrtype != dns.TypeSOA

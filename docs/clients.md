@@ -43,6 +43,13 @@ holds a complete ClusterIssuer, for tsigoat installed with [the Helm
 chart](../chart/README.md). cert-manager supports `HMACMD5`, `HMACSHA1`,
 `HMACSHA256` and `HMACSHA512`.
 
+cert-manager waits two seconds for the answer to an update, a delay that it
+does not let configure. tsigoat applies the updates of a zone one at a time: when many
+certificates renew at once on a zone of a hosted provider, whose API takes a
+few hundred milliseconds per update, the last updates may wait longer.
+cert-manager then sends the update again, which tsigoat applies once: the log
+of the second one shows the record in `updates` and `changes=[]`.
+
 ## lego and Traefik
 
 lego 5 names the provider `dnsupdate`:

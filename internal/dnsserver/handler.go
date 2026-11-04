@@ -292,14 +292,19 @@ type outcome struct {
 	// reason explains a rejection.
 	reason string
 	// err is a failure of tsigoat or of the backend, answered SERVFAIL.
-	err     error
-	changes []backend.Change
+	err error
+	// prerequisites and updates are the sections of the request, once
+	// parsed, as received.
+	prerequisites, updates []dns.RR
+	// computed tells that the engine computed the changes of the update,
+	// which may be none: an addition of a record that the zone holds, or a
+	// deletion of one that it does not, changes nothing. A relayed update has
+	// no changes that tsigoat knows.
+	computed bool
+	changes  []backend.Change
 	// raised lists the RRsets whose TTL the server raised to the minimum
 	// of the backend.
 	raised []string
-	// relayed holds the updates relayed to the relay of the zone, whose
-	// effect tsigoat does not know.
-	relayed []dns.RR
 }
 
 func (o *outcome) refuse(reason string) {
@@ -332,7 +337,15 @@ func (s *Server) update(ctx context.Context, ex *exchange) *dns.Msg {
 	if out.err != nil {
 		attrs = append(attrs, "error", out.err)
 	}
-	if len(out.changes) > 0 {
+	if len(out.prerequisites) > 0 {
+		attrs = append(attrs, "prerequisites", describeAll(out.prerequisites, update.Prerequisite))
+	}
+	if len(out.updates) > 0 {
+		attrs = append(attrs, "updates", describeAll(out.updates, update.Operation))
+	}
+	if out.computed {
+		// An empty list, rather than no field, for an update that changed
+		// nothing.
 		changes := make([]string, 0, len(out.changes))
 		for _, change := range out.changes {
 			changes = append(changes, change.String())
@@ -341,13 +354,6 @@ func (s *Server) update(ctx context.Context, ex *exchange) *dns.Msg {
 	}
 	if len(out.raised) > 0 {
 		attrs = append(attrs, "ttl_raised", out.raised)
-	}
-	if len(out.relayed) > 0 {
-		updates := make([]string, 0, len(out.relayed))
-		for _, rr := range out.relayed {
-			updates = append(updates, update.Operation(rr))
-		}
-		attrs = append(attrs, "updates", updates)
 	}
 	level := slog.LevelInfo
 	switch out.rcode {
@@ -359,6 +365,15 @@ func (s *Server) update(ctx context.Context, ex *exchange) *dns.Msg {
 	ex.logger.Log(ctx, level, "update", attrs...)
 
 	return ex.reply(out.rcode)
+}
+
+// describeAll describes the records of a section of an update.
+func describeAll(rrs []dns.RR, describe func(dns.RR) string) []string {
+	described := make([]string, 0, len(rrs))
+	for _, rr := range rrs {
+		described = append(described, describe(rr))
+	}
+	return described
 }
 
 // processUpdate checks, authorizes and applies an update, following the
@@ -384,6 +399,7 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		out.reject(err)
 		return
 	}
+	out.prerequisites, out.updates = req.Prerequisites, req.Updates
 	if reason := z.Policy.Authorize(ex.identity, req.Class, req.Prerequisites, req.Updates); reason != "" {
 		out.refuse(reason)
 		return
@@ -409,7 +425,7 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 		return
 	}
 	out.raised = view.RaiseTTLs(z.MinTTL)
-	out.changes = view.Changes()
+	out.changes, out.computed = view.Changes(), true
 	if len(out.changes) > 0 {
 		err := z.Backend.Apply(ctx, zoneName, out.changes)
 		if rejection, ok := errors.AsType[*backend.RejectionError](err); ok {
@@ -428,7 +444,6 @@ func (s *Server) processUpdate(ctx context.Context, ex *exchange, out *outcome) 
 // evaluates its prerequisites and applies it: tsigoat neither reads the zone
 // nor serializes its updates.
 func relay(ctx context.Context, z *servedZone, identity string, req *update.Request, out *outcome) {
-	out.relayed = req.Updates
 	rcode, err := z.Relay.Update(ctx, z.Name, identity, req.Prerequisites, req.Updates)
 	if rejection, ok := errors.AsType[*backend.RejectionError](err); ok {
 		out.rcode, out.reason = rejection.Rcode, rejection.Reason
