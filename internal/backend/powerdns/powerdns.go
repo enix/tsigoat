@@ -77,6 +77,10 @@ type serverInfo struct {
 	// recordOps tells that PATCH requests take EXTEND and PRUNE, which add
 	// and remove one record, since PowerDNS 4.9.12 and 5.0.2.
 	recordOps bool
+	// mailboxAt tells PowerDNS before 4.6, which reads the first @ of the
+	// mailbox of a SOA as the @ of an email address: it serves
+	// hostmaster@example.com. as hostmaster.example.com.
+	mailboxAt bool
 }
 
 var _ backend.Backend = (*Backend)(nil)
@@ -176,7 +180,7 @@ func (b *Backend) Lookup(ctx context.Context, zone, name string) ([]backend.RRse
 		if dns.CanonicalName(set.Name) != name {
 			continue
 		}
-		converted, err := fromAPI(set)
+		converted, err := fromAPI(set, info)
 		if err != nil {
 			return nil, fmt.Errorf("reading RRset %s %s of zone %s: %w", set.Name, set.Type, zone, err)
 		}
@@ -202,7 +206,11 @@ func (b *Backend) serverInfo(ctx context.Context) (serverInfo, error) {
 	if err := b.do(ctx, http.MethodGet, "", nil, &server); err != nil {
 		return serverInfo{}, fmt.Errorf("reading the version of PowerDNS: %w", err)
 	}
-	b.info = serverInfo{legacy: strings.HasPrefix(server.Version, "4."), recordOps: recordOps(server.Version)}
+	b.info = serverInfo{
+		legacy:    strings.HasPrefix(server.Version, "4."),
+		recordOps: recordOps(server.Version),
+		mailboxAt: mailboxAt(server.Version),
+	}
 	b.infoKnown = true
 	return b.info, nil
 }
@@ -222,6 +230,16 @@ func recordOps(version string) bool {
 	default:
 		return major > 5
 	}
+}
+
+// mailboxAt tells whether a version of PowerDNS reads the first @ of the
+// mailbox of a SOA as the @ of an email address, as it did before 4.6.
+func mailboxAt(version string) bool {
+	var major, minor int
+	if _, err := fmt.Sscanf(version, "%d.%d", &major, &minor); err != nil {
+		return false
+	}
+	return major < 4 || major == 4 && minor < 6
 }
 
 // Apply implements backend.Backend with a single PATCH request.

@@ -55,6 +55,12 @@ another server.
 
 - **ALIAS and LUA** records, which only PowerDNS knows, can be tested by
   prerequisites and deleted, but tsigoat never writes them.
+- **A SOA mailbox with an `@`**, such as `hostmaster@example.com.`, reads as
+  the server serves it. PowerDNS before 4.6 takes its first `@` for the `@`
+  of an email address, and serves `hostmaster.example.com.`; since 4.6, the
+  `@` is a character of the first label, served as
+  `hostmaster\@example.com.`. Write the mailbox with a dot,
+  `hostmaster.example.com.`, which every version serves alike.
 - **Disabled records** are invisible to clients, since PowerDNS does not serve
   them. An update keeps them, even when it removes every record that clients
   see: PowerDNS drops them from an RRset that EXTEND or PRUNE change, and

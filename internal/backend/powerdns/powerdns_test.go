@@ -848,6 +848,67 @@ func TestRecordOps(t *testing.T) {
 	}
 }
 
+// TestSOAMailbox checks that the mailbox of a SOA reads as the server serves
+// it, as the images of PowerDNS 4.4 to 5.0 do: before 4.6, its first @ is the
+// @ of an email address; since, a character of its first label.
+func TestSOAMailbox(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ version, mailbox, want string }{
+		{"4.2.1", "hostmaster@example.test.", "hostmaster.example.test."},
+		{"4.5.5", "piet.puk@example.test.", `piet\.puk.example.test.`},
+		{"4.5.5", "hostmaster.example.test.", "hostmaster.example.test."},
+		{"4.6.4", "hostmaster@example.test.", `hostmaster\@example.test.`},
+		{"5.0.2", "piet.puk@example.test.", `piet.puk\@example.test.`},
+	} {
+		api, server := newFakeAPI(t)
+		api.version = tc.version
+		api.zones["example.test."][0].Records[0].Content = "ns1.example.test. " + tc.mailbox + " 1 10800 3600 604800 3600"
+		sets, err := newBackend(t, server.URL).Lookup(t.Context(), "example.test.", "example.test.")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got string
+		for _, set := range sets {
+			if set.Type == dns.TypeSOA {
+				got = onTheWire(t, set.Records[0]).(*dns.SOA).Mbox
+			}
+		}
+		if got != tc.want {
+			t.Errorf("PowerDNS %s, mailbox %s: read %q, want %q", tc.version, tc.mailbox, got, tc.want)
+		}
+	}
+}
+
+// onTheWire returns a record as a client reads it, in the escaped form of its
+// names.
+func onTheWire(t *testing.T, rr dns.RR) dns.RR {
+	t.Helper()
+	buf := make([]byte, dns.Len(rr))
+	off, err := dns.PackRR(rr, buf, 0, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unpacked, _, err := dns.UnpackRR(buf[:off], 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return unpacked
+}
+
+// TestMailboxAt checks the versions of PowerDNS that read the first @ of the
+// mailbox of a SOA as the @ of an email address.
+func TestMailboxAt(t *testing.T) {
+	t.Parallel()
+	for version, want := range map[string]bool{
+		"3.4.11": true, "4.2.1": true, "4.5.5": true, "4.6.0": false, "4.9.18": false,
+		"5.0.8": false, "master": false,
+	} {
+		if got := mailboxAt(version); got != want {
+			t.Errorf("mailboxAt(%q) = %t, want %t", version, got, want)
+		}
+	}
+}
+
 // TestApplyRecords checks Add and Remove: one EXTEND or PRUNE per record,
 // PRUNE with the content as PowerDNS wrote it, the disabled records put back
 // last, and on servers without EXTEND and PRUNE, a REPLACE of the RRset.

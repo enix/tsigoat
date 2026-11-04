@@ -57,8 +57,9 @@ func opaque(code uint16) bool {
 	return code == typeALIAS || code == typeLUA
 }
 
-// fromAPI converts an RRset of the API, leaving out the disabled records.
-func fromAPI(set *rrset) (backend.RRset, error) {
+// fromAPI converts an RRset of the API, leaving out the disabled records, as
+// the server that gave it serves them.
+func fromAPI(set *rrset, info serverInfo) (backend.RRset, error) {
 	code, err := typeCode(set.Type)
 	if err != nil {
 		return backend.RRset{}, err
@@ -71,13 +72,35 @@ func fromAPI(set *rrset) (backend.RRset, error) {
 		if r.Disabled {
 			continue
 		}
-		rr, err := parseContent(converted.Name, converted.TTL, code, r.Content)
+		content := r.Content
+		if code == dns.TypeSOA && info.mailboxAt {
+			content = soaMailbox(content)
+		}
+		rr, err := parseContent(converted.Name, converted.TTL, code, content)
 		if err != nil {
 			return backend.RRset{}, err
 		}
 		converted.Records = append(converted.Records, rr)
 	}
 	return converted, nil
+}
+
+// soaMailbox rewrites the mailbox of the content of a SOA as PowerDNS before
+// 4.6 serves it: its first @ separates the local part, whose dots stay in the
+// first label, from the domain, as in an email address.
+// hostmaster@example.com. becomes hostmaster.example.com., and
+// piet.puk@example.com. piet\.puk.example.com.
+func soaMailbox(content string) string {
+	fields := strings.Fields(content)
+	if len(fields) < 2 {
+		return content
+	}
+	local, domain, ok := strings.Cut(fields[1], "@")
+	if !ok {
+		return content
+	}
+	fields[1] = strings.ReplaceAll(local, ".", `\.`) + "." + domain
+	return strings.Join(fields, " ")
 }
 
 // parseContent parses the content of a record, which is its RDATA in
