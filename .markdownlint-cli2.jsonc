@@ -16,9 +16,6 @@
     // Vendored or out-of-tree.
     "node_modules/",
     ".git/",
-    // AI assistant notes.
-    "CLAUDE.md",
-    "AGENTS.md",
     // Local working notes, never committed.
     "docs/local/",
   ],

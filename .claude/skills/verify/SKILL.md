@@ -27,7 +27,7 @@ origin/main` for commits not pushed yet.
 | `.releaserc.mjs`, `.github/release/` | `task test:release` |
 | `.github/` | `task lint:actions` |
 | `renovate.json5` | `task lint:renovate` |
-| Markdown | `task lint:markdown`, which skips `CLAUDE.md`, `AGENTS.md` and hidden directories |
+| Markdown | `task lint:markdown`, which skips the hidden directories, such as `.claude/` |
 | Dependencies, images, `.trivyignore` | `task security` |
 
 A test of the end-to-end family takes a PowerDNS version: run 4.9 and 5.0

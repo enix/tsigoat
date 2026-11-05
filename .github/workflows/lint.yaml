@@ -57,8 +57,8 @@ jobs:
               - 'dagger.json'
               - '.github/actions/dagger/**'
             # A filter matches when any of its patterns does: a negated
-            # pattern would match every other file. markdownlint-cli2 leaves
-            # out CLAUDE.md and AGENTS.md itself.
+            # pattern would match every other file, so the ignores stay in
+            # .markdownlint-cli2.jsonc.
             markdown:
               - '**/*.md'
               - '.markdownlint-cli2.jsonc'
