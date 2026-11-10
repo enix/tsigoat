@@ -12,7 +12,7 @@ require (
 	github.com/prometheus/client_golang v1.25.0
 	github.com/spf13/cobra v1.10.2
 	go.yaml.in/yaml/v3 v3.0.6
-	golang.org/x/crypto/x509roots/fallback v0.0.0-20261103070834-3d426ad4de97
+	golang.org/x/crypto/x509roots/fallback v0.0.0-20261109165751-4e10f38b063d
 )
 
 require (
