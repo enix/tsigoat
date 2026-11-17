@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "conventional-changelog-conventionalcommits": "9.3.1",
-    "semantic-release": "25.0.9",
+    "semantic-release": "26.0.1",
     "semantic-release-slack-bot": "4.0.2"
   },
   "overrides": {
